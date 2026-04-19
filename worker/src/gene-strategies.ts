@@ -1,9 +1,9 @@
 /**
- * Phase 3.5: Alternative Gene Implementations (ADR-205 §3.5.2)
+ * Alternative Gene Implementations
  *
- * Each Gene slot can have multiple strategy implementations.
- * Strategies are registered by key and dispatched by the Genome orchestrator
- * based on the active variant's strategy_key.
+ * Each Gene slot can have multiple strategy implementations. Strategies are
+ * registered by key and dispatched by the Genome orchestrator based on the
+ * active variant's strategy_key.
  *
  * Currently provides:
  *   - Scanner: baseline (edge-based) vs trend-following

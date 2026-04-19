@@ -1,15 +1,12 @@
 /**
- * Phase 3.5 Genome Orchestrator — Petri Touchstone (ADR-199 §3.2, ADR-205)
+ * Genome Orchestrator
  *
- * Wraps the pipeline stages as Gene-compatible steps with typed I/O.
+ * Wraps the pipeline stages as composable steps with typed I/O.
  * Orchestration pattern: Seq { risk → scanner → settler → monitor → trader → micro-evolver }
  *
- * STATUS: Phase 3.5 "embedded touchstone" — all 6 Genes run inside this Worker.
- * They are NOT yet published to Rotifer Cloud or compiled to IR.
- * Scanner and Monitor are Hybrid targets (external API dependency).
- * Risk, Trader, Settler, Evolver are Native-ready candidates (pure logic, D1-coupled).
- *
- * See: internal/plan/petri-phase-0-5-implementation.md § "Petri → Rotifer 化过渡清单"
+ * Currently each step is implemented as an in-repo module. The Gene-compatible
+ * I/O contracts are defined in `gene-interface.ts` so that individual steps can
+ * be lifted out into stand-alone artefacts in future iterations.
  */
 
 import type { Env, FundConfig, AgentEvent, AgentEventType } from "./types";
@@ -246,7 +243,7 @@ export async function runGenomePipeline(
     });
   }
 
-  // Step 7: Code Evolution (Phase 3.5)
+  // Step 7: Code Evolution
   let codeEvoResult;
   try {
     codeEvoResult = await checkAndRunCodeEvolution(env.DB);
@@ -305,7 +302,7 @@ export async function runGenomePipeline(
 export const GENOME_BLUEPRINT = {
   id: "petri-polymarket-pipeline",
   version: "0.1.0",
-  description: "Phase 3.5 embedded touchstone: Polymarket trading pipeline with dual-layer evolution (not yet in Rotifer Cloud lifecycle)",
+  description: "Polymarket trading pipeline with dual-layer evolution (PBT)",
   orchestration: {
     type: "Seq" as const,
     steps: [

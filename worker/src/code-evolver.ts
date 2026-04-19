@@ -1,5 +1,5 @@
 /**
- * Phase 3.5: Code Evolver (ADR-205)
+ * Code Evolver
  *
  * Controls the Gene implementation-level evolution loop:
  *   1. Detect epoch boundary (enough trades evaluated)

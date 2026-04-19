@@ -3,8 +3,6 @@
 //
 // Pipeline: risk-check -> scan -> analyze -> trade -> settle -> record -> push
 // Cron: every-5min scan+trade, daily 01:00 report, weekly Sun 00:00 evolve
-//
-// ADR-196: D-Evo-1 to D-Evo-19
 
 import type { Env, AgentEvent, FundConfig } from "./types";
 import { DEFAULT_FUNDS } from "./types";
@@ -561,7 +559,7 @@ export default {
       {
       name: "petri-polymarket-agent",
         version: "3.1.0",
-        status: "Phase 3.5 embedded touchstone — not yet in Rotifer Cloud lifecycle",
+        status: "experimental",
         funds: funds.map(f => ({
           id: f.id, name: f.name, emoji: f.emoji, motto: f.motto,
           monthlyTarget: `+${f.monthlyTarget * 100}%`,

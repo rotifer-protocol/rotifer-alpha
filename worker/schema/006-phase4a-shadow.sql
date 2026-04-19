@@ -1,4 +1,4 @@
--- Phase 4a: Shadow Real Trading Infrastructure
+-- Shadow Real Trading Infrastructure
 -- Records what WOULD happen on a real exchange, without executing
 
 CREATE TABLE IF NOT EXISTS shadow_orders (

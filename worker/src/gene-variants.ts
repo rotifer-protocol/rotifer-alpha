@@ -1,5 +1,5 @@
 /**
- * Phase 3.5: Gene Variant Management (ADR-205)
+ * Gene Variant Management
  *
  * Manages alternative Gene implementations — CRUD, scoring, lineage tracking,
  * and runtime variant selection for the Genome orchestrator.

@@ -1,16 +1,13 @@
 /**
- * Polymarket Scanner Gene — Code Boundary Map
+ * Polymarket Scanner — Code Boundary Map
  *
- * EXTERNAL SIDE EFFECTS (Hybrid — cannot compile to WASM):
+ * EXTERNAL SIDE EFFECTS:
  *   - scan()        → fetches from gamma-api.polymarket.com
  *   - fetchBatch()  → HTTP request with timeout
  *
- * PURE COMPUTATION (Native-ready — can compile to WASM):
+ * PURE COMPUTATION:
  *   - analyze()     → signal detection from in-memory market data
  *   - parseMarket() → data normalization
- *
- * v0.9 migration: extract analyze() as a standalone Native Gene,
- * keep scan() as a Hybrid wrapper with declared externalDependencies.
  */
 import type { MarketSnapshot, ArbSignal } from "./types";
 

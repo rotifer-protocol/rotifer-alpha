@@ -3,7 +3,7 @@ import { DEFAULT_FUNDS } from "./types";
 import { broadcast } from "./notify";
 import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
 
-// ─── Parameter Boundaries (D-Evo-3) ─────────────────────
+// ─── Parameter Boundaries ───────────────────────────────
 
 interface ParamBound {
   min: number;
@@ -39,7 +39,7 @@ function clampParam(name: string, value: number): number {
   return Math.round(v * 10000) / 10000;
 }
 
-// ─── F(g) Fitness Function (D-Evo-2) ────────────────────
+// ─── Fitness Function ───────────────────────────────────
 
 interface FitnessInput {
   fundId: string;
@@ -139,7 +139,7 @@ async function calculateFitness(
   };
 }
 
-// ─── Mutation (D-Evo-1) ─────────────────────────────────
+// ─── Mutation ───────────────────────────────────────────
 
 function mutateParams(fund: FundConfig): Partial<FundConfig> {
   const mutated: Record<string, number> = {};
@@ -175,7 +175,7 @@ function gaussianRandom(): number {
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-// ─── Meta-Control Rules (D-Evo-5) ───────────────────────
+// ─── Meta-Control Rules ─────────────────────────────────
 
 type EvolutionAction = "SKIP_INSUFFICIENT" | "SKIP_ALL_GOOD" | "GLOBAL_RESET" | "STANDARD_PBT";
 
@@ -367,7 +367,7 @@ async function logEvolution(
   ).run();
 }
 
-// ─── Evolution Engine (D-Evo-1/5) ───────────────────────
+// ─── Evolution Engine ───────────────────────────────────
 
 export interface EvolutionReport {
   epoch: number;

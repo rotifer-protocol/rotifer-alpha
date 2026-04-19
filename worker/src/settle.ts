@@ -1,12 +1,12 @@
 /**
- * Polymarket Settler Gene — Code Boundary Map
+ * Polymarket Settler — Code Boundary Map
  *
- * PURE COMPUTATION (Native-ready — can compile to WASM once D1 decoupled):
+ * PURE COMPUTATION:
  *   - PnL calculation from resolved outcome prices
  *   - Direction-aware settlement logic (BUY_YES vs SELL_YES)
  *
- * D1 SIDE EFFECTS (need abstraction for Native migration):
- *   - settle() → reads/writes D1 paper_trades
+ * DB SIDE EFFECTS:
+ *   - settle() → reads/writes paper_trades
  *
  * NO EXTERNAL NETWORK CALLS — settler works entirely with in-memory market data
  * that is already fetched by the scanner step.
@@ -15,7 +15,7 @@ import type { FundConfig, MarketSnapshot, Settlement } from "./types";
 import { getExecutionMode, recordShadowClose } from "./execution";
 
 /**
- * D-Evo-14: Fixed settlement logic.
+ * Settlement logic.
  *
  * Previous bug: assumed BUY_YES always wins.
  * Fix: check actual market resolution (which outcome won) and compute PnL

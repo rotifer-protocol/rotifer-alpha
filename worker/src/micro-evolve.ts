@@ -2,7 +2,7 @@ import type { FundConfig } from "./types";
 import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
 
 /**
- * Phase 2: Data-driven micro-evolution engine (ADR-199).
+ * Data-driven micro-evolution engine.
  *
  * Triggered per-fund when >=20 closed trades accumulate since last micro-evolve.
  * Analyzes recent trade outcomes to compute a local gradient for evolvable params,

@@ -251,7 +251,7 @@ const en = {
   sizingEdge: "Edge",
   sizingEdgeConfidence: "Edge × Confidence",
 
-  // Shadow Trading (Phase 4a)
+  // Shadow Trading
   shadow: "Shadow",
   shadowTitle: "Shadow vs Paper Comparison",
   shadowDesc: "Comparing paper trade execution with simulated real CLOB orders",
@@ -276,7 +276,7 @@ const en = {
   killSwitchInactive: "ACTIVE",
   systemStatus: "System Status",
 
-  // Gene Evolution (Phase 3.5)
+  // Gene Evolution
   geneEvolution: "Gene Evolution",
   geneEvolutionDesc: "Code-level evolution: alternative Gene implementations competing in the pipeline",
   geneVariants: "Gene Variants",

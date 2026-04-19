@@ -106,7 +106,7 @@ export interface Settlement {
   status: TradeStatus;
 }
 
-// ─── AgentEvent Protocol (D-Evo-18) ─────────────────────
+// ─── AgentEvent Protocol ────────────────────────────────
 
 export type AgentEventType =
   | "CONNECTED"
@@ -188,7 +188,7 @@ export interface SnapshotPayload {
   }>;
 }
 
-// ─── Default Fund Configurations (D-Evo-8) ──────────────
+// ─── Default Fund Configurations ────────────────────────
 
 export function sizing(config: FundConfig, sig: ArbSignal): number {
   switch (config.sizingMode) {

@@ -1,4 +1,4 @@
--- D-Evo-1/3/8: Evolvable fund configuration table
+-- Evolvable fund configuration table
 -- Replaces hardcoded FUNDS constant for evolution engine
 
 CREATE TABLE IF NOT EXISTS fund_configs (

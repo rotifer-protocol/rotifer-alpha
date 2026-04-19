@@ -22,7 +22,7 @@ import { getSystemConfig, getHeartbeat } from "./execution";
 import { piggybackRiskCheck } from "./risk";
 
 /**
- * D-Evo-11/13: Read-only GET endpoints for the frontend.
+ * Read-only GET endpoints for the frontend.
  * No authentication required (public data).
  */
 export async function handleApi(
@@ -610,7 +610,7 @@ async function apiSystem(
   }, { headers });
 }
 
-// ─── Gene Evolution APIs (Phase 3.5) ────────────────────
+// ─── Gene Evolution APIs ────────────────────────────────
 
 function localizeRegistry(registry: GeneMeta[], lang: string) {
   if (lang !== "zh") return registry;

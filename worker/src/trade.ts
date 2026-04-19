@@ -1,20 +1,20 @@
 /**
- * Polymarket Trader Gene — Code Boundary Map
+ * Polymarket Trader — Code Boundary Map
  *
- * PURE COMPUTATION (Native-ready — can compile to WASM once D1 decoupled):
+ * PURE COMPUTATION:
  *   - entryDirection() — signal → direction mapping
  *   - entryPrice()     — signal → price extraction
  *   - Position sizing logic (sizing(), effectiveSizing())
  *   - Skip reason classification
  *
- * D1 SIDE EFFECTS (need abstraction for Native migration):
- *   - paperTrade()    → reads/writes D1 (balance, duplicates, trades)
- *   - getBalance()    → reads D1
- *   - isDuplicate()   → reads D1
- *   - isFrozen()      → reads D1
+ * DB SIDE EFFECTS:
+ *   - paperTrade()    → reads/writes balance + duplicates + trades
+ *   - getBalance()    → reads
+ *   - isDuplicate()   → reads
+ *   - isFrozen()      → reads
  *
- * EXTERNAL SIDE EFFECTS (Hybrid dependency):
- *   - fetchPrices()   → called for open position pricing (from price.ts → Polymarket API)
+ * EXTERNAL SIDE EFFECTS:
+ *   - fetchPrices()   → open position pricing (price.ts → Polymarket API)
  */
 import type { ArbSignal, FundConfig, MarketSnapshot, TradeAction } from "./types";
 import { sizing } from "./types";

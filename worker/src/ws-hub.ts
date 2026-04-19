@@ -3,7 +3,7 @@ import type { AgentEvent } from "./types";
 const REPLAY_BUFFER_SIZE = 50;
 
 /**
- * D-Evo-11/18: Durable Object WebSocket Hub.
+ * Durable Object WebSocket Hub.
  *
  * Maintains WebSocket connections with frontend clients.
  * Worker notifies this DO after each operation (scan/trade/settle/evolve),

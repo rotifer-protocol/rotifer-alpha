@@ -1,5 +1,5 @@
 /**
- * Phase 4a: Execution Layer Abstraction
+ * Execution Layer Abstraction
  *
  * Separates "what to trade" from "how to execute".
  * Paper mode: insert into paper_trades (existing behavior).

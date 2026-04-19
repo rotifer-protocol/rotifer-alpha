@@ -1,9 +1,9 @@
 /**
- * Phase 3: Gene Interface Layer (ADR-199 §3.1)
+ * Gene Interface Layer
  *
- * Defines the GeneResult/GeneInput contracts that each module must conform to.
- * Once Rotifer Protocol v0.9 Composition spec is finalized, these can be
- * extracted into independent Genes with phenotype.json schemas.
+ * Defines the typed input/output contracts that each pipeline step must conform
+ * to, so individual steps can be lifted out into stand-alone Gene artefacts in
+ * future iterations.
  */
 
 import type { ArbSignal, FundConfig, MarketSnapshot, TradeAction, AgentEvent } from "./types";
@@ -103,18 +103,13 @@ export interface GenomePipelineResult {
 
 // ─── Gene Metadata ──────────────────────────────────────
 //
-// Fidelity follows Rotifer Protocol Specification §4 (Gene Standard):
+// Fidelity classification:
 //   - "hybrid"  = requires external network calls (API, WebSocket)
-//   - "native"  = pure computation, eligible for WASM IR compilation
+//   - "native"  = pure computation
 //   - "wrapped" = thin wrapper around external service
 //
-// Status: all 6 genes are currently "embedded" in the Petri Worker
-// (Phase 3.5 touchstone). They are NOT yet published to Rotifer Cloud
-// or compiled to IR. The fidelity field reflects the *target* form
-// for when they enter the full protocol lifecycle.
-//
-// Migration path: see internal/plan/petri-phase-0-5-implementation.md
-// § "Petri → Rotifer 化过渡清单"
+// All steps currently run as in-repo modules. The fidelity field reflects the
+// *target* form for when individual steps are lifted into stand-alone artefacts.
 
 export type GeneFidelity = "native" | "wrapped" | "hybrid";
 export type GeneLifecycleStatus = "embedded" | "published" | "trial" | "active";

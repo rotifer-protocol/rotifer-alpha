@@ -1,20 +1,18 @@
 /**
- * Polymarket Monitor Gene — Code Boundary Map
+ * Polymarket Monitor — Code Boundary Map
  *
- * PURE COMPUTATION (core logic is Native-ready):
+ * PURE COMPUTATION:
  *   - Take-profit threshold check
  *   - Trailing stop (high-water-mark regression) check
  *   - Probability reversal detection
  *   - calcUnrealizedPnl() — imported, pure arithmetic
  *
- * D1 SIDE EFFECTS (need abstraction for Native migration):
- *   - monitor() → reads D1 paper_trades
- *   - executeMonitorActions() → writes D1 (status update, pnl recording)
+ * DB SIDE EFFECTS:
+ *   - monitor() → reads paper_trades
+ *   - executeMonitorActions() → writes paper_trades (status update, pnl recording)
  *
- * EXTERNAL SIDE EFFECTS (Hybrid dependency):
- *   - fetchPrices() → called for batch live prices (from price.ts → Polymarket API)
- *
- * v0.9 migration: split into monitor-core (pure, Native) + monitor-bridge (Hybrid, price fetching).
+ * EXTERNAL SIDE EFFECTS:
+ *   - fetchPrices() → batch live prices (price.ts → Polymarket API)
  */
 import type { FundConfig, TradeStatus } from "./types";
 import { fetchPrices, calcUnrealizedPnl } from "./price";

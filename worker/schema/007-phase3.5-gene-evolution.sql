@@ -1,4 +1,4 @@
--- Phase 3.5: Gene Implementation-Level Evolution (ADR-205)
+-- Gene Implementation-Level Evolution
 
 CREATE TABLE IF NOT EXISTS gene_variants (
   id TEXT PRIMARY KEY,
@@ -68,4 +68,4 @@ VALUES
 
 -- Seed epoch 0
 INSERT OR IGNORE INTO gene_evolution_log (id, epoch, gene_id, action, details, created_at)
-VALUES ('epoch-0-init', 0, '*', 'epoch_started', '{"description":"Baseline variants seeded. Phase 3.5 infrastructure initialized."}', datetime('now'));
+VALUES ('epoch-0-init', 0, '*', 'epoch_started', '{"description":"Baseline variants seeded."}', datetime('now'));
