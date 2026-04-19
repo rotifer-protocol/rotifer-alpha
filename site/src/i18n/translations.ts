@@ -20,12 +20,12 @@ const en = {
   disclaimerSuffix: "research experiment.",
   disclaimerShort: "Simulation · not financial advice",
   infoLine1: "Paper trading simulation — no real funds involved, not financial advice.",
-  infoLine2: "A Rotifer Protocol research experiment.",
+  infoLine2: "A research experiment by the Rotifer Protocol team.",
   infoLine3: "Data sourced from Polymarket. Accuracy not guaranteed.",
 
   // Arena
   fundArenaRankings: "Fund Rankings",
-  agentTagline1: "Rotifer Agents",
+  agentTagline1: "Petri Agents",
   agentTaglineSep: " · ",
   agentTagline2: "autonomous trading",
   agentTagline3: "live evolution",
@@ -165,7 +165,7 @@ const en = {
   tagline: "Open-source evolution framework for AI agents",
   dataSourced: "Data sourced from",
   accuracyNote: "Accuracy not guaranteed.",
-  footerBrandSub: "A Rotifer Protocol experiment",
+  footerBrandSub: "A Rotifer Protocol team experiment",
   footerProtocol: "Explore",
   footerData: "Data",
 
@@ -416,11 +416,11 @@ const zh: Record<TranslationKey, string> = {
   disclaimerSuffix: "研究实验。",
   disclaimerShort: "模拟交易 · 非投资建议",
   infoLine1: "模拟交易 — 无真实资金，非投资建议。",
-  infoLine2: "Rotifer Protocol 研究实验。",
+  infoLine2: "Rotifer Protocol 团队的研究实验。",
   infoLine3: "数据来源 Polymarket，准确性不作保证。",
 
   fundArenaRankings: "基金排行",
-  agentTagline1: "Rotifer 智能体",
+  agentTagline1: "Petri 智能体",
   agentTaglineSep: " · ",
   agentTagline2: "自主交易",
   agentTagline3: "实时进化",
@@ -550,7 +550,7 @@ const zh: Record<TranslationKey, string> = {
   tagline: "开源 AI Agent 进化框架",
   dataSourced: "数据来源",
   accuracyNote: "准确性不作保证。",
-  footerBrandSub: "Rotifer Protocol 实验项目",
+  footerBrandSub: "Rotifer Protocol 团队的实验项目",
   footerProtocol: "探索",
   footerData: "数据",
 
