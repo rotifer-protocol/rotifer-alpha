@@ -2,35 +2,41 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-settler",
   "version": "0.1.0",
-  "fidelity": "native",
-  "description": "Settles resolved markets: detects closed markets with outcome prices and computes final PnL for open positions.",
-  "input": {
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Settles resolved markets: detects closed markets with outcome prices in pre-fetched snapshots and computes final PnL for open positions. Pure computation.",
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "markets": { "type": "array", "items": { "$ref": "#/definitions/MarketSnapshot" }, "description": "All fetched market snapshots (includes closed/resolved)" },
-      "funds": { "type": "array", "items": { "$ref": "#/definitions/FundConfig" }, "description": "Fund configurations for ownership lookup" }
+      "markets": {
+        "type": "array",
+        "description": "All fetched MarketSnapshot objects, including closed/resolved markets"
+      },
+      "funds": {
+        "type": "array",
+        "description": "Fund configurations for position ownership lookup"
+      }
     },
     "required": ["markets", "funds"]
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "properties": {
       "settlements": {
         "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "fundId": { "type": "string" },
-            "fundEmoji": { "type": "string" },
-            "slug": { "type": "string" },
-            "question": { "type": "string" },
-            "pnl": { "type": "number", "description": "Realized PnL from settlement" },
-            "entryPrice": { "type": "number" },
-            "exitPrice": { "type": "number" }
-          }
-        },
-        "description": "Settled trades with final PnL"
+        "description": "Settled trades with realized PnL, entry/exit prices, and fund attribution"
       }
     }
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "none",
+    "stateAccess": "none",
+    "note": "Pure computation: settlement detection and PnL calculation on pre-provided market snapshots. No external I/O."
   }
 }

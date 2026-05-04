@@ -2,20 +2,43 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-monitor",
   "version": "0.1.0",
-  "fidelity": "native",
-  "description": "Active position monitoring: take-profit, trailing stop, and probability reversal detection.",
-  "input": {
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "HYBRID",
+  "description": "Active position monitoring: fetches live prices from Polymarket, then applies take-profit, trailing stop, and probability reversal detection.",
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "funds": { "type": "array", "items": { "$ref": "#/definitions/FundConfig" } }
+      "funds": {
+        "type": "array",
+        "description": "Array of FundConfig objects defining per-fund risk parameters"
+      }
     },
     "required": ["funds"]
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "properties": {
-      "actions": { "type": "array", "description": "Monitor-triggered close actions" },
-      "highWaterMarkUpdates": { "type": "array", "description": "Updated high water marks for open positions" }
+      "actions": {
+        "type": "array",
+        "description": "Monitor-triggered close actions for positions breaching take-profit or stop conditions"
+      },
+      "highWaterMarkUpdates": {
+        "type": "array",
+        "description": "Updated high water marks for open positions with new price highs"
+      }
     }
+  },
+  "network": {
+    "allowedDomains": ["gamma-api.polymarket.com"]
+  },
+  "dependencies": [
+    { "id": "gamma-api.polymarket.com", "type": "http", "required": true, "description": "Polymarket Gamma API for live position prices (via price.ts fetchPrices)" }
+  ],
+  "transparency": {
+    "deterministic": false,
+    "sideEffects": "none",
+    "stateAccess": "read",
+    "note": "Monitoring logic (take-profit/stop thresholds) is deterministic; price fetching introduces external non-determinism."
   }
 }

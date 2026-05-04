@@ -2,25 +2,39 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-scanner",
   "version": "0.1.0",
-  "fidelity": "native",
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "HYBRID",
   "description": "Scans Polymarket Gamma API for markets, filters by volume/liquidity, and identifies arbitrage signals.",
-  "input": {
+  "inputSchema": {
     "type": "object",
     "properties": {
       "scanLimit": { "type": "integer", "default": 200, "description": "Max markets to fetch per scan" },
-      "minVolume": { "type": "integer", "default": 5000, "description": "Min 24h volume filter" },
-      "minLiquidity": { "type": "integer", "default": 5000, "description": "Min liquidity filter" }
+      "minVolume": { "type": "integer", "default": 5000, "description": "Min 24h volume filter (USD)" },
+      "minLiquidity": { "type": "integer", "default": 5000, "description": "Min liquidity filter (USD)" }
     },
     "required": ["scanLimit", "minVolume", "minLiquidity"]
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "properties": {
-      "markets": { "type": "array", "items": { "$ref": "#/definitions/MarketSnapshot" } },
-      "filtered": { "type": "array", "items": { "$ref": "#/definitions/MarketSnapshot" } },
-      "signals": { "type": "array", "items": { "$ref": "#/definitions/ArbSignal" } },
-      "totalFetched": { "type": "integer" },
-      "avgEdge": { "type": "number" }
+      "markets": { "type": "array", "description": "All fetched MarketSnapshot objects" },
+      "filtered": { "type": "array", "description": "Markets passing volume/liquidity filters" },
+      "signals": { "type": "array", "description": "ArbSignal objects with edge/confidence scores" },
+      "totalFetched": { "type": "integer", "description": "Total markets fetched from API" },
+      "avgEdge": { "type": "number", "description": "Average edge across all signals" }
     }
+  },
+  "network": {
+    "allowedDomains": ["gamma-api.polymarket.com"]
+  },
+  "dependencies": [
+    { "id": "gamma-api.polymarket.com", "type": "http", "required": true, "description": "Polymarket Gamma API for market data" }
+  ],
+  "transparency": {
+    "deterministic": false,
+    "sideEffects": "none",
+    "stateAccess": "none",
+    "note": "Output depends on live Polymarket market data; filtering and scoring logic is deterministic given the same input data."
   }
 }

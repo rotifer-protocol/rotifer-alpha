@@ -103,13 +103,20 @@ export interface GenomePipelineResult {
 
 // ─── Gene Metadata ──────────────────────────────────────
 //
-// Fidelity classification:
+// Fidelity classification (RotiferGeneSpec § 4.2):
 //   - "hybrid"  = requires external network calls (API, WebSocket)
-//   - "native"  = pure computation
+//   - "native"  = pure computation, no external I/O
 //   - "wrapped" = thin wrapper around external service
 //
-// All steps currently run as in-repo modules. The fidelity field reflects the
-// *target* form for when individual steps are lifted into stand-alone artefacts.
+// Casing note: GeneFidelity here uses lowercase ("native" | "hybrid" | "wrapped")
+// as a TypeScript runtime enum for internal dispatch. The corresponding
+// phenotypes/*.phenotype.json files use UPPERCASE ("NATIVE" | "HYBRID" | "WRAPPED")
+// per RotiferGeneSpec § 4.2. Both must agree semantically; the phenotype.json
+// files are the authoritative source when published to Cloud Registry.
+//
+// All steps currently run as in-repo embedded modules (lifecycleStatus: "embedded").
+// The fidelity field reflects the *target* form for when Genes are lifted into
+// stand-alone artefacts and published to the Cloud Registry.
 
 export type GeneFidelity = "native" | "wrapped" | "hybrid";
 export type GeneLifecycleStatus = "embedded" | "published" | "trial" | "active";

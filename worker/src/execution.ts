@@ -111,7 +111,11 @@ export interface PipelineHeartbeat {
   monitorActions: number;
   riskStops: number;
   riskExpired: number;
+  // Flat aggregation by skip code (kept for backward-compat with App.tsx HeartbeatBar)
   skipSummary: Record<string, number>;
+  // 2026-05-04: Per-fund skip breakdown for diagnostics (e.g. "why turtle never trades?")
+  // Format: { fundId: { skipCode: count } }
+  skipByFund?: Record<string, Record<string, number>>;
 }
 
 export async function storeHeartbeat(db: D1Database, hb: PipelineHeartbeat): Promise<void> {

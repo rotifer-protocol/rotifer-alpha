@@ -19,17 +19,63 @@ import type {
   MicroEvolverOutput,
   GenomePipelineResult,
 } from "./gene-interface";
+import { GENE_REGISTRY } from "./gene-interface";
 
 import { scan, analyze } from "./scan";
 import { checkRiskLimits } from "./risk";
 import { monitor, executeMonitorActions } from "./monitor";
 import { settle } from "./settle";
 import { paperTrade } from "./trade";
+import type { SkipReasonEntry } from "./trade";
 import { checkAndRunMicroEvolution } from "./micro-evolve";
 import { broadcast, sendSignals, sendTrades, sendSummary } from "./notify";
 import { getActiveVariant, recordTradeResult } from "./gene-variants";
 import { getScannerStrategy, getMonitorStrategy } from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
+import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
+import { storeHeartbeat } from "./execution";
+
+// ─── GENE_REGISTRY ↔ Phenotype consistency check ────────
+//
+// Validates that GENE_REGISTRY fidelity values match phenotype.json fidelity
+// (lowercase runtime ↔ UPPERCASE protocol layer, per RotiferGeneSpec § 4.2).
+// Called once at the start of runGenomePipeline — logs warnings, does NOT throw,
+// to avoid blocking production pipelines over documentation drift.
+//
+// Per ADR-273 D7: any commit that changes GENE_REGISTRY or phenotype.json
+// must keep both in sync. This check serves as a runtime reminder.
+
+const FIDELITY_UP: Record<string, string> = {
+  native: "NATIVE",
+  hybrid: "HYBRID",
+  wrapped: "WRAPPED",
+};
+
+let _consistencyChecked = false;
+
+function checkGenomeConsistency(): void {
+  if (_consistencyChecked) return;
+  _consistencyChecked = true;
+
+  const phenotypeMap = new Map(PHENOTYPE_REGISTRY.map(p => [p.gene, p.fidelity]));
+
+  for (const gene of GENE_REGISTRY) {
+    const expected = phenotypeMap.get(gene.id);
+    if (!expected) {
+      console.warn(`[Genome] No phenotype.json found for Gene "${gene.id}" — publish to Cloud Registry will fail`);
+      continue;
+    }
+    const runtimeUpper = FIDELITY_UP[gene.fidelity] ?? gene.fidelity.toUpperCase();
+    if (runtimeUpper !== expected) {
+      console.warn(
+        `[Genome] Fidelity mismatch for "${gene.id}": ` +
+        `GENE_REGISTRY="${gene.fidelity}" (→ "${runtimeUpper}") vs ` +
+        `phenotype.json="${expected}". ` +
+        `Update gene-interface.ts or ${gene.id.replace("polymarket-", "")}.phenotype.json (ADR-273 D7).`,
+      );
+    }
+  }
+}
 
 // ─── Gene Step: Scanner (variant-aware) ─────────────────
 
@@ -100,6 +146,8 @@ export async function runGenomePipeline(
   env: Env,
   funds: FundConfig[],
 ): Promise<GenomePipelineResult> {
+  checkGenomeConsistency();
+
   const ts = new Date().toISOString();
   const events: AgentEvent[] = [];
 
@@ -222,6 +270,7 @@ export async function runGenomePipeline(
   // Step 5: Trader
   const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts);
   const trader = { trades: traderResult.trades };
+  const traderSkipReasons: SkipReasonEntry[] = traderResult.skipReasons;
   for (const t of trader.trades) {
     emit("TRADE_OPENED", {
       fundId: t.fundId, fundName: t.fundName, fundEmoji: t.fundEmoji,
@@ -285,6 +334,23 @@ export async function runGenomePipeline(
   if (trader.trades.length > 0) await sendTrades(env, trader.trades);
   await sendSummary(env, scanner.filtered.length, scanner.signals.length, scanner.avgEdge, ok, fail, trader.trades, ts);
 
+  // 2026-05-04: Store pipeline heartbeat for /api/heartbeat consumers
+  // (Previously missing in runGenomePipeline — regression introduced by ADR-273 P0-3.
+  //  HeartbeatBar in App.tsx would otherwise show stale data after Genome pipeline switch.)
+  await storeHeartbeat(env.DB, {
+    lastScanAt: ts,
+    totalFetched: scanner.totalFetched,
+    marketsFiltered: scanner.filtered.length,
+    signalsFound: scanner.signals.length,
+    tradesOpened: trader.trades.length,
+    settlementsProcessed: settler.settlements.length,
+    monitorActions: monitorOut.actions.length,
+    riskStops: risk.stopped.length,
+    riskExpired: risk.expired.length,
+    skipSummary: aggregateSkipReasonsLocal(traderSkipReasons),
+    skipByFund: aggregateSkipReasonsByFundLocal(traderSkipReasons),
+  });
+
   return {
     scanner,
     risk,
@@ -295,6 +361,25 @@ export async function runGenomePipeline(
     events,
     timestamp: ts,
   };
+}
+
+// 2026-05-04: Local skip reason aggregators (mirror index.ts helpers).
+// Keep local copies to avoid cross-file circular dependency between index.ts and genome.ts.
+function aggregateSkipReasonsLocal(reasons: SkipReasonEntry[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of reasons) {
+    counts[r.code] = (counts[r.code] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function aggregateSkipReasonsByFundLocal(reasons: SkipReasonEntry[]): Record<string, Record<string, number>> {
+  const byFund: Record<string, Record<string, number>> = {};
+  for (const r of reasons) {
+    byFund[r.fundId] = byFund[r.fundId] ?? {};
+    byFund[r.fundId][r.code] = (byFund[r.fundId][r.code] ?? 0) + 1;
+  }
+  return byFund;
 }
 
 // ─── Genome Blueprint (for future export) ───────────────

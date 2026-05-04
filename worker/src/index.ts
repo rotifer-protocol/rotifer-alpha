@@ -1,7 +1,10 @@
 // Polymarket Arbitrage Agent — Cloudflare Worker
 // Five-Fund Paper Trading System with Evolution Engine
 //
-// Pipeline: risk-check -> scan -> analyze -> trade -> settle -> record -> push
+// Pipeline routing:
+//   ENABLE_GENOME_PIPELINE=false (default) → legacy runPipeline (direct module calls)
+//   ENABLE_GENOME_PIPELINE=true            → runGenomePipeline (Genome orchestrator + variant dispatch)
+//   Rollback: set ENABLE_GENOME_PIPELINE=false in wrangler.toml and redeploy.
 // Cron: every-5min scan+trade, daily 01:00 report, weekly Sun 00:00 evolve
 
 import type { Env, AgentEvent, FundConfig } from "./types";
@@ -33,6 +36,7 @@ import {
   type PipelineHeartbeat,
 } from "./execution";
 import type { SkipReasonEntry } from "./trade";
+import { runGenomePipeline } from "./genome";
 export { LiveHub } from "./ws-hub";
 export { RiskMonitor } from "./risk-monitor";
 
@@ -136,6 +140,17 @@ function aggregateSkipReasons(reasons: SkipReasonEntry[]): Record<string, number
     counts[r.code] = (counts[r.code] ?? 0) + 1;
   }
   return counts;
+}
+
+// 2026-05-04: Per-fund skip breakdown for diagnostics (e.g. "why does turtle never trade?")
+// Returns: { fundId: { skipCode: count } }
+function aggregateSkipReasonsByFund(reasons: SkipReasonEntry[]): Record<string, Record<string, number>> {
+  const byFund: Record<string, Record<string, number>> = {};
+  for (const r of reasons) {
+    byFund[r.fundId] = byFund[r.fundId] ?? {};
+    byFund[r.fundId][r.code] = (byFund[r.fundId][r.code] ?? 0) + 1;
+  }
+  return byFund;
 }
 
 // ─── Pipeline ────────────────────────────────────────────
@@ -336,6 +351,7 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
     riskStops: riskResult.stopped.length,
     riskExpired: riskResult.expired.length,
     skipSummary: aggregateSkipReasons(tradeResult.skipReasons),
+    skipByFund: aggregateSkipReasonsByFund(tradeResult.skipReasons),
   });
 
   await armRiskMonitor(env, funds);
@@ -404,8 +420,12 @@ export default {
         console.error("Daily report failed:", e);
       }));
     } else {
-      ctx.waitUntil(runPipeline(env, funds).catch(e => {
-        console.error("Pipeline failed:", e);
+      const useGenome = env.ENABLE_GENOME_PIPELINE === "true";
+      const pipelineRun = useGenome
+        ? runGenomePipeline(env, funds)
+        : runPipeline(env, funds);
+      ctx.waitUntil(pipelineRun.catch(e => {
+        console.error(`Pipeline failed [${useGenome ? "genome" : "legacy"}]:`, e);
       }));
     }
   },
@@ -444,8 +464,11 @@ export default {
       const authError = requireAuth(req, env);
       if (authError) return authError;
       try {
-        const result = await runPipeline(env, funds);
-        return Response.json(result, { headers: corsHeaders(origin) });
+        const useGenome = env.ENABLE_GENOME_PIPELINE === "true";
+        const result = useGenome
+          ? await runGenomePipeline(env, funds)
+          : await runPipeline(env, funds);
+        return Response.json({ ...result, _pipeline: useGenome ? "genome" : "legacy" }, { headers: corsHeaders(origin) });
       } catch (e: unknown) {
         console.error("Manual run failed:", e);
         return Response.json(

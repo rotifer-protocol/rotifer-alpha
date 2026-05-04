@@ -2,32 +2,56 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-evolver",
   "version": "0.1.0",
-  "fidelity": "native",
-  "description": "Dual-layer evolution engine: micro-evolution (data-driven, per-pipeline) and macro-evolution (PBT, weekly).",
-  "input": {
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Dual-layer evolution engine: micro-evolution (data-driven per-pipeline parameter adjustment) and macro-evolution (Population-Based Training weekly cycle). Pure computation over historical performance data.",
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "mode": { "type": "string", "enum": ["micro", "macro"] },
-      "funds": { "type": "array", "items": { "$ref": "#/definitions/FundConfig" } }
+      "mode": {
+        "type": "string",
+        "enum": ["micro", "macro"],
+        "description": "micro = per-pipeline delta update; macro = weekly PBT population selection"
+      },
+      "funds": {
+        "type": "array",
+        "description": "FundConfig objects for which to run evolution"
+      }
     },
     "required": ["mode", "funds"]
   },
-  "output": {
+  "outputSchema": {
     "oneOf": [
       {
         "type": "object",
-        "description": "Micro-evolution output",
+        "description": "Micro-evolution output: per-fund parameter adjustments",
         "properties": {
-          "results": { "type": "array", "items": { "$ref": "#/definitions/MicroEvolveResult" } }
+          "results": {
+            "type": "array",
+            "description": "MicroEvolveResult objects with updated strategy parameters"
+          }
         }
       },
       {
         "type": "object",
-        "description": "Macro-evolution output",
+        "description": "Macro-evolution output: PBT population report",
         "properties": {
-          "report": { "$ref": "#/definitions/EvolutionReport" }
+          "report": {
+            "description": "EvolutionReport summarizing generation statistics and winning variants"
+          }
         }
       }
     ]
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": false,
+    "sideEffects": "none",
+    "stateAccess": "read",
+    "note": "Macro-evolution uses stochastic selection (PBT); micro-evolution is deterministic given same performance history. Reads historical trade records to compute fitness scores."
   }
 }

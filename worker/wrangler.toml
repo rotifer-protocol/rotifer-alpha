@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2026-03-01"
 workers_dev = true
 
+[vars]
+# Pipeline routing feature flag.
+# "false" (default) = legacy runPipeline path (direct module calls).
+# "true"            = runGenomePipeline (Genome orchestrator + Gene variant dispatch).
+# To rollback: change to "false" and redeploy — no code change required.
+ENABLE_GENOME_PIPELINE = "true"
+
 routes = [
   { pattern = "api.rotifer.xyz", custom_domain = true }
 ]

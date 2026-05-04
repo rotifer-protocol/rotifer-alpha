@@ -2,26 +2,50 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-trader",
   "version": "0.1.0",
-  "fidelity": "native",
-  "description": "Executes paper trades: matches signals to eligible funds, calculates position sizing, and opens new positions.",
-  "input": {
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Executes paper trades: matches arbitrage signals to eligible funds, calculates position sizing via Kelly criterion, and opens new positions in the paper portfolio. Pure computation, no real money moved.",
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "signals": { "type": "array", "items": { "$ref": "#/definitions/ArbSignal" }, "description": "Scored arbitrage signals from scanner" },
-      "markets": { "type": "array", "items": { "$ref": "#/definitions/MarketSnapshot" }, "description": "Filtered market snapshots for dedup/validation" },
-      "funds": { "type": "array", "items": { "$ref": "#/definitions/FundConfig" }, "description": "Fund configurations with balances and risk params" },
-      "timestamp": { "type": "string", "format": "date-time", "description": "Pipeline execution timestamp" }
+      "signals": {
+        "type": "array",
+        "description": "Scored ArbSignal objects from the scanner Gene"
+      },
+      "markets": {
+        "type": "array",
+        "description": "Filtered MarketSnapshot objects for deduplication and validation"
+      },
+      "funds": {
+        "type": "array",
+        "description": "FundConfig objects with current balances and risk parameters"
+      },
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Pipeline execution timestamp for position record"
+      }
     },
     "required": ["signals", "markets", "funds", "timestamp"]
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "properties": {
       "trades": {
         "type": "array",
-        "items": { "$ref": "#/definitions/TradeAction" },
-        "description": "Executed paper trade actions with fund/signal/pricing details"
+        "description": "Executed paper TradeAction objects with fund, signal, and pricing details"
       }
     }
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "none",
+    "stateAccess": "none",
+    "note": "Pure computation: position sizing and signal-fund matching. Paper-only — no real orders sent to any exchange."
   }
 }

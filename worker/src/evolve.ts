@@ -420,6 +420,13 @@ export async function runEvolution(env: Env): Promise<EvolutionReport> {
     }
   } else if (action === "GLOBAL_RESET") {
     for (const fund of funds) {
+      // Skip evolveExempt funds (institutional like Beluga/Leviathan)——their parameters
+      // exceed PARAM_BOUNDS upper limits; resetting them would clamp into small-fund range.
+      if (fund.evolveExempt) {
+        const fr = fitnessResults.find(f => f.fundId === fund.id);
+        await logEvolution(db, epoch, "EVOLVE_EXEMPT", fund.id, {}, {}, fr?.fitness ?? null, fr?.fitness ?? null, "Institutional fund, exempt from PBT mutation");
+        continue;
+      }
       const defaultFund = DEFAULT_FUNDS.find(f => f.id === fund.id);
       if (!defaultFund) continue;
 
@@ -441,8 +448,35 @@ export async function runEvolution(env: Env): Promise<EvolutionReport> {
     }
   } else {
     // STANDARD_PBT: worst fund inherits best fund's params + mutation
-    const best = fitnessResults[0];
-    const worst = fitnessResults[fitnessResults.length - 1];
+    // Exclude evolveExempt funds (institutional Beluga/Leviathan) — they participate in
+    // fitness ranking display but not in PBT mutate, because their parameters
+    // (maxPerEvent / sizingBase / minVolume) exceed PARAM_BOUNDS upper limits and would
+    // be clamped back to small-fund range, destroying their strategy space.
+    const evolvableResults = fitnessResults.filter(fr => {
+      const fund = funds.find(f => f.id === fr.fundId);
+      return fund && !fund.evolveExempt;
+    });
+
+    if (evolvableResults.length < 2) {
+      for (const fr of fitnessResults) {
+        await logEvolution(db, epoch, "SKIP_INSUFFICIENT", fr.fundId, {}, {}, fr.fitness, fr.fitness, "Fewer than 2 evolvable funds available for PBT");
+      }
+      const skipReport: EvolutionReport = {
+        epoch,
+        action: "SKIP_INSUFFICIENT",
+        fitnessResults,
+        mutations: [],
+      };
+      await broadcast(env, {
+        type: "EVOLUTION_COMPLETED",
+        timestamp: new Date().toISOString(),
+        payload: skipReport as unknown as Record<string, unknown>,
+      });
+      return skipReport;
+    }
+
+    const best = evolvableResults[0];
+    const worst = evolvableResults[evolvableResults.length - 1];
 
     const bestFund = funds.find(f => f.id === best.fundId)!;
     const worstFund = funds.find(f => f.id === worst.fundId)!;
@@ -481,10 +515,15 @@ export async function runEvolution(env: Env): Promise<EvolutionReport> {
       changedParams,
     });
 
-    // Log unchanged funds
+    // Log unchanged funds (evolveExempt institutional funds tagged EVOLVE_EXEMPT)
     for (const fr of fitnessResults) {
       if (fr.fundId === worst.fundId) continue;
-      await logEvolution(db, epoch, "UNCHANGED", fr.fundId, {}, {}, fr.fitness, fr.fitness, "Not worst performer");
+      const fund = funds.find(f => f.id === fr.fundId);
+      const logAction = fund?.evolveExempt ? "EVOLVE_EXEMPT" : "UNCHANGED";
+      const reason = fund?.evolveExempt
+        ? "Institutional fund, exempt from PBT mutation"
+        : "Not worst performer";
+      await logEvolution(db, epoch, logAction, fr.fundId, {}, {}, fr.fitness, fr.fitness, reason);
     }
   }
 

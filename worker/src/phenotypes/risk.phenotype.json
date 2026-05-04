@@ -2,20 +2,41 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-risk",
   "version": "0.1.0",
-  "fidelity": "native",
-  "description": "Checks open positions for stop-loss breaches and hold-time expirations.",
-  "input": {
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Checks open positions for stop-loss breaches and hold-time expirations. Pure computation over pre-fetched position data.",
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "funds": { "type": "array", "items": { "$ref": "#/definitions/FundConfig" } }
+      "funds": {
+        "type": "array",
+        "description": "Array of FundConfig objects with open positions and stop-loss/hold-time parameters"
+      }
     },
     "required": ["funds"]
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "properties": {
-      "stopped": { "type": "array", "description": "Trades closed by stop-loss" },
-      "expired": { "type": "array", "description": "Trades closed by max hold days" }
+      "stopped": {
+        "type": "array",
+        "description": "Positions closed because current price breached stop-loss threshold"
+      },
+      "expired": {
+        "type": "array",
+        "description": "Positions closed because max hold days was exceeded"
+      }
     }
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "none",
+    "stateAccess": "none",
+    "note": "Pure computation: stop-loss and hold-time checks on pre-provided position data. No external I/O."
   }
 }
