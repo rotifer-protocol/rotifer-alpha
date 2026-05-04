@@ -329,14 +329,8 @@ export async function runGenomePipeline(
     await broadcast(env, event);
   }
 
-  // Notifications
-  const { ok, fail } = await sendSignals(env, scanner.signals);
-  if (trader.trades.length > 0) await sendTrades(env, trader.trades);
-  await sendSummary(env, scanner.filtered.length, scanner.signals.length, scanner.avgEdge, ok, fail, trader.trades, ts);
-
-  // 2026-05-04: Store pipeline heartbeat for /api/heartbeat consumers
-  // (Previously missing in runGenomePipeline — regression introduced by ADR-273 P0-3.
-  //  HeartbeatBar in App.tsx would otherwise show stale data after Genome pipeline switch.)
+  // Store heartbeat BEFORE Telegram notifications so it always runs even if Telegram fails.
+  // This fixes the regression where a Telegram API error would silently prevent heartbeat updates.
   await storeHeartbeat(env.DB, {
     lastScanAt: ts,
     totalFetched: scanner.totalFetched,
@@ -350,6 +344,15 @@ export async function runGenomePipeline(
     skipSummary: aggregateSkipReasonsLocal(traderSkipReasons),
     skipByFund: aggregateSkipReasonsByFundLocal(traderSkipReasons),
   });
+
+  // Telegram notifications (non-critical — failure must not block pipeline)
+  try {
+    const { ok, fail } = await sendSignals(env, scanner.signals);
+    if (trader.trades.length > 0) await sendTrades(env, trader.trades);
+    await sendSummary(env, scanner.filtered.length, scanner.signals.length, scanner.avgEdge, ok, fail, trader.trades, ts);
+  } catch (e) {
+    console.error("[Genome] Telegram notification failed (non-critical):", e);
+  }
 
   return {
     scanner,
