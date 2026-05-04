@@ -10,17 +10,7 @@ import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
 import { useI18n } from "../i18n/context";
 import { formatFundGeneration, type TranslationKey } from "../i18n/translations";
-
-const FUND_NAMES: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
-const FUND_MOTTOS: Record<string, TranslationKey> = {
-  cheetah: "mottoCheetah", octopus: "mottoOctopus", turtle: "mottoTurtle",
-  shark: "mottoShark", gambler: "mottoGambler",
-  beluga: "mottoBeluga", leviathan: "mottoLeviathan",
-};
+import { FUND_NAME_KEYS, FUND_MOTTO_KEYS, fundDisplayName, fundTierLabel } from "../lib/fundMeta";
 
 const REASON_I18N: Record<string, TranslationKey> = {
   STANDARD_PBT: "actionPbt", PBT_INHERIT_MUTATE: "actionInherit",
@@ -372,8 +362,9 @@ export function FundDetail() {
 
   const Icon = FUND_ICONS[fund.id];
   const color = FUND_COLORS[fund.id] || "text-[var(--r-text-muted)]";
-  const nameKey = FUND_NAMES[fund.id];
-  const mottoKey = FUND_MOTTOS[fund.id];
+  const nameKey = FUND_NAME_KEYS[fund.id];
+  const mottoKey = FUND_MOTTO_KEYS[fund.id];
+  const tierBadge = fundTierLabel(fund.id);
 
   const today = new Date().toISOString().slice(0, 10);
   const snapshotPoints = (snapshotsResp?.snapshots ?? [])
@@ -408,7 +399,8 @@ export function FundDetail() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
-                <h2 className="text-2xl font-bold">{nameKey ? t(nameKey) : fund.name}</h2>
+                <h2 className="text-2xl font-bold">{nameKey ? fundDisplayName(fund.id, t) : fund.name}</h2>
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--r-surface)] text-[var(--r-text-muted)] border border-[var(--r-border)] shrink-0">{tierBadge}</span>
                 <span
                   className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0"
                   title={t("evolvableStrategyBody")}
@@ -426,7 +418,7 @@ export function FundDetail() {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">{t("frozen")}</span>
               )}
             </div>
-            <p className="text-sm text-[var(--r-text-muted)] mt-1">{mottoKey ? t(mottoKey) : fund.motto}</p>
+            <p className="text-sm text-[var(--r-text-muted)] mt-1">{mottoKey ? t(mottoKey as any) : fund.motto}</p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-3xl font-bold font-mono">${fund.totalValue.toLocaleString()}</p>

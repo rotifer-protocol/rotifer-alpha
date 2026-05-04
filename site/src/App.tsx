@@ -12,6 +12,7 @@ import { ShadowPanel } from "./components/ShadowPanel";
 import { GeneEvolutionPanel } from "./components/GeneEvolutionPanel";
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
+import { fundDisplayName } from "./lib/fundMeta";
 
 const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? "wss://api.rotifer.xyz/ws" : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`);
 
@@ -59,11 +60,6 @@ function InfoPopover() {
   );
 }
 
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
 
 export interface FundData {
   id: string;
@@ -275,10 +271,7 @@ function polymarketUrl(slug: unknown, question: unknown): string | null {
 
 function useHighlight(events: AgentEvent[]) {
   const { t } = useI18n();
-  const tFund = (raw: unknown) => {
-    const k = FUND_NAME_KEYS[String(raw).toLowerCase()];
-    return k ? t(k) : String(raw);
-  };
+  const tFund = (raw: unknown) => fundDisplayName(String(raw).toLowerCase(), t);
 
   for (const e of events) {
     const p = e.payload;

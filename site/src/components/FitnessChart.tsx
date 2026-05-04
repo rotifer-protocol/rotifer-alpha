@@ -3,7 +3,6 @@ import {
   ReferenceLine, ReferenceArea,
 } from "recharts";
 import { useI18n } from "../i18n/context";
-import type { TranslationKey } from "../i18n/translations";
 
 interface EvolutionLog {
   epoch: number;
@@ -16,21 +15,8 @@ interface Props {
   logs: EvolutionLog[];
 }
 
-const FUND_COLORS: Record<string, string> = {
-  turtle:  "#22c55e",
-  cheetah: "#eab308",
-  octopus: "#60a5fa",
-  shark:   "#ef4444",
-  gambler: "#f472b6",
-  beluga:  "#22d3ee",
-  leviathan: "#c084fc",
-};
-
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
+import { FUND_HEX_COLORS, fundDisplayName } from "../lib/fundMeta";
+const FUND_COLORS = FUND_HEX_COLORS;
 
 export function FitnessChart({ logs }: Props) {
   const { t } = useI18n();
@@ -88,19 +74,15 @@ export function FitnessChart({ logs }: Props) {
             labelStyle={{ color: "#fafafa" }}
             formatter={(value: unknown, name: unknown) => {
               const fid = String(name);
-              const nameKey = FUND_NAME_KEYS[fid];
-              return [Number(value).toFixed(4), nameKey ? t(nameKey) : fid];
+              return [Number(value).toFixed(4), fundDisplayName(fid, t)];
             }}
           />
           <Legend
-            formatter={(value: string) => {
-              const nameKey = FUND_NAME_KEYS[value];
-              return (
-                <span style={{ color: "#a1a1aa", fontSize: 11 }}>
-                  {nameKey ? t(nameKey) : value}
-                </span>
-              );
-            }}
+            formatter={(value: string) => (
+              <span style={{ color: "#a1a1aa", fontSize: 11 }}>
+                {fundDisplayName(value, t)}
+              </span>
+            )}
           />
           <ReferenceArea y1={0} y2={0.2} fill="#ef4444" fillOpacity={0.04} />
           <ReferenceArea y1={0.6} y2={1.2} fill="#22c55e" fillOpacity={0.04} />

@@ -173,14 +173,12 @@ const en = {
   langSwitchTooltip: "Switch to English",
   langSwitchTooltipAlt: "切换到中文",
 
-  // Fund names
+  // Fund names (5 personalities, shared across all tiers via fundDisplayName helper)
   fundCheetah: "Cheetah",
   fundOctopus: "Octopus",
   fundTurtle: "Turtle",
   fundShark: "Shark",
   fundGambler: "Honey Badger",
-  fundBeluga: "Beluga",
-  fundLeviathan: "Leviathan",
 
   // Fund mottos
   mottoCheetah: "Fortune favors the bold",
@@ -188,8 +186,11 @@ const en = {
   mottoTurtle: "Less is more, certainty above all",
   mottoShark: "Strike hard, reap fast",
   mottoGambler: "Fearless, relentless",
-  mottoBeluga: "Steady waters, only big game",
-  mottoLeviathan: "Master of deep waters",
+
+  // Tier section headers (3×5 matrix, ADR-274)
+  tierSmall: "S · $10K",
+  tierMedium: "M · $100K",
+  tierLarge: "L · $1M",
   /** Subtle fund-row tagline — same for all arena funds */
   evolvableStrategyBody: "evolvable strategy unit",
 
@@ -566,16 +567,16 @@ const zh: Record<TranslationKey, string> = {
   fundTurtle: "海龟",
   fundShark: "鲨鱼",
   fundGambler: "蜜獾",
-  fundBeluga: "白鲸",
-  fundLeviathan: "巨兽",
 
   mottoCheetah: "机会属于敢于出手的人",
   mottoOctopus: "用数据说话，让公式决策",
   mottoTurtle: "少即是多，确定性高于一切",
   mottoShark: "大胆出击，快速收割",
   mottoGambler: "无所畏惧，绝不退让",
-  mottoBeluga: "稳健，只吃大机会",
-  mottoLeviathan: "流动性策略家",
+
+  tierSmall: "S · $1万",
+  tierMedium: "M · $10万",
+  tierLarge: "L · $100万",
   evolvableStrategyBody: "可进化策略体",
 
   backToArena: "返回实况",

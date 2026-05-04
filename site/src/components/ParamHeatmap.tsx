@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
+import { fundDisplayName } from "../lib/fundMeta";
 
 interface EvolutionLog {
   epoch: number;
@@ -33,11 +34,6 @@ const PARAM_I18N: Record<string, TranslationKey> = {
   sizingScale:           "paramSizingScale",
 };
 
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
 
 const PARAM_KEYS = Object.keys(PARAM_I18N);
 
@@ -93,22 +89,19 @@ export function ParamHeatmap({ logs, selectedFund }: Props) {
           {t("heatmapTitle")}
         </h3>
         <div className="flex gap-1">
-          {fundIds.map(fid => {
-            const nameKey = FUND_NAME_KEYS[fid];
-            return (
-              <button
-                key={fid}
-                onClick={() => setActiveFund(fid)}
-                className={`text-xs px-2 py-0.5 rounded transition-all ${
-                  fid === targetFund
-                    ? "bg-[var(--r-accent)] text-white"
-                    : "text-[var(--r-text-muted)] bg-[var(--r-surface)] hover:bg-[var(--r-surface-hover)]"
-                }`}
-              >
-                {nameKey ? t(nameKey) : fid}
-              </button>
-            );
-          })}
+          {fundIds.map(fid => (
+            <button
+              key={fid}
+              onClick={() => setActiveFund(fid)}
+              className={`text-xs px-2 py-0.5 rounded transition-all ${
+                fid === targetFund
+                  ? "bg-[var(--r-accent)] text-white"
+                  : "text-[var(--r-text-muted)] bg-[var(--r-surface)] hover:bg-[var(--r-surface-hover)]"
+              }`}
+            >
+              {fundDisplayName(fid, t)}
+            </button>
+          ))}
         </div>
       </div>
 

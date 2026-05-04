@@ -7,6 +7,7 @@ import { LineageTree } from "./LineageTree";
 import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
 import type { LucideIcon } from "lucide-react";
+import { fundDisplayName } from "../lib/fundMeta";
 
 const PARAM_I18N: Record<string, TranslationKey> = {
   minEdge: "paramMinEdge", minConfidence: "paramMinConfidence",
@@ -17,12 +18,6 @@ const PARAM_I18N: Record<string, TranslationKey> = {
   takeProfitPercent: "takeProfitLabel", trailingStopPercent: "trailingStopLabel",
   probReversalThreshold: "probReversalLabel",
   sizingBase: "paramSizingBase", sizingScale: "paramSizingScale",
-};
-
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
 };
 
 interface EvolutionLog {
@@ -295,7 +290,7 @@ export function EvolutionPanel() {
                       {t(config.labelKey)}
                     </span>
                     <span className="text-xs text-[var(--r-text-muted)]">
-                      {FUND_NAME_KEYS[log.fund_id] ? t(FUND_NAME_KEYS[log.fund_id]) : log.fund_id} · {t("epoch")} {log.epoch}
+                      {fundDisplayName(log.fund_id, t)} · {t("epoch")} {log.epoch}
                     </span>
                     {log.fitness_before !== null && (
                       <span className="text-xs font-mono text-[var(--r-text-muted)] ml-auto">

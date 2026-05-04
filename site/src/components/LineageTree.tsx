@@ -1,11 +1,7 @@
 import { FUND_ICONS } from "./icons/FundIcons";
 import { useI18n } from "../i18n/context";
-import { formatFundGeneration, type TranslationKey } from "../i18n/translations";
-
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-};
+import { formatFundGeneration } from "../i18n/translations";
+import { FUND_COLORS, fundDisplayName } from "../lib/fundMeta";
 
 interface FundLineage {
   id: string;
@@ -18,16 +14,6 @@ interface FundLineage {
 interface Props {
   lineage: FundLineage[];
 }
-
-const FUND_COLORS: Record<string, string> = {
-  cheetah: "text-yellow-400",
-  octopus: "text-blue-400",
-  turtle: "text-green-400",
-  shark: "text-red-400",
-  gambler: "text-pink-400",
-  beluga: "text-cyan-400",
-  leviathan: "text-purple-400",
-};
 
 export function LineageTree({ lineage }: Props) {
   const { t, locale } = useI18n();
@@ -62,7 +48,7 @@ export function LineageTree({ lineage }: Props) {
                   ) : (
                     <span className="text-2xl">{f.emoji}</span>
                   )}
-                  <span className="text-xs text-[var(--r-text-muted)] mt-1">{FUND_NAME_KEYS[f.id] ? t(FUND_NAME_KEYS[f.id]) : f.name}</span>
+                  <span className="text-xs text-[var(--r-text-muted)] mt-1">{fundDisplayName(f.id, t)}</span>
                   <span
                     className="text-[10px] font-mono text-[var(--r-text-muted)] cursor-help"
                     title={t("generationBadgeTooltip")}
@@ -100,7 +86,7 @@ export function LineageTree({ lineage }: Props) {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{FUND_NAME_KEYS[fund.id] ? t(FUND_NAME_KEYS[fund.id]) : fund.name}</span>
+                      <span className="text-sm font-medium">{fundDisplayName(fund.id, t)}</span>
                       <span
                         className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--r-accent)]/20 text-[var(--r-accent)] cursor-help"
                         title={t("generationBadgeTooltip")}
@@ -111,7 +97,7 @@ export function LineageTree({ lineage }: Props) {
                     {parent && (
                       <div className="flex items-center gap-1 mt-0.5 text-xs text-[var(--r-text-muted)]">
                         <span>← {t("lineageFrom")}</span>
-                        <span>{FUND_NAME_KEYS[parent.id] ? t(FUND_NAME_KEYS[parent.id]) : parent.name}</span>
+                        <span>{fundDisplayName(parent.id, t)}</span>
                       </div>
                     )}
                     {!parent && fund.generation === 0 && (

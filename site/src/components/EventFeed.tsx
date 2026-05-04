@@ -8,6 +8,7 @@ import {
 import type { AgentEvent } from "../hooks/useWebSocket";
 import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
+import { fundDisplayName } from "../lib/fundMeta";
 import type { LucideIcon } from "lucide-react";
 
 interface EventCfg {
@@ -84,11 +85,6 @@ function getEventWeight(event: AgentEvent): EventWeight {
   return "normal";
 }
 
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
 
 const ACTION_KEYS: Record<string, TranslationKey> = {
   STANDARD_PBT: "actionPbt",
@@ -138,8 +134,7 @@ function tDirection(t: (k: TranslationKey) => string, raw: unknown): string {
 
 function tFundName(t: (k: TranslationKey) => string, raw: unknown): string {
   if (raw == null || raw === "") return "—";
-  const k = FUND_NAME_KEYS[String(raw).toLowerCase()];
-  return k ? t(k) : String(raw);
+  return fundDisplayName(String(raw).toLowerCase(), t);
 }
 
 function tAction(t: (k: TranslationKey) => string, raw: unknown): string {

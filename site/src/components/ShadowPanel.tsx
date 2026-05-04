@@ -1,13 +1,7 @@
 import { useI18n } from "../i18n/context";
-import type { TranslationKey } from "../i18n/translations";
 import { useFetch } from "../hooks/useApi";
 import { AlertTriangle, CheckCircle, XCircle, Activity, TrendingUp, TrendingDown } from "lucide-react";
-
-const FUND_NAME_KEYS: Record<string, TranslationKey> = {
-  cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
-  shark: "fundShark", gambler: "fundGambler",
-  beluga: "fundBeluga", leviathan: "fundLeviathan",
-};
+import { fundDisplayName } from "../lib/fundMeta";
 
 interface ShadowOrder {
   id: string;
@@ -184,7 +178,7 @@ export function ShadowPanel() {
                 <tbody>
                   {shadow.orders.map((order) => (
                     <tr key={order.id} className="border-b border-[var(--r-border)]/50 hover:bg-[var(--r-surface-hover)]">
-                      <td className="p-3 font-medium">{FUND_NAME_KEYS[order.fund_id] ? t(FUND_NAME_KEYS[order.fund_id]) : order.fund_id}</td>
+                      <td className="p-3 font-medium">{fundDisplayName(order.fund_id, t)}</td>
                       <td className="p-3">{({"BUY_YES": t("directionBuyYes"), "SELL_YES": t("directionSellYes"), "BUY_BOTH": t("directionBuyBoth"), "SELL_BOTH": t("directionSellBoth"), "BUY_STRONGEST": t("directionBuyStrongest"), "SELL_WEAKEST": t("directionSellWeakest"), "PROVIDE_LIQUIDITY": t("directionProvideLiquidity")} as Record<string, string>)[order.direction] ?? order.direction}</td>
                       <td className="p-3">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${order.side === "BUY" ? "bg-[var(--r-green)]/15 text-[var(--r-green)]" : "bg-[var(--r-red)]/15 text-[var(--r-red)]"}`}>
