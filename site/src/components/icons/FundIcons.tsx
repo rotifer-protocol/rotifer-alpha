@@ -86,10 +86,43 @@ export function HoneyBadgerIcon({ size, ...props }: IconProps) {
   );
 }
 
+// Beluga (white whale) — rounded mammalian whale silhouette with sleek body and tail flukes
+export function BelugaIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...defaults(size)} {...props}>
+      <path d="M3 13c2-3 6-5 11-5s7 2 8 4c-1 2-4 3-7 3" />
+      <path d="M22 12c-1 1-2 2-1 3" />
+      <path d="M22 14c-1 0-2-0.5-2-1" />
+      <path d="M14 15c0 1 0 2 1 3" />
+      <path d="M8 14c-2 1-4 1-5 2" />
+      <circle cx="6" cy="11.5" r="0.6" fill="currentColor" stroke="none" />
+      <path d="M9 12c0.5 0.3 1 0.3 1.5 0" />
+    </svg>
+  );
+}
+
+// Leviathan (sea monster, deep-water creature) — coiled tentacled silhouette suggesting massive scale
+export function LeviathanIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...defaults(size)} {...props}>
+      <path d="M12 4c-3 0-5 2-5 5s2 4 4 4-2 2-2 5c0 1 1 2 2 2" />
+      <path d="M12 4c3 0 5 2 5 5s-2 4-4 4 2 2 2 5c0 1-1 2-2 2" />
+      <circle cx="10" cy="9" r="0.8" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="9" r="0.8" fill="currentColor" stroke="none" />
+      <path d="M3 17c1 1 3 2 5 1" />
+      <path d="M21 17c-1 1-3 2-5 1" />
+      <path d="M5 20c1-1 2-2 3-1.5" />
+      <path d="M19 20c-1-1-2-2-3-1.5" />
+    </svg>
+  );
+}
+
 export const FUND_ICONS: Record<string, typeof CheetahIcon> = {
   cheetah: CheetahIcon,
   octopus: OctopusIcon,
   turtle: TurtleIcon,
   shark: SharkIcon,
   gambler: HoneyBadgerIcon,
+  beluga: BelugaIcon,
+  leviathan: LeviathanIcon,
 };

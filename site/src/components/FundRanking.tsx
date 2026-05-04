@@ -23,6 +23,8 @@ const FUND_NAMES: Record<string, TranslationKey> = {
   turtle: "fundTurtle",
   shark: "fundShark",
   gambler: "fundGambler",
+  beluga: "fundBeluga",
+  leviathan: "fundLeviathan",
 };
 
 const FUND_MOTTOS: Record<string, TranslationKey> = {
@@ -31,6 +33,8 @@ const FUND_MOTTOS: Record<string, TranslationKey> = {
   turtle: "mottoTurtle",
   shark: "mottoShark",
   gambler: "mottoGambler",
+  beluga: "mottoBeluga",
+  leviathan: "mottoLeviathan",
 };
 
 export const FUND_COLORS: Record<string, string> = {
@@ -39,6 +43,8 @@ export const FUND_COLORS: Record<string, string> = {
   turtle: "text-green-400",
   shark: "text-red-400",
   gambler: "text-pink-400",
+  beluga: "text-cyan-400",
+  leviathan: "text-purple-400",
 };
 
 const FUND_GRADIENTS: Record<string, string> = {
@@ -47,6 +53,8 @@ const FUND_GRADIENTS: Record<string, string> = {
   turtle:  "from-green-500/6 to-transparent",
   shark:   "from-red-500/6 to-transparent",
   gambler: "from-pink-500/6 to-transparent",
+  beluga:  "from-cyan-500/6 to-transparent",
+  leviathan: "from-purple-500/6 to-transparent",
 };
 
 const FUND_BORDER_COLORS: Record<string, string> = {
@@ -55,6 +63,8 @@ const FUND_BORDER_COLORS: Record<string, string> = {
   turtle:  "border-l-green-500/50",
   shark:   "border-l-red-500/50",
   gambler: "border-l-pink-500/50",
+  beluga:  "border-l-cyan-500/50",
+  leviathan: "border-l-purple-500/50",
 };
 
 const RANK_STYLES = [

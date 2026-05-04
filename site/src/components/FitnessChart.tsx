@@ -22,11 +22,14 @@ const FUND_COLORS: Record<string, string> = {
   octopus: "#60a5fa",
   shark:   "#ef4444",
   gambler: "#f472b6",
+  beluga:  "#22d3ee",
+  leviathan: "#c084fc",
 };
 
 const FUND_NAME_KEYS: Record<string, TranslationKey> = {
   cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
   shark: "fundShark", gambler: "fundGambler",
+  beluga: "fundBeluga", leviathan: "fundLeviathan",
 };
 
 export function FitnessChart({ logs }: Props) {

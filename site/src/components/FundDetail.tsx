@@ -14,10 +14,12 @@ import { formatFundGeneration, type TranslationKey } from "../i18n/translations"
 const FUND_NAMES: Record<string, TranslationKey> = {
   cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
   shark: "fundShark", gambler: "fundGambler",
+  beluga: "fundBeluga", leviathan: "fundLeviathan",
 };
 const FUND_MOTTOS: Record<string, TranslationKey> = {
   cheetah: "mottoCheetah", octopus: "mottoOctopus", turtle: "mottoTurtle",
   shark: "mottoShark", gambler: "mottoGambler",
+  beluga: "mottoBeluga", leviathan: "mottoLeviathan",
 };
 
 const REASON_I18N: Record<string, TranslationKey> = {

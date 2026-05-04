@@ -62,6 +62,7 @@ function InfoPopover() {
 const FUND_NAME_KEYS: Record<string, TranslationKey> = {
   cheetah: "fundCheetah", octopus: "fundOctopus", turtle: "fundTurtle",
   shark: "fundShark", gambler: "fundGambler",
+  beluga: "fundBeluga", leviathan: "fundLeviathan",
 };
 
 export interface FundData {

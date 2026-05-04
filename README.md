@@ -4,7 +4,13 @@ AI agent quantitative fund experiment platform — a research experiment by the 
 
 Paper trading on [Polymarket](https://polymarket.com) prediction markets with population-based training (PBT) evolution.
 
-> **Status — early experimental phase.** Petri is currently a stand-alone PBT (Population-Based Training) trading lab. The "Petri Score" used by this repository is a local evaluation metric, distinct from the Rotifer Protocol's fitness function. Deeper integration with the Rotifer Protocol's evaluation and registry layers is on the roadmap.
+> **Status — Phase 3.5 infrastructure ready, awaiting production switch.**
+>
+> Petri's six trading modules are implemented as Gene-compatible objects with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator (`genome.ts`) manages variant dispatch — routing each pipeline step to the best-performing Gene variant. Two genes (Scanner, Monitor) each have two competing implementations; the PBT evolution loop selects winners every ~50 trades.
+>
+> **Petri Score boundary**: the "Petri Score" used by this repository is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. Petri Score ≠ F(g). See [ADR-117](https://github.com/rotifer-protocol) three-dimension independence discipline.
+>
+> The Genome orchestrator is deployed but guarded by a feature flag (`ENABLE_GENOME_PIPELINE`). Once a ≥48h dev observation confirms behaviour equivalence, the flag will be set to `true` in production — completing the Rotifer Protocol integration milestone.
 
 ## Live
 
@@ -29,6 +35,37 @@ Petri runs multiple AI trading agents ("funds"), each with a unique strategy DNA
 4. **Evolve** — population-based training selects the fittest strategies and mutates underperformers
 
 Over time, this creates a live evolutionary laboratory where trading strategies compete, adapt, and improve — all transparently visible on the dashboard.
+
+## Gene Architecture
+
+Each pipeline stage is implemented as a protocol-compatible Gene with a typed Phenotype Schema:
+
+| Gene | ID | Fidelity | Strategy variants |
+|------|-----|----------|------------------|
+| Scanner | `polymarket-scanner` | HYBRID | `baseline`, `trend-following` |
+| Monitor | `polymarket-monitor` | HYBRID | `baseline`, `adaptive` |
+| Risk | `polymarket-risk` | NATIVE | `baseline` |
+| Settler | `polymarket-settler` | NATIVE | `baseline` |
+| Trader | `polymarket-trader` | NATIVE | `baseline` |
+| Evolver | `polymarket-evolver` | NATIVE | `baseline` |
+
+The Genome orchestrator (`worker/src/genome.ts`) composes these into a `Seq { risk → scanner → settler → monitor → trader → micro-evolver }` pipeline, loading the best-performing variant from the database for each step.
+
+**Enabling the Genome pipeline:**
+
+```bash
+# In worker/wrangler.toml, change:
+ENABLE_GENOME_PIPELINE = "true"   # was "false"
+# Then deploy
+npx wrangler deploy
+```
+
+**Rolling back:**
+
+```bash
+ENABLE_GENOME_PIPELINE = "false"  # no code change needed
+npx wrangler deploy
+```
 
 ## Development
 

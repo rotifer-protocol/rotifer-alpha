@@ -25,6 +25,8 @@ const FUND_COLORS: Record<string, string> = {
   turtle: "text-green-400",
   shark: "text-red-400",
   gambler: "text-pink-400",
+  beluga: "text-cyan-400",
+  leviathan: "text-purple-400",
 };
 
 export function LineageTree({ lineage }: Props) {
