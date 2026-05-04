@@ -180,7 +180,10 @@ export async function runGenomePipeline(
   const monitorKey = monitorVariant?.strategyKey ?? "baseline";
 
   // Step 1: Risk checks (stop-loss, expiry)
-  const risk = await runRiskGene(env.DB, funds);
+  const risk = await runRiskGene(env.DB, funds).catch((e): RiskOutput => {
+    console.error("[Genome] Risk gene failed:", e);
+    return { stopped: [], expired: [] };
+  });
 
   for (const s of risk.stopped) {
     emit("TRADE_STOPPED", {
@@ -254,7 +257,10 @@ export async function runGenomePipeline(
   }
 
   // Step 3: Settler
-  const settler = await runSettlerGene(env.DB, scanner.markets, funds);
+  const settler = await runSettlerGene(env.DB, scanner.markets, funds).catch((e): SettlerOutput => {
+    console.error("[Genome] Settler gene failed:", e);
+    return { settlements: [] };
+  });
   for (const s of settler.settlements) {
     emit("TRADE_SETTLED", {
       fundId: s.fundId,
@@ -269,7 +275,10 @@ export async function runGenomePipeline(
   }
 
   // Step 4: Monitor (active selling)
-  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey);
+  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey).catch((e): MonitorOutput => {
+    console.error("[Genome] Monitor gene failed:", e);
+    return { actions: [], highWaterMarkUpdates: [] };
+  });
   for (const ma of monitorOut.actions) {
     const eventType = ma.newStatus === "PROFIT_TAKEN" ? "TRADE_PROFIT_TAKEN"
       : ma.newStatus === "TRAILING_STOPPED" ? "TRADE_TRAILING_STOPPED"
@@ -286,7 +295,10 @@ export async function runGenomePipeline(
   }
 
   // Step 5: Trader
-  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts);
+  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts).catch((e): import("./trade").PaperTradeResult => {
+    console.error("[Genome] Trader gene failed:", e);
+    return { trades: [], skipReasons: [] };
+  });
   const trader = { trades: traderResult.trades };
   const traderSkipReasons: SkipReasonEntry[] = traderResult.skipReasons;
   for (const t of trader.trades) {
@@ -298,7 +310,10 @@ export async function runGenomePipeline(
   }
 
   // Step 6: Micro-Evolution
-  const microEvolver = await runMicroEvolverGene(env.DB, funds);
+  const microEvolver = await runMicroEvolverGene(env.DB, funds).catch((e): MicroEvolverOutput => {
+    console.error("[Genome] Micro-evolver gene failed:", e);
+    return { results: [] };
+  });
   for (const mr of microEvolver.results) {
     if (!mr.triggered) continue;
     emit("MICRO_EVOLUTION", {
@@ -342,13 +357,8 @@ export async function runGenomePipeline(
     // non-critical
   }
 
-  // Broadcast all collected events
-  for (const event of events) {
-    await broadcast(env, event);
-  }
-
-  // Store heartbeat BEFORE Telegram notifications so it always runs even if Telegram fails.
-  // This fixes the regression where a Telegram API error would silently prevent heartbeat updates.
+  // Store final heartbeat BEFORE broadcast so it's always written even if broadcast hangs.
+  // Execution order: early partial write (PENDING) → pipeline stages → full write → broadcast → Telegram
   await storeHeartbeat(env.DB, {
     lastScanAt: ts,
     totalFetched: scanner.totalFetched,
@@ -362,6 +372,11 @@ export async function runGenomePipeline(
     skipSummary: aggregateSkipReasonsLocal(traderSkipReasons),
     skipByFund: aggregateSkipReasonsByFundLocal(traderSkipReasons),
   });
+
+  // Broadcast all collected events (non-critical — slow DO calls must not block above)
+  for (const event of events) {
+    await broadcast(env, event);
+  }
 
   // Telegram notifications (non-critical — failure must not block pipeline)
   try {
