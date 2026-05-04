@@ -151,6 +151,24 @@ export async function runGenomePipeline(
   const ts = new Date().toISOString();
   const events: AgentEvent[] = [];
 
+  // Eagerly write a partial heartbeat at pipeline start so /api/heartbeat always
+  // reflects a live timestamp, even if the pipeline crashes mid-run.
+  // This also acts as a diagnostic: if this timestamp never updates, the pipeline
+  // itself is not being invoked (check Cloudflare Worker logs / cron trigger config).
+  await storeHeartbeat(env.DB, {
+    lastScanAt: ts,
+    totalFetched: 0,
+    marketsFiltered: 0,
+    signalsFound: 0,
+    tradesOpened: 0,
+    settlementsProcessed: 0,
+    monitorActions: 0,
+    riskStops: 0,
+    riskExpired: 0,
+    skipSummary: {},
+    skipByFund: { _pipeline_started: { PENDING: 1 } },
+  });
+
   function emit(type: AgentEventType, payload: Record<string, unknown>): void {
     events.push({ type, timestamp: ts, payload });
   }
