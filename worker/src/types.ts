@@ -72,11 +72,8 @@ export interface FundConfig {
   sizingMode: "fixed" | "confidence" | "edge" | "edge_confidence";
   sizingBase: number;
   sizingScale: number;
-  // 2026-05-04: 机构型基金（如 Beluga $100K / Leviathan $1M）参与 fitness 排名展示，
-  // 但不参与 PBT mutate——因为它们的参数（maxPerEvent / sizingBase 等）远超 PARAM_BOUNDS 上限，
-  // 强行 mutate 会被 clamp 回小基金范围，破坏策略空间。
-  // 见 internal/plan/rotifer-petri/petri-phase-0-5-implementation.md "机构型基金" 章节。
-  evolveExempt?: boolean;
+  // evolveExempt removed (ADR-274 D4): tier-aware PARAM_BOUNDS replaces the need for
+  // an exemption flag. All funds now evolve within their own tier's bounds.
 }
 
 export type TradeStatus =
@@ -279,33 +276,6 @@ export const DEFAULT_FUNDS: FundConfig[] = [
     takeProfitPercent: 1.00, trailingStopPercent: 0.25, probReversalThreshold: 0.30,
     sizingMode: "edge_confidence", sizingBase: 100, sizingScale: 200,
   },
-  // ─── 机构型基金（2026-05-04 新增，evolveExempt: true 不参与 PBT mutate）────
-  // 战略目的：验证产品 + 协议在更大资金量级下的承载能力（"先犯错，后修正" 路径）。
-  // 当前阶段 paper trade，不消耗真实流动性；为 Phase 4 真钱化前预演 slippage 与策略空间。
-  {
-    id: "beluga", name: "白鲸", emoji: "🐋",
-    motto: "稳健，只吃大机会",
-    initialBalance: 100000, monthlyTarget: 0.04,
-    drawdownLimit: 0.15, drawdownSoftLimit: 0.08,
-    allowedTypes: ["MISPRICING", "MULTI_OUTCOME_ARB"],
-    minEdge: 1.5, minConfidence: 0.4, minVolume: 30000, minLiquidity: 20000,
-    maxPerEvent: 8000, maxOpenPositions: 8,
-    stopLossPercent: 0.10, maxHoldDays: 14,
-    takeProfitPercent: 0.20, trailingStopPercent: 0.10, probReversalThreshold: 0.20,
-    sizingMode: "edge", sizingBase: 2000, sizingScale: 4000,
-    evolveExempt: true,
-  },
-  {
-    id: "leviathan", name: "巨兽", emoji: "🦑",
-    motto: "流动性策略家",
-    initialBalance: 1000000, monthlyTarget: 0.05,
-    drawdownLimit: 0.20, drawdownSoftLimit: 0.10,
-    allowedTypes: ["MISPRICING", "MULTI_OUTCOME_ARB", "SPREAD"],
-    minEdge: 1.5, minConfidence: 0.3, minVolume: 100000, minLiquidity: 50000,
-    maxPerEvent: 50000, maxOpenPositions: 5,
-    stopLossPercent: 0.12, maxHoldDays: 21,
-    takeProfitPercent: 0.30, trailingStopPercent: 0.15, probReversalThreshold: 0.20,
-    sizingMode: "confidence", sizingBase: 10000, sizingScale: 30000,
-    evolveExempt: true,
-  },
 ];
+// ADR-274 D5: Beluga ($100K) and Leviathan ($1M) deleted — 0 trade data, clean slate.
+// The 3×5 matrix (5 personalities × 3 tiers) will replace them in Cycle 2.

@@ -4,6 +4,7 @@ import { broadcast } from "./notify";
 import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
 
 // ─── Parameter Boundaries ───────────────────────────────
+// ADR-274 D2: Tier-aware bounds (Petri-internal only — see ADR-274 D6, NOT protocol-level).
 
 interface ParamBound {
   min: number;
@@ -11,28 +12,70 @@ interface ParamBound {
   integer?: boolean;
 }
 
-const PARAM_BOUNDS: Record<string, ParamBound> = {
-  minEdge:          { min: 0,    max: 10 },
-  minConfidence:    { min: 0,    max: 1 },
-  minVolume:        { min: 1000, max: 100000, integer: true },
-  minLiquidity:     { min: 1000, max: 100000, integer: true },
-  maxPerEvent:      { min: 50,   max: 2000,   integer: true },
-  maxOpenPositions: { min: 3,    max: 20,     integer: true },
-  monthlyTarget:    { min: 0.01, max: 0.30 },
-  drawdownLimit:    { min: 0.05, max: 0.50 },
-  stopLossPercent:  { min: 0.05, max: 0.30 },
-  maxHoldDays:      { min: 3,    max: 30,     integer: true },
-  sizingBase:           { min: 50,   max: 500,    integer: true },
-  sizingScale:          { min: 0,    max: 500,    integer: true },
-  takeProfitPercent:    { min: 0.05, max: 2.0 },
-  trailingStopPercent:  { min: 0.03, max: 0.50 },
+/** Infer fund tier from initial balance (ADR-274 D1). */
+export function fundTier(initialBalance: number): "small" | "medium" | "large" {
+  if (initialBalance < 50_000) return "small";
+  if (initialBalance < 500_000) return "medium";
+  return "large";
+}
+
+// Tier-scaled bounds: scale proportionally with fund capital
+const PARAM_BOUNDS_BY_TIER: Record<"small" | "medium" | "large", Record<string, ParamBound>> = {
+  small: {
+    maxPerEvent:  { min: 50,    max: 2_000,    integer: true },
+    minVolume:    { min: 1_000, max: 100_000,  integer: true },
+    minLiquidity: { min: 1_000, max: 100_000,  integer: true },
+    sizingBase:   { min: 50,    max: 500,      integer: true },
+    sizingScale:  { min: 0,     max: 500,      integer: true },
+  },
+  medium: {
+    maxPerEvent:  { min: 500,    max: 20_000,   integer: true },
+    minVolume:    { min: 5_000,  max: 500_000,  integer: true },
+    minLiquidity: { min: 5_000,  max: 500_000,  integer: true },
+    sizingBase:   { min: 500,    max: 5_000,    integer: true },
+    sizingScale:  { min: 0,      max: 5_000,    integer: true },
+  },
+  large: {
+    maxPerEvent:  { min: 5_000,   max: 200_000,   integer: true },
+    minVolume:    { min: 50_000,  max: 2_000_000, integer: true },
+    minLiquidity: { min: 50_000,  max: 2_000_000, integer: true },
+    sizingBase:   { min: 5_000,   max: 50_000,    integer: true },
+    sizingScale:  { min: 0,       max: 50_000,    integer: true },
+  },
+};
+
+// Tier-invariant bounds: same across all tiers
+const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
+  minEdge:               { min: 0,    max: 10 },
+  minConfidence:         { min: 0,    max: 1 },
+  monthlyTarget:         { min: 0.01, max: 0.30 },
+  drawdownLimit:         { min: 0.05, max: 0.50 },
+  maxOpenPositions:      { min: 3,    max: 20,    integer: true },
+  stopLossPercent:       { min: 0.05, max: 0.30 },
+  maxHoldDays:           { min: 3,    max: 30,    integer: true },
+  takeProfitPercent:     { min: 0.05, max: 2.0 },
+  trailingStopPercent:   { min: 0.03, max: 0.50 },
   probReversalThreshold: { min: 0.05, max: 0.50 },
 };
 
-const EVOLVABLE_PARAMS = Object.keys(PARAM_BOUNDS);
+function getBound(
+  tier: "small" | "medium" | "large",
+  param: string,
+): ParamBound | undefined {
+  return PARAM_BOUNDS_BY_TIER[tier]?.[param] ?? PARAM_BOUNDS_INVARIANT[param];
+}
 
-function clampParam(name: string, value: number): number {
-  const bound = PARAM_BOUNDS[name];
+const EVOLVABLE_PARAMS = [
+  ...Object.keys(PARAM_BOUNDS_INVARIANT),
+  ...Object.keys(PARAM_BOUNDS_BY_TIER.small), // same keys across all tiers
+];
+
+function clampParam(
+  tier: "small" | "medium" | "large",
+  name: string,
+  value: number,
+): number {
+  const bound = getBound(tier, name);
   if (!bound) return value;
   let v = Math.max(bound.min, Math.min(bound.max, value));
   if (bound.integer) v = Math.round(v);
@@ -105,11 +148,12 @@ async function calculateFitness(
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
 
+  const tier = fundTier(input.initialBalance);
   const defaults = DEFAULT_FUNDS.find(f => f.id === input.fundId) || DEFAULT_FUNDS[0];
   let paramDeviation = 0;
   let paramCount = 0;
   for (const param of EVOLVABLE_PARAMS) {
-    const bound = PARAM_BOUNDS[param];
+    const bound = getBound(tier, param);
     if (!bound) continue;
     const range = bound.max - bound.min;
     if (range <= 0) continue;
@@ -141,11 +185,14 @@ async function calculateFitness(
 
 // ─── Mutation ───────────────────────────────────────────
 
-function mutateParams(fund: FundConfig): Partial<FundConfig> {
+function mutateParams(
+  fund: FundConfig,
+  tier: "small" | "medium" | "large",
+): Partial<FundConfig> {
   const mutated: Record<string, number> = {};
 
   for (const param of EVOLVABLE_PARAMS) {
-    const bound = PARAM_BOUNDS[param];
+    const bound = getBound(tier, param);
     if (!bound) continue;
     const current = (fund as any)[param] as number;
     if (typeof current !== "number") continue;
@@ -154,12 +201,13 @@ function mutateParams(fund: FundConfig): Partial<FundConfig> {
     const range = bound.max - bound.min;
     const sigma = range * 0.05;
     const noise = gaussianRandom() * sigma;
-    mutated[param] = clampParam(param, current + noise);
+    mutated[param] = clampParam(tier, param, current + noise);
   }
 
   // Keep drawdownSoftLimit at 50% of drawdownLimit
   if (mutated.drawdownLimit !== undefined) {
     mutated.drawdownSoftLimit = clampParam(
+      tier,
       "drawdownLimit",
       mutated.drawdownLimit * 0.5,
     );
@@ -371,7 +419,10 @@ async function logEvolution(
 
 export interface EvolutionReport {
   epoch: number;
+  /** Dominant action summary for backward compat (frontend / Telegram display). */
   action: EvolutionAction;
+  /** Per-tier actions (ADR-274 D3: tier-isolated PBT). */
+  tierActions: Partial<Record<"small" | "medium" | "large", EvolutionAction>>;
   fitnessResults: FitnessResult[];
   mutations: Array<{
     fundId: string;
@@ -381,6 +432,108 @@ export interface EvolutionReport {
     changedParams: string[];
   }>;
 }
+
+// ─── Per-Tier PBT ───────────────────────────────────────
+
+async function runTierPBT(
+  db: D1Database,
+  epoch: number,
+  tier: "small" | "medium" | "large",
+  tierFunds: FundConfig[],
+  allFitnessResults: FitnessResult[],
+  mutations: EvolutionReport["mutations"],
+): Promise<EvolutionAction> {
+  const tierResults = allFitnessResults
+    .filter(fr => tierFunds.some(f => f.id === fr.fundId))
+    .sort((a, b) => b.fitness - a.fitness);
+
+  const action = decideEvolutionAction(tierResults);
+
+  if (action === "SKIP_INSUFFICIENT" || action === "SKIP_ALL_GOOD") {
+    for (const fr of tierResults) {
+      await logEvolution(db, epoch, action, fr.fundId, {}, {}, fr.fitness, fr.fitness,
+        action === "SKIP_INSUFFICIENT" ? `Tier ${tier}: insufficient trades` : `Tier ${tier}: all fitness >0.6`);
+    }
+    return action;
+  }
+
+  if (action === "GLOBAL_RESET") {
+    for (const fund of tierFunds) {
+      const defaultFund = DEFAULT_FUNDS.find(f => f.id === fund.id);
+      if (!defaultFund) continue;
+      const before = extractEvolvableParams(fund);
+      const resetted = mutateParams(defaultFund, tier);
+      const after = { ...extractEvolvableParams(defaultFund), ...resetted };
+      await updateFundParams(db, fund.id, resetted, epoch, null);
+      const fr = tierResults.find(f => f.fundId === fund.id);
+      await logEvolution(db, epoch, "GLOBAL_RESET", fund.id, before, after, fr?.fitness ?? null, null,
+        `Tier ${tier}: all funds below 0.2 fitness`);
+      mutations.push({
+        fundId: fund.id,
+        fundName: fund.name,
+        action: "GLOBAL_RESET",
+        fitnessBefore: fr?.fitness ?? 0,
+        changedParams: Object.keys(resetted),
+      });
+    }
+    return action;
+  }
+
+  // STANDARD_PBT within this tier
+  if (tierResults.length < 2) {
+    for (const fr of tierResults) {
+      await logEvolution(db, epoch, "SKIP_INSUFFICIENT", fr.fundId, {}, {}, fr.fitness, fr.fitness,
+        `Tier ${tier}: fewer than 2 funds for PBT`);
+    }
+    return "SKIP_INSUFFICIENT";
+  }
+
+  const best = tierResults[0];
+  const worst = tierResults[tierResults.length - 1];
+  const bestFund = tierFunds.find(f => f.id === best.fundId)!;
+  const worstFund = tierFunds.find(f => f.id === worst.fundId)!;
+
+  const worstBefore = extractEvolvableParams(worstFund);
+  const inherited = extractEvolvableParams(bestFund);
+  const mutatedDelta = mutateParams(bestFund, tier);
+  const newParams = { ...inherited };
+  for (const [key, val] of Object.entries(mutatedDelta)) {
+    if (val !== undefined) (newParams as any)[key] = val;
+  }
+
+  const preservedFields: Partial<FundConfig> = {};
+  for (const [key, val] of Object.entries(newParams)) {
+    (preservedFields as any)[key] = val;
+  }
+
+  await updateFundParams(db, worst.fundId, preservedFields, epoch, best.fundId);
+  await logEvolution(
+    db, epoch, "PBT_INHERIT_MUTATE", worst.fundId,
+    worstBefore, newParams, worst.fitness, null,
+    `Tier ${tier}: inherited from ${best.fundId} (fitness ${best.fitness}) + mutation`,
+  );
+
+  const changedParams = Object.keys(newParams).filter(k =>
+    (worstBefore as any)[k] !== (newParams as any)[k],
+  );
+  mutations.push({
+    fundId: worst.fundId,
+    fundName: worstFund.name,
+    action: "PBT_INHERIT_MUTATE",
+    fitnessBefore: worst.fitness,
+    changedParams,
+  });
+
+  for (const fr of tierResults) {
+    if (fr.fundId === worst.fundId) continue;
+    await logEvolution(db, epoch, "UNCHANGED", fr.fundId, {}, {}, fr.fitness, fr.fitness,
+      `Tier ${tier}: not worst performer`);
+  }
+
+  return action;
+}
+
+// ─── Evolution Engine ───────────────────────────────────
 
 export async function runEvolution(env: Env): Promise<EvolutionReport> {
   const db = env.DB;
@@ -399,135 +552,45 @@ export async function runEvolution(env: Env): Promise<EvolutionReport> {
     funds = DEFAULT_FUNDS;
   }
 
-  const fitnessResults: FitnessResult[] = [];
+  // Calculate fitness for all funds
+  const allFitnessResults: FitnessResult[] = [];
   for (const fund of funds) {
     const result = await calculateFitness(
       db,
       { fundId: fund.id, initialBalance: fund.initialBalance },
       fund,
     );
-    fitnessResults.push(result);
+    allFitnessResults.push(result);
+  }
+  allFitnessResults.sort((a, b) => b.fitness - a.fitness);
+
+  // Group funds by tier (ADR-274 D3: tier-isolated PBT)
+  const tierGroups: Partial<Record<"small" | "medium" | "large", FundConfig[]>> = {};
+  for (const fund of funds) {
+    const t = fundTier(fund.initialBalance);
+    if (!tierGroups[t]) tierGroups[t] = [];
+    tierGroups[t]!.push(fund);
   }
 
-  fitnessResults.sort((a, b) => b.fitness - a.fitness);
-
-  const action = decideEvolutionAction(fitnessResults);
   const mutations: EvolutionReport["mutations"] = [];
+  const tierActions: EvolutionReport["tierActions"] = {};
 
-  if (action === "SKIP_INSUFFICIENT" || action === "SKIP_ALL_GOOD") {
-    for (const fr of fitnessResults) {
-      await logEvolution(db, epoch, action, fr.fundId, {}, {}, fr.fitness, fr.fitness, action);
-    }
-  } else if (action === "GLOBAL_RESET") {
-    for (const fund of funds) {
-      // Skip evolveExempt funds (institutional like Beluga/Leviathan)——their parameters
-      // exceed PARAM_BOUNDS upper limits; resetting them would clamp into small-fund range.
-      if (fund.evolveExempt) {
-        const fr = fitnessResults.find(f => f.fundId === fund.id);
-        await logEvolution(db, epoch, "EVOLVE_EXEMPT", fund.id, {}, {}, fr?.fitness ?? null, fr?.fitness ?? null, "Institutional fund, exempt from PBT mutation");
-        continue;
-      }
-      const defaultFund = DEFAULT_FUNDS.find(f => f.id === fund.id);
-      if (!defaultFund) continue;
-
-      const before = extractEvolvableParams(fund);
-      const resetted = mutateParams(defaultFund);
-      const after = { ...extractEvolvableParams(defaultFund), ...resetted };
-
-      await updateFundParams(db, fund.id, resetted, epoch, null);
-      const fr = fitnessResults.find(f => f.fundId === fund.id);
-      await logEvolution(db, epoch, "GLOBAL_RESET", fund.id, before, after, fr?.fitness ?? null, null, "All funds below 0.2 fitness");
-
-      mutations.push({
-        fundId: fund.id,
-        fundName: fund.name,
-        action: "GLOBAL_RESET",
-        fitnessBefore: fr?.fitness ?? 0,
-        changedParams: Object.keys(resetted),
-      });
-    }
-  } else {
-    // STANDARD_PBT: worst fund inherits best fund's params + mutation
-    // Exclude evolveExempt funds (institutional Beluga/Leviathan) — they participate in
-    // fitness ranking display but not in PBT mutate, because their parameters
-    // (maxPerEvent / sizingBase / minVolume) exceed PARAM_BOUNDS upper limits and would
-    // be clamped back to small-fund range, destroying their strategy space.
-    const evolvableResults = fitnessResults.filter(fr => {
-      const fund = funds.find(f => f.id === fr.fundId);
-      return fund && !fund.evolveExempt;
-    });
-
-    if (evolvableResults.length < 2) {
-      for (const fr of fitnessResults) {
-        await logEvolution(db, epoch, "SKIP_INSUFFICIENT", fr.fundId, {}, {}, fr.fitness, fr.fitness, "Fewer than 2 evolvable funds available for PBT");
-      }
-      const skipReport: EvolutionReport = {
-        epoch,
-        action: "SKIP_INSUFFICIENT",
-        fitnessResults,
-        mutations: [],
-      };
-      await broadcast(env, {
-        type: "EVOLUTION_COMPLETED",
-        timestamp: new Date().toISOString(),
-        payload: skipReport as unknown as Record<string, unknown>,
-      });
-      return skipReport;
-    }
-
-    const best = evolvableResults[0];
-    const worst = evolvableResults[evolvableResults.length - 1];
-
-    const bestFund = funds.find(f => f.id === best.fundId)!;
-    const worstFund = funds.find(f => f.id === worst.fundId)!;
-
-    const worstBefore = extractEvolvableParams(worstFund);
-    const inherited = extractEvolvableParams(bestFund);
-    const mutatedDelta = mutateParams(bestFund);
-    const newParams = { ...inherited };
-    for (const [key, val] of Object.entries(mutatedDelta)) {
-      if (val !== undefined) (newParams as any)[key] = val;
-    }
-
-    // Preserve identity fields
-    const preservedFields: Partial<FundConfig> = {};
-    for (const [key, val] of Object.entries(newParams)) {
-      (preservedFields as any)[key] = val;
-    }
-
-    await updateFundParams(db, worst.fundId, preservedFields, epoch, best.fundId);
-    await logEvolution(
-      db, epoch, "PBT_INHERIT_MUTATE", worst.fundId,
-      worstBefore, newParams,
-      worst.fitness, null,
-      `Inherited from ${best.fundId} (fitness ${best.fitness}) + mutation`,
-    );
-
-    const changedParams = Object.keys(newParams).filter(k => {
-      return (worstBefore as any)[k] !== (newParams as any)[k];
-    });
-
-    mutations.push({
-      fundId: worst.fundId,
-      fundName: worstFund.name,
-      action: "PBT_INHERIT_MUTATE",
-      fitnessBefore: worst.fitness,
-      changedParams,
-    });
-
-    // Log unchanged funds (evolveExempt institutional funds tagged EVOLVE_EXEMPT)
-    for (const fr of fitnessResults) {
-      if (fr.fundId === worst.fundId) continue;
-      const fund = funds.find(f => f.id === fr.fundId);
-      const logAction = fund?.evolveExempt ? "EVOLVE_EXEMPT" : "UNCHANGED";
-      const reason = fund?.evolveExempt
-        ? "Institutional fund, exempt from PBT mutation"
-        : "Not worst performer";
-      await logEvolution(db, epoch, logAction, fr.fundId, {}, {}, fr.fitness, fr.fitness, reason);
-    }
+  for (const [t, tierFunds] of Object.entries(tierGroups) as Array<["small" | "medium" | "large", FundConfig[]]>) {
+    tierActions[t] = await runTierPBT(db, epoch, t, tierFunds, allFitnessResults, mutations);
   }
 
-  const report: EvolutionReport = { epoch, action, fitnessResults, mutations };
+  // Dominant action for backward compat: prefer STANDARD_PBT > GLOBAL_RESET > SKIP_ALL_GOOD > SKIP_INSUFFICIENT
+  const actionPriority: EvolutionAction[] = ["STANDARD_PBT", "GLOBAL_RESET", "SKIP_ALL_GOOD", "SKIP_INSUFFICIENT"];
+  const allActions = Object.values(tierActions) as EvolutionAction[];
+  const dominantAction: EvolutionAction = actionPriority.find(a => allActions.includes(a)) ?? "SKIP_INSUFFICIENT";
+
+  const report: EvolutionReport = {
+    epoch,
+    action: dominantAction,
+    tierActions,
+    fitnessResults: allFitnessResults,
+    mutations,
+  };
 
   await broadcast(env, {
     type: "EVOLUTION_COMPLETED",
@@ -560,20 +623,41 @@ function escN(n: number): string {
 }
 
 async function sendEvolutionTelegram(env: Env, report: EvolutionReport): Promise<void> {
+  const tierEmoji: Record<string, string> = { small: "🔵", medium: "🟡", large: "🔴" };
+  const tierLabel: Record<string, string> = { small: "S($10K)", medium: "M($100K)", large: "L($1M)" };
+
+  // Per-tier action summary
+  const tierSummary = Object.entries(report.tierActions)
+    .map(([t, a]) => `${tierEmoji[t] ?? t} ${tierLabel[t] ?? t}: ${esc(actionLabel(a as EvolutionAction))}`)
+    .join("\n");
+
   const lines = [
     `🧬 *进化报告 \\— Epoch ${report.epoch}*`,
     ``,
-    `📋 *决策:* ${esc(actionLabel(report.action))}`,
+    `📋 *决策 \\(per tier\\):*`,
+    tierSummary || esc(actionLabel(report.action)),
     ``,
     `📊 *适应度排名:*`,
   ];
 
-  const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
-  for (let i = 0; i < report.fitnessResults.length; i++) {
-    const fr = report.fitnessResults[i];
-    lines.push(
-      `${medals[i] || `${i + 1}.`} \`${esc(fr.fundId)}\` F\\(g\\)=${escN(fr.fitness)} \\| Sharpe=${escN(fr.sharpe)} WR=${escN(fr.winRate)} DD=${escN(fr.maxDrawdown)} \\(${fr.tradeCount} trades\\)`,
-    );
+  // Group by tier for display
+  const tiers: Array<"small" | "medium" | "large"> = ["small", "medium", "large"];
+  for (const tier of tiers) {
+    const tierResults = report.fitnessResults.filter(fr => {
+      // We don't store tier in FitnessResult; approximate from fundId suffix
+      if (tier === "large") return fr.fundId.endsWith("_l");
+      if (tier === "medium") return fr.fundId.endsWith("_m");
+      return !fr.fundId.endsWith("_l") && !fr.fundId.endsWith("_m");
+    });
+    if (tierResults.length === 0) continue;
+    lines.push(``, `${tierEmoji[tier]} *${tierLabel[tier]}*`);
+    for (let i = 0; i < tierResults.length; i++) {
+      const fr = tierResults[i];
+      const medal = ["🥇", "🥈", "🥉"][i] ?? `${i + 1}\\.`;
+      lines.push(
+        `${medal} \`${esc(fr.fundId)}\` F\\(g\\)=${escN(fr.fitness)} Sharpe=${escN(fr.sharpe)} WR=${escN(fr.winRate)} \\(${fr.tradeCount}T\\)`,
+      );
+    }
   }
 
   if (report.mutations.length > 0) {
