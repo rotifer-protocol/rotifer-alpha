@@ -174,8 +174,8 @@ export async function runGenomePipeline(
   }
 
   // Load active Gene variants for dispatch
-  const scannerVariant = await getActiveVariant(env.DB, "polymarket-scanner");
-  const monitorVariant = await getActiveVariant(env.DB, "polymarket-monitor");
+  const scannerVariant = await getActiveVariant(env.DB, "polymarket-scanner").catch(() => null);
+  const monitorVariant = await getActiveVariant(env.DB, "polymarket-monitor").catch(() => null);
   const scannerKey = scannerVariant?.strategyKey ?? "baseline";
   const monitorKey = monitorVariant?.strategyKey ?? "baseline";
 
@@ -219,7 +219,14 @@ export async function runGenomePipeline(
       minLiquidity: Number(env.MIN_LIQUIDITY) || 5000,
     }, scannerKey);
   } catch (e) {
+    console.error("[Genome] Scanner gene failed:", e);
     emit("ERROR", { stage: "scan", message: String(e) });
+    await storeHeartbeat(env.DB, {
+      lastScanAt: ts, totalFetched: 0, marketsFiltered: 0, signalsFound: 0,
+      tradesOpened: 0, settlementsProcessed: 0, monitorActions: 0,
+      riskStops: risk.stopped.length, riskExpired: risk.expired.length,
+      skipSummary: {}, skipByFund: { _scanner_failed: { ERROR: 1 } },
+    });
     return {
       scanner: { markets: [], filtered: [], signals: [], totalFetched: 0, avgEdge: 0 },
       risk,
@@ -232,7 +239,9 @@ export async function runGenomePipeline(
     };
   }
 
-  await recordScan(env.DB, crypto.randomUUID(), ts, scanner);
+  await recordScan(env.DB, crypto.randomUUID(), ts, scanner).catch(e => {
+    console.error("[Genome] recordScan failed (non-critical):", e);
+  });
 
   const topMarkets = [...scanner.filtered]
     .sort((a, b) => b.volume24hr - a.volume24hr)
@@ -459,19 +468,20 @@ async function recordScan(
   ts: string,
   scanner: ScannerOutput,
 ): Promise<void> {
+  const avg = scanner.signals.length > 0
+    ? Math.round((scanner.signals.reduce((s, x) => s + x.edge, 0) / scanner.signals.length) * 100) / 100
+    : 0;
   await db.prepare(
-    `INSERT INTO scans (id, scanned_at, total_fetched, markets_filtered, signals_found, avg_edge)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(scanId, ts, scanner.totalFetched, scanner.filtered.length, scanner.signals.length, scanner.avgEdge).run();
+    "INSERT INTO scans (id, scanned_at, total_fetched, markets_filtered, signals_found, avg_edge) VALUES (?, ?, ?, ?, ?, ?)",
+  ).bind(scanId, ts, scanner.totalFetched, scanner.filtered.length, scanner.signals.length, avg).run();
 
   for (const sig of scanner.signals) {
     await db.prepare(
-      `INSERT INTO signals (id, scan_id, type, question, market_id, slug, direction, edge, confidence, prices, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "INSERT INTO signals (id, scan_id, signal_id, type, market_id, slug, question, description, edge, confidence, direction, prices, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(
-      sig.signalId, scanId, sig.type, sig.question, sig.marketId,
-      sig.slug ?? "", sig.direction, sig.edge, sig.confidence,
-      JSON.stringify(sig.prices), ts,
+      crypto.randomUUID(), scanId, sig.signalId, sig.type, sig.marketId, sig.slug,
+      sig.question, sig.description, sig.edge, sig.confidence, sig.direction,
+      JSON.stringify(sig.prices), sig.timestamp,
     ).run();
   }
 }
