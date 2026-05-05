@@ -33,7 +33,7 @@ import { getActiveVariant, recordTradeResult } from "./gene-variants";
 import { getScannerStrategy, getMonitorStrategy } from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
 import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
-import { storeHeartbeat } from "./execution";
+import { storeHeartbeat, storeError } from "./execution";
 
 // ─── GENE_REGISTRY ↔ Phenotype consistency check ────────
 //
@@ -180,8 +180,9 @@ export async function runGenomePipeline(
   const monitorKey = monitorVariant?.strategyKey ?? "baseline";
 
   // Step 1: Risk checks (stop-loss, expiry)
-  const risk = await runRiskGene(env.DB, funds).catch((e): RiskOutput => {
+  const risk = await runRiskGene(env.DB, funds).catch(async (e): Promise<RiskOutput> => {
     console.error("[Genome] Risk gene failed:", e);
+    await storeError(env.DB, "risk", e);
     return { stopped: [], expired: [] };
   });
 
@@ -222,6 +223,7 @@ export async function runGenomePipeline(
   } catch (e) {
     console.error("[Genome] Scanner gene failed:", e);
     emit("ERROR", { stage: "scan", message: String(e) });
+    await storeError(env.DB, "scanner", e);
     await storeHeartbeat(env.DB, {
       lastScanAt: ts, totalFetched: 0, marketsFiltered: 0, signalsFound: 0,
       tradesOpened: 0, settlementsProcessed: 0, monitorActions: 0,
@@ -267,8 +269,9 @@ export async function runGenomePipeline(
   }
 
   // Step 3: Settler
-  const settler = await runSettlerGene(env.DB, scanner.markets, funds).catch((e): SettlerOutput => {
+  const settler = await runSettlerGene(env.DB, scanner.markets, funds).catch(async (e): Promise<SettlerOutput> => {
     console.error("[Genome] Settler gene failed:", e);
+    await storeError(env.DB, "settler", e);
     return { settlements: [] };
   });
   for (const s of settler.settlements) {
@@ -285,8 +288,9 @@ export async function runGenomePipeline(
   }
 
   // Step 4: Monitor (active selling)
-  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey).catch((e): MonitorOutput => {
+  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey).catch(async (e): Promise<MonitorOutput> => {
     console.error("[Genome] Monitor gene failed:", e);
+    await storeError(env.DB, "monitor", e);
     return { actions: [], highWaterMarkUpdates: [] };
   });
   for (const ma of monitorOut.actions) {
@@ -305,8 +309,9 @@ export async function runGenomePipeline(
   }
 
   // Step 5: Trader
-  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts).catch((e): import("./trade").PaperTradeResult => {
+  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts).catch(async (e): Promise<import("./trade").PaperTradeResult> => {
     console.error("[Genome] Trader gene failed:", e);
+    await storeError(env.DB, "trader", e);
     return { trades: [], skipReasons: [] };
   });
   const trader = { trades: traderResult.trades };
@@ -320,8 +325,9 @@ export async function runGenomePipeline(
   }
 
   // Step 6: Micro-Evolution
-  const microEvolver = await runMicroEvolverGene(env.DB, funds).catch((e): MicroEvolverOutput => {
+  const microEvolver = await runMicroEvolverGene(env.DB, funds).catch(async (e): Promise<MicroEvolverOutput> => {
     console.error("[Genome] Micro-evolver gene failed:", e);
+    await storeError(env.DB, "micro-evolver", e);
     return { results: [] };
   });
   for (const mr of microEvolver.results) {

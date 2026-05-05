@@ -139,6 +139,56 @@ export async function getHeartbeat(db: D1Database): Promise<PipelineHeartbeat | 
   }
 }
 
+// ─── Pipeline Error Log ─────────────────────────────────
+
+export interface PipelineError {
+  id: string;
+  occurred_at: string;
+  stage: string;
+  message: string;
+  details: string | null;
+}
+
+export async function storeError(
+  db: D1Database,
+  stage: string,
+  error: unknown,
+  details?: unknown,
+): Promise<void> {
+  try {
+    const message = error instanceof Error ? error.message : String(error);
+    await db.prepare(
+      "INSERT INTO pipeline_errors (id, occurred_at, stage, message, details) VALUES (?, ?, ?, ?, ?)",
+    ).bind(
+      crypto.randomUUID(),
+      new Date().toISOString(),
+      stage,
+      message.slice(0, 500),
+      details !== undefined ? JSON.stringify(details) : null,
+    ).run();
+    // Trim to last 100 entries
+    await db.prepare(
+      "DELETE FROM pipeline_errors WHERE id NOT IN (SELECT id FROM pipeline_errors ORDER BY occurred_at DESC LIMIT 100)",
+    ).run();
+  } catch {
+    // non-critical
+  }
+}
+
+export async function getPipelineErrors(
+  db: D1Database,
+  limit = 50,
+): Promise<PipelineError[]> {
+  try {
+    const r = await db.prepare(
+      "SELECT * FROM pipeline_errors ORDER BY occurred_at DESC LIMIT ?",
+    ).bind(limit).all();
+    return (r.results ?? []) as PipelineError[];
+  } catch {
+    return [];
+  }
+}
+
 // ─── Shadow Trading ─────────────────────────────────────
 
 export async function recordShadowOpen(

@@ -18,7 +18,7 @@ import {
   SYSTEM_INVALIDATION_MONITOR_REASON_SQL,
   toDisplayTradeStatus,
 } from "./trade-semantics";
-import { getSystemConfig, getHeartbeat } from "./execution";
+import { getSystemConfig, getHeartbeat, getPipelineErrors } from "./execution";
 import { piggybackRiskCheck } from "./risk";
 
 /**
@@ -84,6 +84,46 @@ export async function handleApi(
       },
       { headers },
     );
+  }
+
+  // ─── Diagnostics (read-only) ────────────────────────────
+  if (path === "/api/diagnostics") {
+    const [errors, config, heartbeat] = await Promise.all([
+      getPipelineErrors(env.DB, 50),
+      getSystemConfig(env.DB),
+      getHeartbeat(env.DB),
+    ]);
+    return Response.json({
+      errors,
+      killSwitch: config.KILL_SWITCH === "true",
+      executionMode: config.EXECUTION_MODE || "paper",
+      skipByFund: (heartbeat as any)?.skipByFund ?? {},
+    }, { headers });
+  }
+
+  // ─── Admin write actions (requires API_TOKEN header) ────
+  if (path === "/api/admin/system-config" && req.method === "POST") {
+    const token = req.headers.get("X-Admin-Token") ?? "";
+    if (!env.API_TOKEN || token !== env.API_TOKEN) {
+      return Response.json({ error: "Unauthorized" }, { status: 401, headers });
+    }
+    let body: { killSwitch?: boolean; executionMode?: string };
+    try {
+      body = await req.json() as any;
+    } catch {
+      return Response.json({ error: "Invalid JSON" }, { status: 400, headers });
+    }
+    const db = env.DB;
+    const ts = new Date().toISOString();
+    if (typeof body.killSwitch === "boolean") {
+      await db.prepare("INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('KILL_SWITCH', ?, ?)")
+        .bind(body.killSwitch ? "true" : "false", ts).run();
+    }
+    if (body.executionMode === "paper" || body.executionMode === "shadow" || body.executionMode === "live") {
+      await db.prepare("INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('EXECUTION_MODE', ?, ?)")
+        .bind(body.executionMode, ts).run();
+    }
+    return Response.json({ ok: true }, { headers });
   }
 
   return null;

@@ -10,6 +10,7 @@ import { EvolutionPanel } from "./components/EvolutionPanel";
 import { FundDetail } from "./components/FundDetail";
 import { ShadowPanel } from "./components/ShadowPanel";
 import { GeneEvolutionPanel } from "./components/GeneEvolutionPanel";
+import { DiagnosticsPage } from "./components/DiagnosticsPage";
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
 import { fundDisplayName } from "./lib/fundMeta";
@@ -155,6 +156,7 @@ function Layout() {
               <NavLink to="/evolution" className={navClass}>{t("evolution")}</NavLink>
               <NavLink to="/shadow" className={navClass}>{t("shadow")}</NavLink>
               <NavLink to="/gene-evolution" className={navClass}>{t("geneEvolution")}</NavLink>
+              <NavLink to="/diagnostics" className={navClass}>{t("diagnostics")}</NavLink>
         </div>
 
         <button
@@ -307,6 +309,7 @@ interface HeartbeatData {
   riskStops: number;
   riskExpired: number;
   skipSummary: Record<string, number>;
+  skipByFund?: Record<string, Record<string, number>>;
 }
 
 function formatTimeAgo(iso: string, t: (k: TranslationKey) => string): string {
@@ -563,6 +566,7 @@ export default function App() {
         <Route path="evolution" element={<EvolutionPage />} />
         <Route path="shadow" element={<ShadowPage />} />
         <Route path="gene-evolution" element={<GeneEvolutionPage />} />
+        <Route path="diagnostics" element={<DiagnosticsPage />} />
         <Route path="fund/:fundId" element={<FundDetail />} />
       </Route>
     </Routes>
