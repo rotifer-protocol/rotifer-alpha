@@ -10,12 +10,29 @@ workers_dev = true
 # To rollback: change to "false" and redeploy — no code change required.
 ENABLE_GENOME_PIPELINE = "true"
 
+# Scanner: only scan markets resolving within this many days (0 = no filter).
+# 60 days filters out multi-month season markets (NBA/FIFA final) while keeping
+# near-term event markets. Adjust upward if signal count drops too low.
+SCAN_END_DATE_WINDOW_DAYS = "60"
+
+# Code evolution: trades across all active gene variants before epoch triggers.
+# Default 10 (was 50) — pipeline is healthy now, faster feedback loop is safe.
+EPOCH_TRADE_THRESHOLD = "10"
+
+# Code evolution: minimum trades per variant for score to count in evaluation.
+# Default 3 (was 5) — lower bar matches the smaller epoch window.
+MIN_TRADES_FOR_EVAL = "3"
+
 routes = [
   { pattern = "api.rotifer.xyz", custom_domain = true }
 ]
 
 [triggers]
-crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * SUN"]
+# */5 = pipeline cron (every 5 min)
+# 0 1 = daily report (01:00 UTC)
+# 0 0 * * * = PBT parameter evolution (daily 00:00 UTC, was weekly SUN)
+#   SKIP_INSUFFICIENT guard in evolve.ts ensures no-op when data is insufficient.
+crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * *"]
 
 [[d1_databases]]
 binding = "DB"

@@ -37,11 +37,24 @@ export function getMonitorStrategy(key: string): MonitorStrategy {
 // Standard edge-based signal detection with volume/liquidity filtering.
 // Treats all signal types equally, sorts by edge descending.
 
+function endDateCutoff(windowDays: number | undefined): string | null {
+  if (!windowDays || windowDays <= 0) return null;
+  return new Date(Date.now() + windowDays * 86_400_000).toISOString();
+}
+
+function applyMarketFilters(markets: MarketSnapshot[], input: ScannerInput, volumeMultiplier = 1): MarketSnapshot[] {
+  const cutoff = endDateCutoff(input.endDateWindowDays);
+  return markets.filter(m => {
+    if (m.volume24hr < input.minVolume * volumeMultiplier) return false;
+    if (m.liquidity < input.minLiquidity) return false;
+    if (cutoff && m.endDate && m.endDate > cutoff) return false;
+    return true;
+  });
+}
+
 async function scannerBaseline(input: ScannerInput): Promise<ScannerOutput> {
   const { markets, totalFetched } = await scan(input.scanLimit);
-  const filtered = markets.filter(
-    m => m.volume24hr >= input.minVolume && m.liquidity >= input.minLiquidity,
-  );
+  const filtered = applyMarketFilters(markets, input);
   const signals = analyze(filtered, new Date().toISOString());
   const avgEdge = signals.length > 0
     ? Math.round((signals.reduce((s, x) => s + x.edge, 0) / signals.length) * 100) / 100
@@ -59,9 +72,7 @@ scannerStrategies.set("baseline", scannerBaseline);
 
 async function scannerTrendFollowing(input: ScannerInput): Promise<ScannerOutput> {
   const { markets, totalFetched } = await scan(input.scanLimit);
-  const filtered = markets.filter(
-    m => m.volume24hr >= input.minVolume * 1.5 && m.liquidity >= input.minLiquidity,
-  );
+  const filtered = applyMarketFilters(markets, input, 1.5);
   const rawSignals = analyze(filtered, new Date().toISOString());
 
   const signals = rawSignals

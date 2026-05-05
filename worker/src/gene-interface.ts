@@ -17,6 +17,8 @@ export interface ScannerInput {
   scanLimit: number;
   minVolume: number;
   minLiquidity: number;
+  /** Only include markets resolving within this many days. 0 = no filter (default). */
+  endDateWindowDays?: number;
 }
 
 export interface ScannerOutput {

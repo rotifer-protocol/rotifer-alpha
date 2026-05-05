@@ -217,6 +217,7 @@ export async function runGenomePipeline(
       scanLimit: Number(env.SCAN_LIMIT) || 200,
       minVolume: Number(env.MIN_VOLUME) || 5000,
       minLiquidity: Number(env.MIN_LIQUIDITY) || 5000,
+      endDateWindowDays: Number(env.SCAN_END_DATE_WINDOW_DAYS) || 0,
     }, scannerKey);
   } catch (e) {
     console.error("[Genome] Scanner gene failed:", e);
@@ -337,7 +338,10 @@ export async function runGenomePipeline(
   // Step 7: Code Evolution
   let codeEvoResult;
   try {
-    codeEvoResult = await checkAndRunCodeEvolution(env.DB);
+    codeEvoResult = await checkAndRunCodeEvolution(env.DB, {
+      epochTradeThreshold: Number(env.EPOCH_TRADE_THRESHOLD) || 10,
+      minTradesForEval: Number(env.MIN_TRADES_FOR_EVAL) || 3,
+    });
     if (codeEvoResult.triggered) {
       emit("CODE_EVOLUTION", {
         epoch: codeEvoResult.epoch,

@@ -8,6 +8,12 @@ export interface Env {
   SCAN_LIMIT?: string;
   MIN_VOLUME?: string;
   MIN_LIQUIDITY?: string;
+  /** Only scan markets resolving within this many days. Unset = no filter. */
+  SCAN_END_DATE_WINDOW_DAYS?: string;
+  /** Trades across all active gene variants before code evolution epoch triggers. Default 10. */
+  EPOCH_TRADE_THRESHOLD?: string;
+  /** Minimum trades per variant required for evaluation. Default 3. */
+  MIN_TRADES_FOR_EVAL?: string;
   /** Feature flag: set to "true" to route pipeline through runGenomePipeline (Genome orchestrator).
    *  Default "false" keeps the legacy runPipeline path. Rollback: set back to "false" and redeploy. */
   ENABLE_GENOME_PIPELINE?: string;

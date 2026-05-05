@@ -23,8 +23,8 @@ import {
 } from "./gene-variants";
 import { GENE_REGISTRY } from "./gene-interface";
 
-const EPOCH_TRADE_THRESHOLD = 50;
-const MIN_TRADES_FOR_EVAL = 5;
+const EPOCH_TRADE_THRESHOLD_DEFAULT = 50;
+const MIN_TRADES_FOR_EVAL_DEFAULT = 5;
 
 export interface EpochResult {
   epoch: number;
@@ -41,7 +41,18 @@ export interface GeneEvaluation {
   worstVariant: string | null;
 }
 
-export async function checkAndRunCodeEvolution(db: D1Database): Promise<EpochResult> {
+export interface CodeEvoOptions {
+  epochTradeThreshold?: number;
+  minTradesForEval?: number;
+}
+
+export async function checkAndRunCodeEvolution(
+  db: D1Database,
+  opts: CodeEvoOptions = {},
+): Promise<EpochResult> {
+  const EPOCH_TRADE_THRESHOLD = opts.epochTradeThreshold ?? EPOCH_TRADE_THRESHOLD_DEFAULT;
+  const MIN_TRADES_FOR_EVAL = opts.minTradesForEval ?? MIN_TRADES_FOR_EVAL_DEFAULT;
+
   const currentEpoch = await getCurrentEpoch(db);
 
   const totalTrades = await db.prepare(
