@@ -30,7 +30,10 @@ import type { SkipReasonEntry } from "./trade";
 import { checkAndRunMicroEvolution } from "./micro-evolve";
 import { broadcast, sendSignals, sendTrades, sendSummary } from "./notify";
 import { getActiveVariant, recordTradeResult } from "./gene-variants";
-import { getScannerStrategy, getMonitorStrategy } from "./gene-strategies";
+import {
+  getScannerStrategy, getMonitorStrategy,
+  getRiskStrategy, getTraderStrategy, getMicroEvolverStrategy,
+} from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
 import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
 import { storeHeartbeat, storeError } from "./execution";
@@ -92,8 +95,11 @@ async function runScannerGene(
 async function runRiskGene(
   db: D1Database,
   funds: FundConfig[],
+  strategyKey = "baseline",
+  variantConfig?: Record<string, unknown>,
 ): Promise<RiskOutput> {
-  return await checkRiskLimits(db, funds);
+  const strategy = getRiskStrategy(strategyKey);
+  return strategy(db, funds, variantConfig);
 }
 
 // ─── Gene Step: Monitor (variant-aware) ─────────────────
@@ -127,8 +133,11 @@ async function runTraderGene(
   markets: import("./types").MarketSnapshot[],
   funds: FundConfig[],
   ts: string,
+  strategyKey = "baseline",
+  variantConfig?: Record<string, unknown>,
 ): Promise<import("./trade").PaperTradeResult> {
-  return await paperTrade(db, signals, markets, funds, ts);
+  const strategy = getTraderStrategy(strategyKey);
+  return strategy(db, signals, markets, funds, ts, variantConfig);
 }
 
 // ─── Gene Step: Micro-Evolver ───────────────────────────
@@ -136,8 +145,11 @@ async function runTraderGene(
 async function runMicroEvolverGene(
   db: D1Database,
   funds: FundConfig[],
+  strategyKey = "baseline",
+  variantConfig?: Record<string, unknown>,
 ): Promise<MicroEvolverOutput> {
-  const results = await checkAndRunMicroEvolution(db, funds);
+  const strategy = getMicroEvolverStrategy(strategyKey);
+  const results = await strategy(db, funds, variantConfig);
   return { results };
 }
 
@@ -174,14 +186,23 @@ export async function runGenomePipeline(
     events.push({ type, timestamp: ts, payload });
   }
 
-  // Load active Gene variants for dispatch
-  const scannerVariant = await getActiveVariant(env.DB, "polymarket-scanner").catch(() => null);
-  const monitorVariant = await getActiveVariant(env.DB, "polymarket-monitor").catch(() => null);
-  const scannerKey = scannerVariant?.strategyKey ?? "baseline";
-  const monitorKey = monitorVariant?.strategyKey ?? "baseline";
+  // Load active Gene variants for dispatch (all 5 evolvable genes)
+  const [scannerVariant, monitorVariant, riskVariant, traderVariant, microEvolverVariant] =
+    await Promise.all([
+      getActiveVariant(env.DB, "polymarket-scanner").catch(() => null),
+      getActiveVariant(env.DB, "polymarket-monitor").catch(() => null),
+      getActiveVariant(env.DB, "polymarket-risk").catch(() => null),
+      getActiveVariant(env.DB, "polymarket-trader").catch(() => null),
+      getActiveVariant(env.DB, "polymarket-micro-evolver").catch(() => null),
+    ]);
+  const scannerKey      = scannerVariant?.strategyKey      ?? "baseline";
+  const monitorKey      = monitorVariant?.strategyKey      ?? "baseline";
+  const riskKey         = riskVariant?.strategyKey         ?? "baseline";
+  const traderKey       = traderVariant?.strategyKey       ?? "baseline";
+  const microEvolverKey = microEvolverVariant?.strategyKey ?? "baseline";
 
   // Step 1: Risk checks (stop-loss, expiry)
-  const risk = await runRiskGene(env.DB, funds).catch(async (e): Promise<RiskOutput> => {
+  const risk = await runRiskGene(env.DB, funds, riskKey, riskVariant?.config ?? undefined).catch(async (e): Promise<RiskOutput> => {
     console.error("[Genome] Risk gene failed:", e);
     await storeError(env.DB, "risk", e);
     return { stopped: [], expired: [] };
@@ -311,7 +332,7 @@ export async function runGenomePipeline(
   }
 
   // Step 5: Trader
-  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts).catch(async (e): Promise<import("./trade").PaperTradeResult> => {
+  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts, traderKey, traderVariant?.config ?? undefined).catch(async (e): Promise<import("./trade").PaperTradeResult> => {
     console.error("[Genome] Trader gene failed:", e);
     await storeError(env.DB, "trader", e);
     return { trades: [], skipReasons: [] };
@@ -327,7 +348,7 @@ export async function runGenomePipeline(
   }
 
   // Step 6: Micro-Evolution
-  const microEvolver = await runMicroEvolverGene(env.DB, funds).catch(async (e): Promise<MicroEvolverOutput> => {
+  const microEvolver = await runMicroEvolverGene(env.DB, funds, microEvolverKey, microEvolverVariant?.config ?? undefined).catch(async (e): Promise<MicroEvolverOutput> => {
     console.error("[Genome] Micro-evolver gene failed:", e);
     await storeError(env.DB, "micro-evolver", e);
     return { results: [] };

@@ -96,14 +96,119 @@ function parseMonitorConfig(raw: string): Record<string, unknown> {
   return cfg;
 }
 
+// ─── Risk ────────────────────────────────────────────────
+
+function buildRiskPrompt(stats: LLMVariantStats): string {
+  return [
+    `Gene: polymarket-risk`,
+    `Purpose: Enforce stop-loss and max-hold-days rules on open positions.`,
+    ``,
+    `Epoch performance of current winner:`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    ``,
+    `Design a challenger with a DIFFERENT risk management hypothesis.`,
+    `Available config overrides (multipliers applied to each fund's configured thresholds):`,
+    `  "stopLossMultiplier" [0.5-1.5]  — scale stop-loss threshold (0.8=tighter, 1.2=looser)`,
+    `  "maxHoldMultiplier"  [0.5-2.0]  — scale max hold days (0.7=shorter, 1.5=longer)`,
+    `  "hypothesis" [string]           — one sentence explaining the approach`,
+    ``,
+    `Respond with ONLY valid JSON. Example:`,
+    `{"stopLossMultiplier":0.75,"maxHoldMultiplier":0.8,"hypothesis":"Tighter stops and shorter holds to cut losses faster"}`,
+  ].join("\n");
+}
+
+function parseRiskConfig(raw: string): Record<string, unknown> {
+  const data = JSON.parse(raw);
+  const cfg: Record<string, unknown> = {};
+  if (typeof data.stopLossMultiplier === "number")
+    cfg.stopLossMultiplier = Math.max(0.5, Math.min(1.5, data.stopLossMultiplier));
+  if (typeof data.maxHoldMultiplier === "number")
+    cfg.maxHoldMultiplier = Math.max(0.5, Math.min(2.0, data.maxHoldMultiplier));
+  if (typeof data.hypothesis === "string")
+    cfg.hypothesis = data.hypothesis.slice(0, 200);
+  return cfg;
+}
+
+// ─── Trader ──────────────────────────────────────────────
+
+function buildTraderPrompt(stats: LLMVariantStats): string {
+  return [
+    `Gene: polymarket-trader`,
+    `Purpose: Select and size positions from scanner signals for each fund.`,
+    ``,
+    `Epoch performance of current winner:`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    ``,
+    `Design a challenger with a DIFFERENT signal selection hypothesis.`,
+    `Available config overrides:`,
+    `  "edgeMultiplier" [0.5-3.0]         — scale the minimum edge bar (higher=more selective)`,
+    `  "signalSortMode" [string]           — sort signals by: "edge", "confidence", "combined"`,
+    `  "maxSignalsPerFund" [1-8]           — max signals to attempt per fund per cycle`,
+    `  "hypothesis" [string]              — one sentence explaining the approach`,
+    ``,
+    `Respond with ONLY valid JSON. Example:`,
+    `{"edgeMultiplier":1.5,"signalSortMode":"confidence","maxSignalsPerFund":3,"hypothesis":"Prioritize high-confidence signals and be more selective on edge"}`,
+  ].join("\n");
+}
+
+function parseTraderConfig(raw: string): Record<string, unknown> {
+  const data = JSON.parse(raw);
+  const cfg: Record<string, unknown> = {};
+  if (typeof data.edgeMultiplier === "number")
+    cfg.edgeMultiplier = Math.max(0.5, Math.min(3.0, data.edgeMultiplier));
+  if (typeof data.signalSortMode === "string" && ["edge", "confidence", "combined"].includes(data.signalSortMode))
+    cfg.signalSortMode = data.signalSortMode;
+  if (typeof data.maxSignalsPerFund === "number")
+    cfg.maxSignalsPerFund = Math.round(Math.max(1, Math.min(8, data.maxSignalsPerFund)));
+  if (typeof data.hypothesis === "string")
+    cfg.hypothesis = data.hypothesis.slice(0, 200);
+  return cfg;
+}
+
+// ─── Micro-Evolver ───────────────────────────────────────
+
+function buildMicroEvolverPrompt(stats: LLMVariantStats): string {
+  return [
+    `Gene: polymarket-micro-evolver`,
+    `Purpose: Periodically nudge fund parameters (stop-loss, sizing, etc.) based on recent trade outcomes.`,
+    ``,
+    `Epoch performance of current winner:`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    ``,
+    `Design a challenger with a DIFFERENT parameter-adjustment strategy.`,
+    `Available config overrides:`,
+    `  "adjustRatio" [0.01-0.08]    — nudge size as fraction of param range (0.02=conservative, 0.05=aggressive)`,
+    `  "tradeThreshold" [5-30]      — closed trades needed before nudging triggers`,
+    `  "hypothesis" [string]        — one sentence explaining the approach`,
+    ``,
+    `Respond with ONLY valid JSON. Example:`,
+    `{"adjustRatio":0.04,"tradeThreshold":12,"hypothesis":"More frequent, slightly larger nudges for faster adaptation"}`,
+  ].join("\n");
+}
+
+function parseMicroEvolverConfig(raw: string): Record<string, unknown> {
+  const data = JSON.parse(raw);
+  const cfg: Record<string, unknown> = {};
+  if (typeof data.adjustRatio === "number")
+    cfg.adjustRatio = Math.max(0.01, Math.min(0.08, data.adjustRatio));
+  if (typeof data.tradeThreshold === "number")
+    cfg.tradeThreshold = Math.round(Math.max(5, Math.min(30, data.tradeThreshold)));
+  if (typeof data.hypothesis === "string")
+    cfg.hypothesis = data.hypothesis.slice(0, 200);
+  return cfg;
+}
+
 // ─── Public API ─────────────────────────────────────────
 
 const SUPPORTED_GENES: Record<string, {
   buildPrompt: (stats: LLMVariantStats) => string;
   parseConfig: (raw: string) => Record<string, unknown>;
 }> = {
-  "polymarket-scanner": { buildPrompt: buildScannerPrompt, parseConfig: parseScannerConfig },
-  "polymarket-monitor": { buildPrompt: buildMonitorPrompt, parseConfig: parseMonitorConfig },
+  "polymarket-scanner":       { buildPrompt: buildScannerPrompt,      parseConfig: parseScannerConfig },
+  "polymarket-monitor":       { buildPrompt: buildMonitorPrompt,      parseConfig: parseMonitorConfig },
+  "polymarket-risk":          { buildPrompt: buildRiskPrompt,         parseConfig: parseRiskConfig },
+  "polymarket-trader":        { buildPrompt: buildTraderPrompt,       parseConfig: parseTraderConfig },
+  "polymarket-micro-evolver": { buildPrompt: buildMicroEvolverPrompt, parseConfig: parseMicroEvolverConfig },
 };
 
 export function isLLMSupportedGene(geneId: string): boolean {
@@ -123,15 +228,15 @@ export async function generateLLMVariantConfig(
   if (!handler) return null;
 
   try {
-    const result = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+    const result = await ai.run("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", {
       messages: [
         {
           role: "system",
-          content: "You are a quantitative trading strategy optimizer. Respond with ONLY valid JSON, no explanation outside the JSON.",
+          content: "You are a quantitative trading strategy optimizer. Respond with ONLY valid JSON. Do not include any reasoning, explanation, or text outside the JSON object.",
         },
         { role: "user", content: handler.buildPrompt(stats) },
       ],
-      max_tokens: 200,
+      max_tokens: 300,
     });
 
     const text = result.response?.trim() ?? "";

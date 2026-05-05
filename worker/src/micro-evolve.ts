@@ -13,8 +13,15 @@ import { fundTier, getBound, clampParam } from "./param-bounds";
  * so medium/large funds are not incorrectly clamped to small-tier limits.
  */
 
-const MICRO_TRADE_THRESHOLD = 20;
-const MICRO_ADJUST_RATIO = 0.02;
+const MICRO_TRADE_THRESHOLD_DEFAULT = 20;
+const MICRO_ADJUST_RATIO_DEFAULT = 0.02;
+
+export interface MicroEvoOptions {
+  /** Override the adjustment ratio (fraction of param range per nudge). Default 0.02. */
+  adjustRatio?: number;
+  /** Override minimum closed trades before nudge triggers. Default 20. */
+  tradeThreshold?: number;
+}
 
 export interface MicroAdjustment {
   param: string;
@@ -46,7 +53,10 @@ interface ClosedTrade {
 export async function checkAndRunMicroEvolution(
   db: D1Database,
   funds: FundConfig[],
+  opts: MicroEvoOptions = {},
 ): Promise<MicroEvolveResult[]> {
+  const MICRO_TRADE_THRESHOLD = opts.tradeThreshold ?? MICRO_TRADE_THRESHOLD_DEFAULT;
+  const MICRO_ADJUST_RATIO = opts.adjustRatio ?? MICRO_ADJUST_RATIO_DEFAULT;
   const results: MicroEvolveResult[] = [];
   const now = new Date().toISOString();
 
@@ -80,7 +90,7 @@ export async function checkAndRunMicroEvolution(
     }
 
     const tier = fundTier(fund.initialBalance);
-    const adjustments = analyzeAndAdjust(trades, fund, tier);
+    const adjustments = analyzeAndAdjust(trades, fund, tier, MICRO_ADJUST_RATIO);
 
     if (adjustments.length > 0) {
       const setClauses: string[] = [];
@@ -160,6 +170,7 @@ function analyzeAndAdjust(
   trades: ClosedTrade[],
   fund: FundConfig,
   tier: "small" | "medium" | "large",
+  adjustRatio: number,
 ): MicroAdjustment[] {
   const adjustments: MicroAdjustment[] = [];
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
@@ -175,9 +186,9 @@ function analyzeAndAdjust(
   // --- Stop-loss tuning ---
   const stopLossRate = stopLossCount / trades.length;
   if (stopLossRate > 0.4) {
-    adjustments.push(nudge("stopLossPercent", fund, tier, "up"));
+    adjustments.push(nudge("stopLossPercent", fund, tier, "up", adjustRatio));
   } else if (stopLossRate < 0.1 && avgPnl < 0) {
-    adjustments.push(nudge("stopLossPercent", fund, tier, "down"));
+    adjustments.push(nudge("stopLossPercent", fund, tier, "down", adjustRatio));
   }
 
   // --- Take-profit tuning ---
@@ -185,38 +196,38 @@ function analyzeAndAdjust(
     const postProfitTrades = trades.filter(t => t.status === "PROFIT_TAKEN");
     const avgTakeReturn = postProfitTrades.reduce((s, t) => s + t.pnl / t.amount, 0) / postProfitTrades.length;
     if (avgTakeReturn > fund.takeProfitPercent * 0.8) {
-      adjustments.push(nudge("takeProfitPercent", fund, tier, "up"));
+      adjustments.push(nudge("takeProfitPercent", fund, tier, "up", adjustRatio));
     }
   } else if (winRate > 0.6) {
-    adjustments.push(nudge("takeProfitPercent", fund, tier, "down"));
+    adjustments.push(nudge("takeProfitPercent", fund, tier, "down", adjustRatio));
   }
 
   // --- Trailing stop tuning ---
   if (trailingStoppedCount / trades.length > 0.3) {
-    adjustments.push(nudge("trailingStopPercent", fund, tier, "up"));
+    adjustments.push(nudge("trailingStopPercent", fund, tier, "up", adjustRatio));
   } else if (trailingStoppedCount === 0 && profitTakenCount > 3) {
-    adjustments.push(nudge("trailingStopPercent", fund, tier, "down"));
+    adjustments.push(nudge("trailingStopPercent", fund, tier, "down", adjustRatio));
   }
 
   // --- Probability reversal tuning ---
   if (reversedCount / trades.length > 0.25) {
-    adjustments.push(nudge("probReversalThreshold", fund, tier, "down"));
+    adjustments.push(nudge("probReversalThreshold", fund, tier, "down", adjustRatio));
   } else if (reversedCount === 0 && stopLossRate > 0.3) {
-    adjustments.push(nudge("probReversalThreshold", fund, tier, "down"));
+    adjustments.push(nudge("probReversalThreshold", fund, tier, "down", adjustRatio));
   }
 
   // --- Expiry tuning ---
   if (expiredCount / trades.length > 0.3) {
-    adjustments.push(nudge("maxHoldDays", fund, tier, "down"));
+    adjustments.push(nudge("maxHoldDays", fund, tier, "down", adjustRatio));
   } else if (expiredCount === 0 && avgPnl > 0) {
-    adjustments.push(nudge("maxHoldDays", fund, tier, "up"));
+    adjustments.push(nudge("maxHoldDays", fund, tier, "up", adjustRatio));
   }
 
   // --- Sizing tuning ---
   if (totalPnl > 0 && winRate > 0.55) {
-    adjustments.push(nudge("sizingBase", fund, tier, "up"));
+    adjustments.push(nudge("sizingBase", fund, tier, "up", adjustRatio));
   } else if (totalPnl < 0 && winRate < 0.4) {
-    adjustments.push(nudge("sizingBase", fund, tier, "down"));
+    adjustments.push(nudge("sizingBase", fund, tier, "down", adjustRatio));
   }
 
   return adjustments.filter(a => a.before !== a.after);
@@ -227,6 +238,7 @@ function nudge(
   fund: FundConfig,
   tier: "small" | "medium" | "large",
   direction: "up" | "down",
+  adjustRatio: number,
 ): MicroAdjustment {
   const bound = getBound(tier, param);
   const current = (fund as any)[param] as number;
@@ -235,7 +247,7 @@ function nudge(
   }
 
   const range = bound.max - bound.min;
-  const delta = range * MICRO_ADJUST_RATIO;
+  const delta = range * adjustRatio;
   const newVal = direction === "up"
     ? clampParam(tier, param, current + delta)
     : clampParam(tier, param, current - delta);
