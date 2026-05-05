@@ -1,5 +1,6 @@
 import type { FundConfig } from "./types";
 import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
+import { fundTier, getBound, clampParam } from "./param-bounds";
 
 /**
  * Data-driven micro-evolution engine.
@@ -7,38 +8,13 @@ import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
  * Triggered per-fund when >=20 closed trades accumulate since last micro-evolve.
  * Analyzes recent trade outcomes to compute a local gradient for evolvable params,
  * then nudges each param by ±2% of its range toward better performance.
+ *
+ * Uses tier-aware param bounds from param-bounds.ts (shared with PBT evolve.ts)
+ * so medium/large funds are not incorrectly clamped to small-tier limits.
  */
 
 const MICRO_TRADE_THRESHOLD = 20;
 const MICRO_ADJUST_RATIO = 0.02;
-
-interface ParamBound {
-  min: number;
-  max: number;
-  integer?: boolean;
-}
-
-const PARAM_BOUNDS: Record<string, ParamBound> = {
-  minEdge:               { min: 0,    max: 10 },
-  minConfidence:         { min: 0,    max: 1 },
-  maxPerEvent:           { min: 50,   max: 2000, integer: true },
-  maxOpenPositions:      { min: 3,    max: 20,   integer: true },
-  stopLossPercent:       { min: 0.05, max: 0.30 },
-  maxHoldDays:           { min: 3,    max: 30,   integer: true },
-  takeProfitPercent:     { min: 0.05, max: 2.0 },
-  trailingStopPercent:   { min: 0.03, max: 0.50 },
-  probReversalThreshold: { min: 0.05, max: 0.50 },
-  sizingBase:            { min: 50,   max: 500,  integer: true },
-  sizingScale:           { min: 0,    max: 500,  integer: true },
-};
-
-function clampParam(name: string, value: number): number {
-  const bound = PARAM_BOUNDS[name];
-  if (!bound) return value;
-  let v = Math.max(bound.min, Math.min(bound.max, value));
-  if (bound.integer) v = Math.round(v);
-  return Math.round(v * 10000) / 10000;
-}
 
 export interface MicroAdjustment {
   param: string;
@@ -103,7 +79,8 @@ export async function checkAndRunMicroEvolution(
       continue;
     }
 
-    const adjustments = analyzeAndAdjust(trades, fund);
+    const tier = fundTier(fund.initialBalance);
+    const adjustments = analyzeAndAdjust(trades, fund, tier);
 
     if (adjustments.length > 0) {
       const setClauses: string[] = [];
@@ -179,7 +156,11 @@ export async function checkAndRunMicroEvolution(
   return results;
 }
 
-function analyzeAndAdjust(trades: ClosedTrade[], fund: FundConfig): MicroAdjustment[] {
+function analyzeAndAdjust(
+  trades: ClosedTrade[],
+  fund: FundConfig,
+  tier: "small" | "medium" | "large",
+): MicroAdjustment[] {
   const adjustments: MicroAdjustment[] = [];
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
   const winRate = trades.filter(t => t.pnl > 0).length / trades.length;
@@ -194,9 +175,9 @@ function analyzeAndAdjust(trades: ClosedTrade[], fund: FundConfig): MicroAdjustm
   // --- Stop-loss tuning ---
   const stopLossRate = stopLossCount / trades.length;
   if (stopLossRate > 0.4) {
-    adjustments.push(nudge("stopLossPercent", fund, "up"));
+    adjustments.push(nudge("stopLossPercent", fund, tier, "up"));
   } else if (stopLossRate < 0.1 && avgPnl < 0) {
-    adjustments.push(nudge("stopLossPercent", fund, "down"));
+    adjustments.push(nudge("stopLossPercent", fund, tier, "down"));
   }
 
   // --- Take-profit tuning ---
@@ -204,45 +185,50 @@ function analyzeAndAdjust(trades: ClosedTrade[], fund: FundConfig): MicroAdjustm
     const postProfitTrades = trades.filter(t => t.status === "PROFIT_TAKEN");
     const avgTakeReturn = postProfitTrades.reduce((s, t) => s + t.pnl / t.amount, 0) / postProfitTrades.length;
     if (avgTakeReturn > fund.takeProfitPercent * 0.8) {
-      adjustments.push(nudge("takeProfitPercent", fund, "up"));
+      adjustments.push(nudge("takeProfitPercent", fund, tier, "up"));
     }
   } else if (winRate > 0.6) {
-    adjustments.push(nudge("takeProfitPercent", fund, "down"));
+    adjustments.push(nudge("takeProfitPercent", fund, tier, "down"));
   }
 
   // --- Trailing stop tuning ---
   if (trailingStoppedCount / trades.length > 0.3) {
-    adjustments.push(nudge("trailingStopPercent", fund, "up"));
+    adjustments.push(nudge("trailingStopPercent", fund, tier, "up"));
   } else if (trailingStoppedCount === 0 && profitTakenCount > 3) {
-    adjustments.push(nudge("trailingStopPercent", fund, "down"));
+    adjustments.push(nudge("trailingStopPercent", fund, tier, "down"));
   }
 
   // --- Probability reversal tuning ---
   if (reversedCount / trades.length > 0.25) {
-    adjustments.push(nudge("probReversalThreshold", fund, "down"));
+    adjustments.push(nudge("probReversalThreshold", fund, tier, "down"));
   } else if (reversedCount === 0 && stopLossRate > 0.3) {
-    adjustments.push(nudge("probReversalThreshold", fund, "down"));
+    adjustments.push(nudge("probReversalThreshold", fund, tier, "down"));
   }
 
   // --- Expiry tuning ---
   if (expiredCount / trades.length > 0.3) {
-    adjustments.push(nudge("maxHoldDays", fund, "down"));
+    adjustments.push(nudge("maxHoldDays", fund, tier, "down"));
   } else if (expiredCount === 0 && avgPnl > 0) {
-    adjustments.push(nudge("maxHoldDays", fund, "up"));
+    adjustments.push(nudge("maxHoldDays", fund, tier, "up"));
   }
 
   // --- Sizing tuning ---
   if (totalPnl > 0 && winRate > 0.55) {
-    adjustments.push(nudge("sizingBase", fund, "up"));
+    adjustments.push(nudge("sizingBase", fund, tier, "up"));
   } else if (totalPnl < 0 && winRate < 0.4) {
-    adjustments.push(nudge("sizingBase", fund, "down"));
+    adjustments.push(nudge("sizingBase", fund, tier, "down"));
   }
 
   return adjustments.filter(a => a.before !== a.after);
 }
 
-function nudge(param: string, fund: FundConfig, direction: "up" | "down"): MicroAdjustment {
-  const bound = PARAM_BOUNDS[param];
+function nudge(
+  param: string,
+  fund: FundConfig,
+  tier: "small" | "medium" | "large",
+  direction: "up" | "down",
+): MicroAdjustment {
+  const bound = getBound(tier, param);
   const current = (fund as any)[param] as number;
   if (typeof current !== "number" || !bound) {
     return { param, before: current ?? 0, after: current ?? 0, direction };
@@ -251,8 +237,8 @@ function nudge(param: string, fund: FundConfig, direction: "up" | "down"): Micro
   const range = bound.max - bound.min;
   const delta = range * MICRO_ADJUST_RATIO;
   const newVal = direction === "up"
-    ? clampParam(param, current + delta)
-    : clampParam(param, current - delta);
+    ? clampParam(tier, param, current + delta)
+    : clampParam(tier, param, current - delta);
 
   return { param, before: current, after: newVal, direction };
 }

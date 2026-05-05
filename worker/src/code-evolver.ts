@@ -19,6 +19,7 @@ import {
   setActiveVariant,
   logEvolution,
   getCurrentEpoch,
+  createVariant,
   type GeneVariant,
 } from "./gene-variants";
 import { GENE_REGISTRY } from "./gene-interface";
@@ -121,9 +122,37 @@ export async function checkAndRunCodeEvolution(
       promotions.push({ geneId: gene.id, variantId: best.id, score: best.petriScore });
     }
 
-    if (worst && activeRefreshed.length >= 3) {
+    if (worst && activeRefreshed.length >= 2) {
       await eliminateVariant(db, worst.id, nextEpoch);
       eliminations.push({ geneId: gene.id, variantId: worst.id, score: worst.petriScore });
+
+      // Re-seed a fresh challenger when elimination leaves only 1 active variant.
+      // Respawns the eliminated variant's strategyKey at generation+1 with zeroed
+      // stats, so the competition cycle can continue without needing LLM-generated
+      // code. Genes with only one strategyKey are unaffected (they never reach >=2).
+      const willHaveOneActive = activeRefreshed.length - 1 < 2;
+      if (willHaveOneActive) {
+        const gen = worst.generation + 1;
+        const name = `${worst.strategyKey} g${gen}`;
+        await createVariant(
+          db,
+          gene.id,
+          name,
+          worst.strategyKey,
+          worst.description ?? "",
+          worst.id,
+          gen,
+          worst.config ?? {},
+          "respawn",
+          `Fresh challenger respawned from ${worst.id} after epoch ${nextEpoch}`,
+        );
+        await logEvolution(db, nextEpoch, gene.id, "variant_respawned", worst.id,
+          JSON.stringify({
+            strategyKey: worst.strategyKey,
+            parentScore: worst.petriScore,
+            newVariant: name,
+          }), null);
+      }
     }
   }
 
