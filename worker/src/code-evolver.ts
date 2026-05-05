@@ -23,6 +23,8 @@ import {
   type GeneVariant,
 } from "./gene-variants";
 import { GENE_REGISTRY } from "./gene-interface";
+import { generateLLMVariantConfig, isLLMSupportedGene, type LLMVariantStats } from "./gene-llm-evolver";
+import type { Env } from "./types";
 
 const EPOCH_TRADE_THRESHOLD_DEFAULT = 50;
 const MIN_TRADES_FOR_EVAL_DEFAULT = 5;
@@ -50,6 +52,7 @@ export interface CodeEvoOptions {
 export async function checkAndRunCodeEvolution(
   db: D1Database,
   opts: CodeEvoOptions = {},
+  env?: Env,
 ): Promise<EpochResult> {
   const EPOCH_TRADE_THRESHOLD = opts.epochTradeThreshold ?? EPOCH_TRADE_THRESHOLD_DEFAULT;
   const MIN_TRADES_FOR_EVAL = opts.minTradesForEval ?? MIN_TRADES_FOR_EVAL_DEFAULT;
@@ -126,32 +129,51 @@ export async function checkAndRunCodeEvolution(
       await eliminateVariant(db, worst.id, nextEpoch);
       eliminations.push({ geneId: gene.id, variantId: worst.id, score: worst.petriScore });
 
-      // Re-seed a fresh challenger when elimination leaves only 1 active variant.
-      // Respawns the eliminated variant's strategyKey at generation+1 with zeroed
-      // stats, so the competition cycle can continue without needing LLM-generated
-      // code. Genes with only one strategyKey are unaffected (they never reach >=2).
+      // After elimination, spawn a fresh challenger so competition can continue.
+      // Phase 3.5: try LLM config generation first (scanner/monitor only).
+      // Fallback: respawn the eliminated variant's strategyKey with zeroed stats.
       const willHaveOneActive = activeRefreshed.length - 1 < 2;
       if (willHaveOneActive) {
-        const gen = worst.generation + 1;
-        const name = `${worst.strategyKey} g${gen}`;
-        await createVariant(
-          db,
-          gene.id,
-          name,
-          worst.strategyKey,
-          worst.description ?? "",
-          worst.id,
-          gen,
-          worst.config ?? {},
-          "respawn",
-          `Fresh challenger respawned from ${worst.id} after epoch ${nextEpoch}`,
-        );
-        await logEvolution(db, nextEpoch, gene.id, "variant_respawned", worst.id,
-          JSON.stringify({
-            strategyKey: worst.strategyKey,
-            parentScore: worst.petriScore,
-            newVariant: name,
-          }), null);
+        const survivor = activeRefreshed.find(v => v.id !== worst.id);
+        let spawned = false;
+
+        if (env?.AI && isLLMSupportedGene(gene.id) && survivor) {
+          const stats: LLMVariantStats = {
+            tradesEvaluated: survivor.tradesEvaluated,
+            winRate: survivor.tradesEvaluated > 0 ? survivor.winCount / survivor.tradesEvaluated : 0,
+            avgPnl: survivor.tradesEvaluated > 0 ? survivor.totalPnl / survivor.tradesEvaluated : 0,
+            petriScore: survivor.petriScore,
+          };
+          const llmConfig = await generateLLMVariantConfig(env.AI, gene.id, stats);
+          if (llmConfig) {
+            const gen = survivor.generation + 1;
+            const name = `llm-config g${gen}`;
+            await createVariant(
+              db, gene.id, name, "llm-config",
+              (llmConfig.hypothesis as string | undefined) ?? "LLM-generated challenger",
+              survivor.id, gen, llmConfig,
+              "llm-generated",
+              `LLM challenger: ${(llmConfig.hypothesis as string | undefined)?.slice(0, 100) ?? "AI-suggested config"}`,
+            );
+            await logEvolution(db, nextEpoch, gene.id, "variant_llm_generated", survivor.id,
+              JSON.stringify({ config: llmConfig, newVariant: name }), null);
+            spawned = true;
+          }
+        }
+
+        if (!spawned) {
+          const gen = worst.generation + 1;
+          const name = `${worst.strategyKey} g${gen}`;
+          await createVariant(
+            db, gene.id, name, worst.strategyKey,
+            worst.description ?? "",
+            worst.id, gen, worst.config ?? {},
+            "respawn",
+            `Fresh challenger respawned from ${worst.id} after epoch ${nextEpoch}`,
+          );
+          await logEvolution(db, nextEpoch, gene.id, "variant_respawned", worst.id,
+            JSON.stringify({ strategyKey: worst.strategyKey, parentScore: worst.petriScore, newVariant: name }), null);
+        }
       }
     }
   }

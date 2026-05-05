@@ -17,6 +17,13 @@ export interface Env {
   /** Feature flag: set to "true" to route pipeline through runGenomePipeline (Genome orchestrator).
    *  Default "false" keeps the legacy runPipeline path. Rollback: set back to "false" and redeploy. */
   ENABLE_GENOME_PIPELINE?: string;
+  /** Cloudflare Workers AI binding — used for Phase 3.5 LLM variant config generation. */
+  AI?: {
+    run(
+      model: string,
+      input: { messages: Array<{ role: string; content: string }>; max_tokens?: number },
+    ): Promise<{ response?: string }>;
+  };
 }
 
 export interface MarketSnapshot {

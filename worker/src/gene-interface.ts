@@ -19,6 +19,8 @@ export interface ScannerInput {
   minLiquidity: number;
   /** Only include markets resolving within this many days. 0 = no filter (default). */
   endDateWindowDays?: number;
+  /** LLM-generated behavioral overrides for "llm-config" strategy variants. */
+  variantConfig?: Record<string, unknown>;
 }
 
 export interface ScannerOutput {

@@ -84,7 +84,7 @@ async function runScannerGene(
   strategyKey = "baseline",
 ): Promise<ScannerOutput> {
   const strategy = getScannerStrategy(strategyKey);
-  return strategy(input);
+  return strategy(input); // variantConfig is already embedded in input.variantConfig
 }
 
 // ─── Gene Step: Risk ────────────────────────────────────
@@ -102,9 +102,10 @@ async function runMonitorGene(
   db: D1Database,
   funds: FundConfig[],
   strategyKey = "baseline",
+  variantConfig?: Record<string, unknown>,
 ): Promise<MonitorOutput> {
   const strategy = getMonitorStrategy(strategyKey);
-  return strategy(db, funds);
+  return strategy(db, funds, variantConfig);
 }
 
 // ─── Gene Step: Settler ─────────────────────────────────
@@ -219,6 +220,7 @@ export async function runGenomePipeline(
       minVolume: Number(env.MIN_VOLUME) || 5000,
       minLiquidity: Number(env.MIN_LIQUIDITY) || 5000,
       endDateWindowDays: Number(env.SCAN_END_DATE_WINDOW_DAYS) || 0,
+      variantConfig: scannerVariant?.config ?? undefined,
     }, scannerKey);
   } catch (e) {
     console.error("[Genome] Scanner gene failed:", e);
@@ -288,7 +290,7 @@ export async function runGenomePipeline(
   }
 
   // Step 4: Monitor (active selling)
-  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey).catch(async (e): Promise<MonitorOutput> => {
+  const monitorOut = await runMonitorGene(env.DB, funds, monitorKey, monitorVariant?.config ?? undefined).catch(async (e): Promise<MonitorOutput> => {
     console.error("[Genome] Monitor gene failed:", e);
     await storeError(env.DB, "monitor", e);
     return { actions: [], highWaterMarkUpdates: [] };
@@ -347,7 +349,7 @@ export async function runGenomePipeline(
     codeEvoResult = await checkAndRunCodeEvolution(env.DB, {
       epochTradeThreshold: Number(env.EPOCH_TRADE_THRESHOLD) || 10,
       minTradesForEval: Number(env.MIN_TRADES_FOR_EVAL) || 3,
-    });
+    }, env);
     if (codeEvoResult.triggered) {
       emit("CODE_EVOLUTION", {
         epoch: codeEvoResult.epoch,

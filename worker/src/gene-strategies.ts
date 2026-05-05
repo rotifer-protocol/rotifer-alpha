@@ -20,7 +20,11 @@ import { fetchCurrentPrice } from "./price";
 // ─── Strategy Registry Pattern ──────────────────────────
 
 export type ScannerStrategy = (input: ScannerInput) => Promise<ScannerOutput>;
-export type MonitorStrategy = (db: D1Database, funds: FundConfig[]) => Promise<MonitorOutput>;
+export type MonitorStrategy = (
+  db: D1Database,
+  funds: FundConfig[],
+  variantConfig?: Record<string, unknown>,
+) => Promise<MonitorOutput>;
 
 const scannerStrategies = new Map<string, ScannerStrategy>();
 const monitorStrategies = new Map<string, MonitorStrategy>();
@@ -122,6 +126,57 @@ async function monitorAdaptive(db: D1Database, funds: FundConfig[]): Promise<Mon
 }
 
 monitorStrategies.set("adaptive", monitorAdaptive);
+
+// ─── Scanner: llm-config ────────────────────────────────
+// Behavioral overrides driven by LLM-generated JSON config (Phase 3.5).
+// Config fields honored: minVolumeMultiplier, edgeBoost, confidenceFloor, excludeTypes.
+
+async function scannerLLMConfig(input: ScannerInput): Promise<ScannerOutput> {
+  const cfg = input.variantConfig ?? {};
+  const volMul = typeof cfg.minVolumeMultiplier === "number" ? cfg.minVolumeMultiplier : 1.0;
+  const edgeBoost = typeof cfg.edgeBoost === "number" ? cfg.edgeBoost : 0.0;
+  const confFloor = typeof cfg.confidenceFloor === "number" ? cfg.confidenceFloor : 0.0;
+  const excludeTypes = Array.isArray(cfg.excludeTypes) ? cfg.excludeTypes as string[] : [];
+
+  const { markets, totalFetched } = await scan(input.scanLimit);
+  const filtered = applyMarketFilters(markets, input, volMul);
+  const rawSignals = analyze(filtered, new Date().toISOString());
+
+  const signals = rawSignals
+    .filter(s => !excludeTypes.includes(s.type))
+    .filter(s => s.confidence >= confFloor)
+    .map(s => edgeBoost > 0 ? { ...s, edge: s.edge - edgeBoost } : s)
+    .filter(s => s.edge > 0)
+    .sort((a, b) => b.edge - a.edge);
+
+  const avgEdge = signals.length > 0
+    ? Math.round((signals.reduce((s, x) => s + x.edge, 0) / signals.length) * 100) / 100
+    : 0;
+  return { markets, filtered, signals, totalFetched, avgEdge };
+}
+
+scannerStrategies.set("llm-config", scannerLLMConfig);
+
+// ─── Monitor: llm-config ────────────────────────────────
+// Behavioral overrides driven by LLM-generated JSON config (Phase 3.5).
+// Config fields honored: adaptiveMode, youngPositionDays, trailingTightenFactor.
+
+async function monitorLLMConfig(
+  db: D1Database,
+  funds: FundConfig[],
+  variantConfig?: Record<string, unknown>,
+): Promise<MonitorOutput> {
+  const cfg = variantConfig ?? {};
+  const result = await monitor(db, funds, {
+    adaptiveMode: typeof cfg.adaptiveMode === "boolean" ? cfg.adaptiveMode : false,
+    youngPositionDays: typeof cfg.youngPositionDays === "number" ? cfg.youngPositionDays : 3,
+    trailingTightenFactor: typeof cfg.trailingTightenFactor === "number" ? cfg.trailingTightenFactor : 0.5,
+  });
+  await executeMonitorActions(db, result);
+  return result;
+}
+
+monitorStrategies.set("llm-config", monitorLLMConfig);
 
 // ─── Registration helpers ───────────────────────────────
 
