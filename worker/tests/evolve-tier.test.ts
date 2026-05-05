@@ -12,7 +12,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fundTier } from "../src/evolve.js";
+import { fundTier } from "../src/param-bounds.js";
 
 // ─── fundTier boundary tests ────────────────────────────────────────────────
 

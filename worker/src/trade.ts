@@ -29,13 +29,13 @@ import {
 import { fetchPrices } from "./price";
 import { getExecutionMode, recordShadowOpen } from "./execution";
 
-function entryDirection(sig: ArbSignal): string {
+export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
   if (sig.type === "MULTI_OUTCOME_ARB") return sig.direction === "BUY_STRONGEST" ? "BUY_YES" : "SELL_YES";
   return "BUY_YES";
 }
 
-function entryPrice(sig: ArbSignal): number {
+export function entryPrice(sig: ArbSignal): number {
   if (sig.type === "SPREAD") return sig.prices["midpoint"] ?? 0.5;
   const p = Object.entries(sig.prices).filter(
     ([k]) => k !== "sum" && k !== "yes_price_sum" && k !== "volume24hr",
@@ -45,6 +45,30 @@ function entryPrice(sig: ArbSignal): number {
     return Math.max(...p.map(([, v]) => v));
   }
   return Math.min(...p.map(([, v]) => v));
+}
+
+/**
+ * Direction-aware price boundary check.
+ *
+ * Why direction matters: entryPrice() returns max-side for BUY signals
+ * (the high outcome we're buying) and min-side for SELL signals
+ * (the low outcome we're selling, e.g. SELL_WEAKEST in a multi-outcome arb).
+ *
+ * - BUY  signals: price > 0.95 has no upside; < 0.01 is data anomaly.
+ * - SELL signals: LOW price IS the alpha — selling near-zero outcomes and
+ *   letting them settle to 0 is the canonical SELL_WEAKEST profit case.
+ *   Only filter near-1 (no downside) or true zero (data anomaly).
+ *
+ * Bug history (2026-05-05): a uniform `price <= 0.01 || price >= 0.99`
+ * filter caused 7+ hours of trade blockage when SELL_WEAKEST candidates
+ * (Philadelphia 76ers @ 0.0085, Flyers @ 0.01) priced below 0.01,
+ * even though scanner had already validated edge=2.65 / confidence=0.71.
+ */
+export function passesPriceBoundary(price: number, direction: string): boolean {
+  const isBuy = direction.startsWith("BUY");
+  const lowerBound = isBuy ? 0.01 : 0.001;
+  const upperBound = isBuy ? 0.95 : 0.99;
+  return price >= lowerBound && price <= upperBound;
 }
 
 async function getBalance(db: D1Database, fundId: string, initial: number): Promise<number> {
@@ -188,11 +212,11 @@ export async function paperTrade(
       }
 
       const price = entryPrice(sig);
-      if (price <= 0.01 || price >= 0.99) {
+      const dir = entryDirection(sig);
+      if (!passesPriceBoundary(price, dir)) {
         skipReasons.push({ fundId: fund.id, code: "PRICE_BOUNDARY" });
         continue;
       }
-      const dir = entryDirection(sig);
       const shares = amount / price;
 
       const tradeId = crypto.randomUUID();

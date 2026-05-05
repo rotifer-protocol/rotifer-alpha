@@ -291,12 +291,29 @@ test("checkAndRunCodeEvolution: eliminates worst variant when ≥3 exist", async
   assert.equal(v3.status, "eliminated", "v3-bad status should be 'eliminated' in DB");
 });
 
-test("checkAndRunCodeEvolution: does NOT eliminate when only 1-2 variants exist", async () => {
+test("checkAndRunCodeEvolution: does NOT eliminate when only 1 variant exists (preserve last)", async () => {
+  // 2026-05-05 update: elimination threshold lowered from ≥3 to ≥2 (Phase 3.5 §F3)
+  // to keep competition continuous. Only the lone-survivor case (1 variant) is preserved.
   const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
   const { createVariant } = await import("../src/gene-variants");
   const db = new FakeDb();
 
-  // Only 2 variants — elimination requires ≥3 (code-evolver.ts line 113)
+  // Single variant with enough trades to cross epoch threshold (default 50)
+  await createVariant(db as unknown as D1Database, "polymarket-scanner", "v1-baseline", "baseline", "Baseline", null, 0);
+  db.setTrades("polymarket-scanner:v1-baseline", 60, 0.6, 2.0);
+
+  const result = await checkAndRunCodeEvolution(db as unknown as D1Database);
+
+  assert.equal(result.triggered, true);
+  const scannerElim = result.eliminations.filter(e => e.geneId === "polymarket-scanner");
+  assert.equal(scannerElim.length, 0, "Should NOT eliminate when only 1 variant exists (would leave gene empty)");
+});
+
+test("checkAndRunCodeEvolution: DOES eliminate when ≥2 variants exist (post 2026-05-05 §F3)", async () => {
+  const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
+  const { createVariant } = await import("../src/gene-variants");
+  const db = new FakeDb();
+
   await createVariant(db as unknown as D1Database, "polymarket-scanner", "v1-baseline", "baseline", "Baseline", null, 0);
   db.setTrades("polymarket-scanner:v1-baseline", 30, 0.6, 2.0);
 
@@ -306,7 +323,7 @@ test("checkAndRunCodeEvolution: does NOT eliminate when only 1-2 variants exist"
   const result = await checkAndRunCodeEvolution(db as unknown as D1Database);
 
   assert.equal(result.triggered, true);
-  // Even though v2-alt has worse score, it should NOT be eliminated (only 2 variants)
   const scannerElim = result.eliminations.filter(e => e.geneId === "polymarket-scanner");
-  assert.equal(scannerElim.length, 0, "Should NOT eliminate when only 2 variants exist");
+  assert.equal(scannerElim.length, 1, "Should eliminate the worst when ≥2 variants exist");
+  assert.equal(scannerElim[0].variantId, "polymarket-scanner:v2-alt", "v2-alt has worse score, should be eliminated");
 });
