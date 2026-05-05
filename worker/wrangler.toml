@@ -16,8 +16,8 @@ ENABLE_GENOME_PIPELINE = "true"
 SCAN_END_DATE_WINDOW_DAYS = "60"
 
 # Code evolution: trades across all active gene variants before epoch triggers.
-# Default 10 (was 50) — pipeline is healthy now, faster feedback loop is safe.
-EPOCH_TRADE_THRESHOLD = "10"
+# Default 5 (was 10 → 50) — lower threshold enables more genes to participate in each epoch.
+EPOCH_TRADE_THRESHOLD = "5"
 
 # Code evolution: minimum trades per variant for score to count in evaluation.
 # Default 3 (was 5) — lower bar matches the smaller epoch window.
