@@ -1,6 +1,6 @@
 {
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
-  "gene": "polymarket-evolver",
+  "gene": "polymarket-micro-evolver",
   "version": "0.1.0",
   "author": "rotifer-petri",
   "domain": "quantitative-trading",

@@ -191,9 +191,9 @@ export const GENE_REGISTRY: GeneMeta[] = [
     outputSchema: "TraderOutput",
   },
   {
-    id: "polymarket-evolver",
-    name: "Polymarket Strategy Evolver",
-    nameZh: "策略进化器",
+    id: "polymarket-micro-evolver",
+    name: "Polymarket Micro-Evolver",
+    nameZh: "策略微进化器",
     version: "0.1.0",
     fidelity: "native",
     lifecycleStatus: "embedded",

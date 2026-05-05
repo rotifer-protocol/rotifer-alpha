@@ -474,7 +474,7 @@ export const GENOME_BLUEPRINT = {
       { gene: "polymarket-settler", id: "settle", input: { markets: "{{scan.output.markets}}" } },
       { gene: "polymarket-monitor", id: "monitor" },
       { gene: "polymarket-trader", id: "trade", input: { signals: "{{scan.output.signals}}" } },
-      { gene: "polymarket-evolver", id: "micro", input: { mode: "micro" } },
+      { gene: "polymarket-micro-evolver", id: "micro", input: { mode: "micro" } },
     ],
   },
 };
