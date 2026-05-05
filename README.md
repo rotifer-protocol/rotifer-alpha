@@ -42,12 +42,12 @@ Each pipeline stage is implemented as a protocol-compatible Gene with a typed Ph
 
 | Gene | ID | Fidelity | Strategy variants |
 |------|-----|----------|------------------|
-| Scanner | `polymarket-scanner` | HYBRID | `baseline`, `trend-following` |
-| Monitor | `polymarket-monitor` | HYBRID | `baseline`, `adaptive` |
-| Risk | `polymarket-risk` | NATIVE | `baseline` |
-| Settler | `polymarket-settler` | NATIVE | `baseline` |
-| Trader | `polymarket-trader` | NATIVE | `baseline` |
-| Evolver | `polymarket-evolver` | NATIVE | `baseline` |
+| Scanner | `polymarket-scanner` | HYBRID | `baseline`, `trend-following`, LLM-generated `gN` |
+| Monitor | `polymarket-monitor` | HYBRID | `baseline`, `adaptive`, LLM-generated `gN` |
+| Risk | `polymarket-risk` | NATIVE | `baseline`, `conservative`, LLM-generated `gN` |
+| Settler | `polymarket-settler` | NATIVE | `baseline` (excluded from LLM evolution — deterministic settlement) |
+| Trader | `polymarket-trader` | NATIVE | `baseline`, `high-edge`, LLM-generated `gN` |
+| Micro-Evolver | `polymarket-micro-evolver` | NATIVE | `baseline`, `aggressive`, LLM-generated `gN` |
 
 The Genome orchestrator (`worker/src/genome.ts`) composes these into a `Seq { risk → scanner → settler → monitor → trader → micro-evolver }` pipeline, loading the best-performing variant from the database for each step.
 
