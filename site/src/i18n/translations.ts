@@ -132,12 +132,13 @@ const en = {
   probReversalLabel: "Prob. Reversal",
   microEvolutionLabel: "Micro-Evolution",
 
-  // Fitness Chart
-  fitnessTitle: "PBT Rank Score Over Epochs",
-  fitnessEmpty: "PBT Rank Score chart will appear after the first evolution epoch.",
+  // Fitness Chart — shows fund parameter fitness F(g) in [0,1] range,
+  // NOT the gene variant PBT Rank Score (0-100) shown in the Gene Evolution table.
+  fitnessTitle: "Fund Fitness F(g) History",
+  fitnessEmpty: "Fund Fitness F(g) chart will appear after the first evolution epoch.",
   thresholdReset: "0.2: Global Reset threshold",
   thresholdGood: "0.6: All Good threshold",
-  fitnessLabel: "PBT Rank Score",
+  fitnessLabel: "F(g)",
 
   // Param Heatmap
   heatmapTitle: "Parameter Evolution Heatmap",
@@ -548,11 +549,12 @@ const zh: Record<TranslationKey, string> = {
   probReversalLabel: "概率反转",
   microEvolutionLabel: "微进化",
 
-  fitnessTitle: "PBT 排名分曲线",
-  fitnessEmpty: "PBT 排名分图表将在首次进化后显示。",
+  // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 PBT 排名分 (0-100)
+  fitnessTitle: "基金适应度 F(g) 历史曲线",
+  fitnessEmpty: "适应度 F(g) 图表将在首次进化后显示。",
   thresholdReset: "0.2：全局重置阈值",
   thresholdGood: "0.6：良好阈值",
-  fitnessLabel: "PBT 排名分",
+  fitnessLabel: "F(g)",
 
   heatmapTitle: "参数进化热力图",
   heatmapEmpty: "参数热力图将在首次进化后显示。",

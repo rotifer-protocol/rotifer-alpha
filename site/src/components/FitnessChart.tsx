@@ -62,7 +62,8 @@ export function FitnessChart({ logs }: Props) {
             tick={{ fill: "#a1a1aa", fontSize: 11 }}
             axisLine={{ stroke: "#27272a" }}
             tickLine={false}
-            domain={[0, "auto"]}
+            domain={["auto", "auto"]}
+            tickFormatter={(v: number) => v.toFixed(2)}
           />
           <Tooltip
             contentStyle={{
