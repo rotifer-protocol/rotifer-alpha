@@ -507,7 +507,8 @@ function ArenaPage() {
             <div className="glass-card p-8 text-center text-[var(--r-text-muted)]">{t("noFundData")}</div>
           )}
         </div>
-        <div className="lg:col-span-2">
+        {/* Sticky event feed: stays in viewport while user scrolls fund rankings */}
+        <div className="lg:col-span-2 lg:sticky lg:top-4 lg:self-start">
           <h2 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">
             {t("liveEventFeed")}
           </h2>

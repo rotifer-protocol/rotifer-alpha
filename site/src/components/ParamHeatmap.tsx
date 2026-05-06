@@ -90,25 +90,31 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds }: Props) {
 
   return (
     <div className="glass-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
-          {t("heatmapTitle")}
-        </h3>
-        <div className="flex gap-1">
-          {fundIds.map(fid => (
+      {/* Title row */}
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-2">
+        {t("heatmapTitle")}
+      </h3>
+      {/* Fund selector — horizontally scrollable to handle 15 funds */}
+      <div className="flex gap-1 overflow-x-auto pb-1 mb-3 scrollbar-thin">
+        {fundIds.map(fid => {
+          const hasData = fundIdsFromLogs.includes(fid);
+          return (
             <button
               key={fid}
               onClick={() => setActiveFund(fid)}
-              className={`text-xs px-2 py-0.5 rounded transition-all ${
+              className={`text-xs px-2 py-0.5 rounded transition-all whitespace-nowrap ${
                 fid === targetFund
                   ? "bg-[var(--r-accent)] text-white"
-                  : "text-[var(--r-text-muted)] bg-[var(--r-surface)] hover:bg-[var(--r-surface-hover)]"
+                  : hasData
+                    ? "text-[var(--r-text-muted)] bg-[var(--r-surface)] hover:bg-[var(--r-surface-hover)]"
+                    : "text-[var(--r-text-faint)] bg-[var(--r-surface)]/50 hover:bg-[var(--r-surface-hover)] opacity-60"
               }`}
+              title={hasData ? undefined : t("heatmapEmpty")}
             >
               {fundDisplayName(fid, t)}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       {activeParams.length === 0 ? (

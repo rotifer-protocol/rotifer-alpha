@@ -415,8 +415,8 @@ export function EventFeed({ events }: { events: AgentEvent[] }) {
         ))}
       </div>
 
-      {/* Events list */}
-      <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
+      {/* Events list — height fills remaining viewport so sticky column never shows blank space */}
+      <div className="space-y-1.5 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
         {filtered.map((event, i) => {
           const config = EVENT_CONFIG[event.type];
           const IconComp = config?.icon ?? Link;
