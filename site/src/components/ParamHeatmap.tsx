@@ -95,7 +95,7 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds }: Props) {
         {t("heatmapTitle")}
       </h3>
       {/* Fund selector — horizontally scrollable to handle 15 funds */}
-      <div className="flex gap-1 overflow-x-auto pb-1 mb-3 scrollbar-thin">
+      <div className="flex gap-1 overflow-x-auto pb-1 mb-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
         {fundIds.map(fid => {
           const hasData = fundIdsFromLogs.includes(fid);
           return (
