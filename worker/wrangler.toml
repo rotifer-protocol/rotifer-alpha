@@ -15,6 +15,13 @@ ENABLE_GENOME_PIPELINE = "true"
 # near-term event markets. Adjust upward if signal count drops too low.
 SCAN_END_DATE_WINDOW_DAYS = "60"
 
+# Scanner: total unique markets to fetch per scan cycle.
+# 2026-05-06: raised from default 200 to 500 — old SCAN_TAGS approach was broken
+# (all 6 tags returned the same default market list, yielding ~33 unique markets).
+# New scan.ts uses offset pagination [0,100,200,300,400] × 100 = 500 unique markets.
+# Verified: from 2 → 12 multi-outcome events visible (+6x) per scan cycle.
+SCAN_LIMIT = "500"
+
 # Code evolution: trades across all active gene variants before epoch triggers.
 # Default 5 (was 10 → 50) — lower threshold enables more genes to participate in each epoch.
 EPOCH_TRADE_THRESHOLD = "5"

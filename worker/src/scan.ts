@@ -22,7 +22,16 @@ function parseJson(raw: unknown): any[] {
 const GAMMA_API = "https://gamma-api.polymarket.com/markets";
 const SCAN_TIMEOUT_MS = 15_000;
 
-const SCAN_TAGS = ["", "politics", "sports", "crypto", "pop-culture", "business"];
+// 2026-05-06 重构：原 SCAN_TAGS = ["", "politics", "sports", ...] 经实测验证
+// Polymarket Gamma API 的 `tag` 参数完全无效——所有 tag 都返回同一份"默认市场列表"
+// （按 volume 排序的 top 100），导致 6 个 tag 去重后实际只有 ~33 unique markets。
+//
+// 新方案：用 `offset` 翻页（已验证有效）。5 页 × 100 = 500 unique markets。
+// 实测对比：6 tag → 2 multi-outcome events vs offset×5 → 12 multi-outcome events（+6x）
+//
+// 单页上限保守取 100（Gamma API 接受更大值，但分批降低单次请求超时风险）。
+const PAGE_SIZE = 100;
+const PAGE_OFFSETS = [0, 100, 200, 300, 400];
 
 function parseMarket(m: any): MarketSnapshot {
   const ev = Array.isArray(m.events) && m.events.length > 0 ? m.events[0] : null;
@@ -45,13 +54,11 @@ function parseMarket(m: any): MarketSnapshot {
   };
 }
 
-async function fetchBatch(limit: number, tag: string): Promise<any[]> {
+async function fetchBatch(limit: number, offset: number): Promise<any[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
-    const url = tag
-      ? `${GAMMA_API}?limit=${limit}&active=true&closed=false&tag=${tag}`
-      : `${GAMMA_API}?limit=${limit}&active=true&closed=false`;
+    const url = `${GAMMA_API}?limit=${limit}&offset=${offset}&active=true&closed=false`;
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) return [];
     return await res.json() as any[];
@@ -63,8 +70,10 @@ async function fetchBatch(limit: number, tag: string): Promise<any[]> {
 }
 
 export async function scan(limit: number): Promise<{ markets: MarketSnapshot[]; totalFetched: number }> {
-  const perTag = Math.ceil(limit / SCAN_TAGS.length);
-  const batches = await Promise.all(SCAN_TAGS.map(tag => fetchBatch(perTag, tag)));
+  // 计算需要多少页：limit / PAGE_SIZE，上限不超过 PAGE_OFFSETS.length
+  const pagesNeeded = Math.min(PAGE_OFFSETS.length, Math.ceil(limit / PAGE_SIZE));
+  const offsets = PAGE_OFFSETS.slice(0, pagesNeeded);
+  const batches = await Promise.all(offsets.map(off => fetchBatch(PAGE_SIZE, off)));
 
   const seen = new Set<string>();
   const markets: MarketSnapshot[] = [];
