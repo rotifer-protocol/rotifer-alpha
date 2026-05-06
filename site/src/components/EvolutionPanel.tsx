@@ -268,7 +268,11 @@ export function EvolutionPanel() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <LineageTree lineage={data.lineage} />
-        <ParamHeatmap logs={data.logs} selectedFund={null} />
+        <ParamHeatmap
+          logs={data.logs}
+          selectedFund={null}
+          allFundIds={data.lineage.map(l => l.id)}
+        />
       </div>
 
       <div>

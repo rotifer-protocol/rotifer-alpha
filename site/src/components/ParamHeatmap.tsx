@@ -14,6 +14,9 @@ interface EvolutionLog {
 interface Props {
   logs: EvolutionLog[];
   selectedFund: string | null;
+  /** Full list of all funds from fund_configs. When provided, all funds are
+   *  shown as tabs even if they have no evolution log entries yet. */
+  allFundIds?: string[];
 }
 
 const PARAM_I18N: Record<string, TranslationKey> = {
@@ -47,11 +50,14 @@ function intensityColor(pctChange: number): string {
   return `rgba(239, 68, 68, ${0.15 + intensity * 0.55})`;
 }
 
-export function ParamHeatmap({ logs, selectedFund }: Props) {
+export function ParamHeatmap({ logs, selectedFund, allFundIds }: Props) {
   const { t } = useI18n();
-  const fundIds = [...new Set(logs.map(l => l.fund_id))];
+  // Use the full fund list if provided; fall back to deriving from logs.
+  // This ensures funds without any evolution history still appear as buttons.
+  const fundIdsFromLogs = [...new Set(logs.map(l => l.fund_id))];
+  const fundIds = allFundIds && allFundIds.length > 0 ? allFundIds : fundIdsFromLogs;
   const [activeFund, setActiveFund] = useState<string | null>(selectedFund);
-  const targetFund = activeFund || fundIds[0];
+  const targetFund = activeFund || fundIdsFromLogs[0] || fundIds[0];
   const epochs = [...new Set(logs.map(l => l.epoch))].sort((a, b) => a - b);
 
   if (epochs.length === 0 || !targetFund) {

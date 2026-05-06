@@ -630,7 +630,8 @@ export async function apiEvolution(
   headers: HeadersInit,
 ): Promise<Response> {
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 100);
+  // 15 funds × ~10 epochs × ~2 entries/epoch ≈ 300 entries. Default 200 covers most cases.
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 500);
 
   const logs = await db.prepare(
     "SELECT * FROM evolution_log ORDER BY epoch DESC, executed_at DESC LIMIT ?",
