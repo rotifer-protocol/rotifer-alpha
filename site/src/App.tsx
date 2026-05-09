@@ -372,11 +372,37 @@ function HeartbeatBar({ heartbeat }: { heartbeat: HeartbeatData | null }) {
 function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent[] }) {
   const { t } = useI18n();
   const { data: hbResp } = useFetch<{ heartbeat: HeartbeatData | null }>("/api/heartbeat", 60_000);
+  // P3: today's change — pull recent snapshots (60 = 4 days × 15 funds upper bound)
+  const { data: snapResp } = useFetch<{ snapshots: SnapshotData[] }>("/api/snapshots?limit=60", 300_000);
 
   const totalPool = funds.reduce((s, f) => s + f.totalValue, 0);
   const initialCapital = funds.reduce((s, f) => s + f.initialBalance, 0);
   const totalPnl = totalPool - initialCapital;
   const totalReturnPct = initialCapital > 0 ? ((totalPool - initialCapital) / initialCapital) * 100 : 0;
+
+  // P3: today's change — compare current totalPool to most-recent snapshot per fund.
+  // Snapshots are written daily at UTC 00:00; we only count funds that have at least one snapshot
+  // (and only the matching subset on the live side) so the two pools always align.
+  let todayChangePct: number | null = null;
+  if (snapResp?.snapshots && snapResp.snapshots.length > 0) {
+    const latestByFund = new Map<string, SnapshotData>();
+    for (const s of snapResp.snapshots) {
+      const cur = latestByFund.get(s.fund_id);
+      if (!cur || new Date(s.date) > new Date(cur.date)) latestByFund.set(s.fund_id, s);
+    }
+    let yesterdayPool = 0;
+    let todayPoolMatched = 0;
+    for (const f of funds) {
+      const snap = latestByFund.get(f.id);
+      if (snap) {
+        yesterdayPool += snap.total_value;
+        todayPoolMatched += f.totalValue;
+      }
+    }
+    if (yesterdayPool > 0) {
+      todayChangePct = ((todayPoolMatched - yesterdayPool) / yesterdayPool) * 100;
+    }
+  }
   const totalOpen = funds.reduce((s, f) => s + f.openPositions, 0);
   const totalWins = funds.reduce((s, f) => s + (f.winCount ?? 0), 0);
   const totalLosses = funds.reduce((s, f) => s + (f.lossCount ?? 0), 0);
@@ -384,10 +410,32 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
   const avgWR = totalClosed > 0 ? totalWins / totalClosed : 0;
   const wrSufficient = totalClosed >= 3;
 
+  // P0: realized vs unrealized split (industry standard B2 — IBKR/Coinbase/Polymarket all show this)
+  const totalRealized = funds.reduce((s, f) => s + (f.realizedPnl ?? 0), 0);
+  const totalUnrealized = funds.reduce((s, f) => s + (f.unrealizedPnl ?? 0), 0);
+  const realizedPct = initialCapital > 0 ? (totalRealized / initialCapital) * 100 : 0;
+  const unrealizedPct = initialCapital > 0 ? (totalUnrealized / initialCapital) * 100 : 0;
+
+  // P1: unrealized share warning (Coinbase B4 — flag when unrealized dominates declared profit)
+  // Trigger only when there's a meaningful positive total profit and >70% is paper
+  const unrealizedShare = totalPnl > 0 && totalUnrealized > 0
+    ? totalUnrealized / totalPnl
+    : 0;
+  const showUnrealizedWarning = totalPnl > 0 && unrealizedShare > 0.7;
+
   const pnlColor = totalPnl > 0 ? "text-[var(--r-green)]" : totalPnl < 0 ? "text-[var(--r-red)]" : "";
   const returnColor = totalReturnPct > 0 ? "text-[var(--r-green)]" : totalReturnPct < 0 ? "text-[var(--r-red)]" : "";
   const pnlPrefix = totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : "";
   const returnPrefix = totalReturnPct > 0 ? "+" : "";
+
+  const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const realizedColor = totalRealized > 0 ? "text-[var(--r-green)]" : totalRealized < 0 ? "text-[var(--r-red)]" : "text-[var(--r-text-faint)]";
+  const unrealizedColor = totalUnrealized > 0 ? "text-[var(--r-green)]" : totalUnrealized < 0 ? "text-[var(--r-red)]" : "text-[var(--r-text-faint)]";
+  const todayColor = todayChangePct == null
+    ? "text-[var(--r-text-faint)]"
+    : todayChangePct > 0 ? "text-[var(--r-green)]"
+    : todayChangePct < 0 ? "text-[var(--r-red)]"
+    : "text-[var(--r-text-faint)]";
 
   const highlight = useHighlight(events);
 
@@ -400,16 +448,36 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
           <div className="text-center">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalPool")}</p>
             <p className="text-xl font-bold font-mono tabular-nums">${totalPool.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            {/* P3: today's change — visual sibling to total-return realized/unrealized split */}
+            {todayChangePct != null && (
+              <p className={`text-[10px] font-mono tabular-nums mt-0.5 ${todayColor}`}>
+                {t("heroToday")} {fmtPct(todayChangePct)}
+              </p>
+            )}
           </div>
           <div className="text-center">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalReturn")}</p>
             <p className={`text-xl font-bold font-mono tabular-nums ${returnColor}`}>{returnPrefix}{totalReturnPct.toFixed(2)}%</p>
+            {/* P0: realized / unrealized split — industry standard B2 */}
+            <p className="text-[10px] font-mono tabular-nums mt-0.5">
+              <span className={realizedColor}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
+              <span className="text-[var(--r-text-faint)] mx-1">·</span>
+              <span className={unrealizedColor}>{t("heroUnrealized")} {fmtPct(unrealizedPct)}</span>
+            </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroActivePositions")}</p>
             <p className="text-xl font-bold font-mono tabular-nums">{totalOpen}</p>
           </div>
         </div>
+
+        {/* P1: unrealized share warning — industry standard B4 (Coinbase) */}
+        {showUnrealizedWarning && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-[11px]">
+            <span className="text-amber-500 font-bold tabular-nums shrink-0">{Math.round(unrealizedShare * 100)}%</span>
+            <span className="text-amber-200/90">{t("heroUnrealizedWarning")}</span>
+          </div>
+        )}
 
         {/* Secondary row: 3 supplementary metrics */}
         <div className="grid grid-cols-3 gap-4 mb-4">
