@@ -28,6 +28,7 @@ import {
 } from "./accounting";
 import { fetchPrices } from "./price";
 import { getExecutionMode, recordShadowOpen } from "./execution";
+import { isOTMPosition, calcOTMCap } from "./risk-policy";
 
 export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
@@ -217,6 +218,18 @@ export async function paperTrade(
         skipReasons.push({ fundId: fund.id, code: "PRICE_BOUNDARY" });
         continue;
       }
+
+      // P2 (Path A, founder approved 2026-05-10): hard OTM single-position cap.
+      // Constants in risk-policy.ts are intentionally NOT in EVOLVABLE_PARAMS —
+      // catastrophe protection must not be self-tuned by funds chasing fitness.
+      if (isOTMPosition(price, dir)) {
+        const otmCap = calcOTMCap(currentEquity);
+        if (amount > otmCap) {
+          skipReasons.push({ fundId: fund.id, code: "OTM_CAP" });
+          continue;
+        }
+      }
+
       const shares = amount / price;
 
       const tradeId = crypto.randomUUID();
