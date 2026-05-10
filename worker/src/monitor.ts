@@ -8,14 +8,16 @@
  *   - calcUnrealizedPnl() — imported, pure arithmetic
  *
  * DB SIDE EFFECTS:
- *   - monitor() → reads paper_trades
+ *   - monitor() → reads paper_trades (incl. last_price for mark-to-market)
  *   - executeMonitorActions() → writes paper_trades (status update, pnl recording)
  *
- * EXTERNAL SIDE EFFECTS:
- *   - fetchPrices() → batch live prices (price.ts → Polymarket API)
+ * EXTERNAL SIDE EFFECTS (D-Lite, 2026-05-10):
+ *   - none — last_price is read from D1 (refreshed every 5min by price-refresh.ts).
+ *   - Stale rows are explicitly skipped (no decision on stale data).
  */
 import type { FundConfig, TradeStatus } from "./types";
-import { fetchPrices, calcUnrealizedPnl } from "./price";
+import { calcUnrealizedPnl, isStale } from "./price";
+import { isUnreasonableLoss } from "./risk-policy";
 import { getExecutionMode, recordShadowClose } from "./execution";
 
 export interface MonitorAction {
@@ -49,6 +51,9 @@ interface OpenTrade {
   amount: number;
   high_water_mark: number | null;
   slug: string;
+  /** D-Lite mark-to-market source (refreshed by price-refresh.ts cron) */
+  last_price: number | null;
+  last_price_updated_at: string | null;
 }
 
 export interface MonitorOptions {
@@ -68,23 +73,34 @@ export async function monitor(
   const tightenFactor = options?.trailingTightenFactor ?? 0.5;
 
   const allOpen = await db.prepare(
-    "SELECT id, fund_id, market_id, question, direction, entry_price, shares, amount, high_water_mark, slug, opened_at FROM paper_trades WHERE status = 'OPEN'",
+    `SELECT id, fund_id, market_id, question, direction, entry_price, shares, amount,
+            high_water_mark, slug, opened_at, last_price, last_price_updated_at
+     FROM paper_trades WHERE status = 'OPEN'`,
   ).all();
   const trades = (allOpen.results ?? []) as unknown as (OpenTrade & { opened_at?: string })[];
   if (trades.length === 0) return result;
 
   const fundMap = new Map(funds.map(f => [f.id, f]));
-  const marketIds = trades.map(t => t.market_id);
-  const priceMap = await fetchPrices(marketIds);
+  const nowMs = Date.now();
 
   for (const trade of trades) {
     const fund = fundMap.get(trade.fund_id);
     if (!fund) continue;
 
-    const currentPrice = priceMap.get(trade.market_id);
-    if (currentPrice === undefined) continue;
+    // D-Lite stale guard: never act on stale or NULL last_price.
+    // Decisions made on stale data caused 9.7%→6.2% jitter — rather than
+    // silently using a possibly-old price, skip this trade and let the next
+    // cron cycle re-evaluate after price-refresh.ts has updated D1.
+    const currentPrice = trade.last_price;
+    if (typeof currentPrice !== "number" || isStale(trade.last_price_updated_at, nowMs)) {
+      continue;
+    }
 
     const unrealized = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, currentPrice);
+    // Track 3 sanity guard (2026-05-10): refuse to act on a mark that implies
+    // > 1000% loss. Catches Polymarket-style placeholder values bleeding past
+    // D-Lite (defense-in-depth) without false-tripping on legitimate tail losses.
+    if (isUnreasonableLoss(unrealized, trade.amount)) continue;
     const returnPct = unrealized / trade.amount;
 
     const holdDays = trade.opened_at

@@ -36,7 +36,8 @@ import {
 } from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
 import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
-import { storeHeartbeat, storeError } from "./execution";
+import { isKillSwitchActive, storeHeartbeat, storeError } from "./execution";
+import { refreshOpenPrices } from "./price-refresh";
 
 // ─── GENE_REGISTRY ↔ Phenotype consistency check ────────
 //
@@ -164,6 +165,40 @@ export async function runGenomePipeline(
   const ts = new Date().toISOString();
   const events: AgentEvent[] = [];
 
+  if (await isKillSwitchActive(env.DB)) {
+    console.warn("[Genome] KILL_SWITCH active — pipeline halted");
+    await storeHeartbeat(env.DB, {
+      lastScanAt: ts,
+      totalFetched: 0,
+      marketsFiltered: 0,
+      signalsFound: 0,
+      tradesOpened: 0,
+      settlementsProcessed: 0,
+      monitorActions: 0,
+      riskStops: 0,
+      riskExpired: 0,
+      skipSummary: { KILL_SWITCH: 1 },
+      skipByFund: { _pipeline_halted: { KILL_SWITCH: 1 } },
+      priceRefresh: {
+        totalOpen: 0,
+        refreshed: 0,
+        fetchFailed: 0,
+        missingTokenId: 0,
+        backfilledTokenIds: 0,
+      },
+    });
+    return {
+      scanner: { markets: [], filtered: [], signals: [], totalFetched: 0, avgEdge: 0 },
+      risk: { stopped: [], expired: [] },
+      monitor: { actions: [], highWaterMarkUpdates: [] },
+      settler: { settlements: [] },
+      trader: { trades: [] },
+      microEvolver: { results: [] },
+      events,
+      timestamp: ts,
+    };
+  }
+
   // Eagerly write a partial heartbeat at pipeline start so /api/heartbeat always
   // reflects a live timestamp, even if the pipeline crashes mid-run.
   // This also acts as a diagnostic: if this timestamp never updates, the pipeline
@@ -200,6 +235,25 @@ export async function runGenomePipeline(
   const riskKey         = riskVariant?.strategyKey         ?? "baseline";
   const traderKey       = traderVariant?.strategyKey       ?? "baseline";
   const microEvolverKey = microEvolverVariant?.strategyKey ?? "baseline";
+
+  // ─── Phase A: D-Lite price refresh (ADR-273 path-A) ──────
+  // Runs BEFORE risk/monitor/scan/trade so all downstream Genes read the freshest
+  // mark-to-market price from D1.last_price (CLOB mid). Failures are non-fatal —
+  // stale positions surface via staleCount, callers (monitor/risk) skip them.
+  let priceRefresh = { totalOpen: 0, refreshed: 0, fetchFailed: 0, missingTokenId: 0, backfilledTokenIds: 0 };
+  try {
+    const r = await refreshOpenPrices(env.DB);
+    priceRefresh = {
+      totalOpen: r.totalOpen,
+      refreshed: r.refreshed,
+      fetchFailed: r.fetchFailed,
+      missingTokenId: r.missingTokenId,
+      backfilledTokenIds: r.backfilledTokenIds,
+    };
+  } catch (e) {
+    console.error("[Genome] Price refresh failed (non-fatal):", e);
+    await storeError(env.DB, "price-refresh", e).catch(() => {});
+  }
 
   // Step 1: Risk checks (stop-loss, expiry)
   const risk = await runRiskGene(env.DB, funds, riskKey, riskVariant?.config ?? undefined).catch(async (e): Promise<RiskOutput> => {
@@ -252,6 +306,7 @@ export async function runGenomePipeline(
       tradesOpened: 0, settlementsProcessed: 0, monitorActions: 0,
       riskStops: risk.stopped.length, riskExpired: risk.expired.length,
       skipSummary: {}, skipByFund: { _scanner_failed: { ERROR: 1 } },
+      priceRefresh,
     });
     return {
       scanner: { markets: [], filtered: [], signals: [], totalFetched: 0, avgEdge: 0 },
@@ -413,6 +468,7 @@ export async function runGenomePipeline(
     riskExpired: risk.expired.length,
     skipSummary: aggregateSkipReasonsLocal(traderSkipReasons),
     skipByFund: aggregateSkipReasonsByFundLocal(traderSkipReasons),
+    priceRefresh,
   });
 
   // Broadcast all collected events (non-critical — slow DO calls must not block above)

@@ -116,6 +116,15 @@ export interface PipelineHeartbeat {
   // 2026-05-04: Per-fund skip breakdown for diagnostics (e.g. "why turtle never trades?")
   // Format: { fundId: { skipCode: count } }
   skipByFund?: Record<string, Record<string, number>>;
+  // 2026-05-10 D-Lite: per-cycle price refresh telemetry (CLOB mark-to-market path).
+  // Surfaces token_id backfill progress + CLOB fetch success rate for /api/heartbeat.
+  priceRefresh?: {
+    totalOpen: number;
+    refreshed: number;
+    fetchFailed: number;
+    missingTokenId: number;
+    backfilledTokenIds: number;
+  };
 }
 
 export async function storeHeartbeat(db: D1Database, hb: PipelineHeartbeat): Promise<void> {

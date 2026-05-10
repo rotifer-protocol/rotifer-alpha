@@ -8,13 +8,14 @@
  *   - Skip reason classification
  *
  * DB SIDE EFFECTS:
- *   - paperTrade()    → reads/writes balance + duplicates + trades
+ *   - paperTrade()    → reads paper_trades (with last_price), writes new trades
  *   - getBalance()    → reads
  *   - isDuplicate()   → reads
  *   - isFrozen()      → reads
  *
- * EXTERNAL SIDE EFFECTS:
- *   - fetchPrices()   → open position pricing (price.ts → Polymarket API)
+ * EXTERNAL SIDE EFFECTS (D-Lite, 2026-05-10):
+ *   - fetchClobTokenIds() → only on INSERT new trades (token_id backfill)
+ *   - mark-to-market reads come from D1.last_price, NOT per-request fetch.
  */
 import type { ArbSignal, FundConfig, MarketSnapshot, TradeAction } from "./types";
 import { sizing } from "./types";
@@ -24,11 +25,13 @@ import {
   calculateDrawdownPct,
   calculateOpenPositionStats,
   calculateTotalValue,
+  type OpenTradeWithMark,
+  OPEN_TRADE_MARK_COLUMNS_SQL,
   PERFORMANCE_REALIZED_TRADE_WHERE_SQL,
 } from "./accounting";
-import { fetchPrices } from "./price";
+import { fetchClobTokenIds } from "./price";
 import { getExecutionMode, recordShadowOpen } from "./execution";
-import { isOTMPosition, calcOTMCap } from "./risk-policy";
+import { isOTMPosition, calcOTMCap, isUnsafeSellEntry } from "./risk-policy";
 
 export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
@@ -140,19 +143,14 @@ export async function paperTrade(
 
     let cash = await getBalance(db, fund.id, fund.initialBalance);
     let positionsOpened = 0;
+    // D-Lite: read last_price from D1 (refreshed every 5min by price-refresh.ts cron),
+    // never fetch per-request. Stale rows contribute 0 to unrealized — see
+    // calculateOpenPositionStats() for stale-treatment policy.
     const openTradesResult = await db.prepare(
-      "SELECT market_id, direction, shares, amount FROM paper_trades WHERE fund_id = ? AND status = 'OPEN'",
-    ).bind(fund.id).all<{
-      market_id: string;
-      direction: string;
-      shares: number;
-      amount: number;
-    }>();
+      `SELECT ${OPEN_TRADE_MARK_COLUMNS_SQL} FROM paper_trades WHERE fund_id = ? AND status = 'OPEN'`,
+    ).bind(fund.id).all<OpenTradeWithMark>();
     const openTrades = openTradesResult.results ?? [];
-    const priceMap = openTrades.length > 0
-      ? await fetchPrices(openTrades.map(trade => trade.market_id))
-      : new Map<string, number>();
-    const openStats = calculateOpenPositionStats(openTrades, priceMap);
+    const openStats = calculateOpenPositionStats(openTrades);
     const realizedPnl = cash + openStats.invested - fund.initialBalance;
     const currentEquity = calculateTotalValue(fund.initialBalance, realizedPnl, openStats.unrealizedPnl);
     const currentDrawdown = calculateDrawdownPct(fund.initialBalance, currentEquity);
@@ -219,6 +217,17 @@ export async function paperTrade(
         continue;
       }
 
+      // Track 2 (P0, 2026-05-10): hard reject SELL_YES at deep-OTM entry.
+      // Forensic: 33 SELL_YES @ entry 0.0015-0.025 produced -$86.28M phantom
+      // losses (Gamma 0.5 placeholder × 1666× leverage). D-Lite eliminated the
+      // API entry; this rule eliminates the leverage amplifier — together they
+      // prevent recurrence. BUY at deep OTM stays allowed (long-shot bet,
+      // asymmetric upside) but is gated by OTM_CAP below.
+      if (isUnsafeSellEntry(price, dir)) {
+        skipReasons.push({ fundId: fund.id, code: "LOW_PRICE_REJECT" });
+        continue;
+      }
+
       // P2 (Path A, founder approved 2026-05-10): hard OTM single-position cap.
       // Constants in risk-policy.ts are intentionally NOT in EVOLVABLE_PARAMS —
       // catastrophe protection must not be self-tuned by funds chasing fitness.
@@ -233,9 +242,30 @@ export async function paperTrade(
       const shares = amount / price;
 
       const tradeId = crypto.randomUUID();
+      // D-Lite (Phase 6): best-effort token_id discovery at INSERT time so the
+      // cron price refresher never has to lazy-backfill new rows. If Gamma is
+      // unreachable we still INSERT with token_id=NULL — refreshOpenPrices()
+      // will pick it up on the next cycle.
+      // last_price is initialized to entry_price (the executed price = freshest
+      // possible mark-to-market value) and last_price_updated_at = trade ts.
+      let tokenId: string | null = null;
+      try {
+        const ids = await fetchClobTokenIds(effectiveMarketId);
+        tokenId = ids?.[0] ?? null;
+      } catch {
+        tokenId = null;
+      }
       await db.prepare(
-        "INSERT INTO paper_trades (id, fund_id, signal_id, market_id, slug, question, direction, entry_price, shares, amount, status, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)",
-      ).bind(tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount, ts).run();
+        `INSERT INTO paper_trades (
+          id, fund_id, signal_id, market_id, slug, question, direction,
+          entry_price, shares, amount, status, opened_at,
+          token_id, last_price, last_price_updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
+      ).bind(
+        tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir,
+        price, shares, amount, ts,
+        tokenId, price, ts,
+      ).run();
 
       const mode = await getExecutionMode(db);
       if (mode === "shadow") {

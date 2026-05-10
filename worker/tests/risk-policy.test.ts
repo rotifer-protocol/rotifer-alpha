@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   OTM_PRICE_THRESHOLD,
   MAX_OTM_POSITION_RATIO,
+  SANITY_LOSS_MULTIPLIER,
   isOTMPosition,
   calcOTMCap,
+  isUnsafeSellEntry,
+  isUnreasonableLoss,
 } from "../src/risk-policy";
 
 // ============================================================
@@ -125,4 +128,106 @@ test("MAX_OTM_POSITION_RATIO is 5% (calibration anchor)", () => {
   // (and ideally an ADR). Locking value via test.
   assert.equal(MAX_OTM_POSITION_RATIO, 0.05);
   assert.equal(OTM_PRICE_THRESHOLD, 0.05);
+});
+
+// ============================================================
+// Track 2 — SELL_YES low-entry hard reject (2026-05-10 forensic)
+// ============================================================
+//
+// Background: 33 SELL_YES @ entry 0.0015-0.025 produced -$86.28M phantom
+// losses (Polymarket Gamma 0.5 placeholder × 1666× leverage). D-Lite
+// eliminates the API entry; this rule eliminates the leverage amplifier.
+// Together they prevent recurrence.
+
+test("isUnsafeSellEntry: SELL_YES at canonical bogus entry (0.0015) is rejected", () => {
+  // Worst historical trade: shark_l SELL_YES @ 0.0015 → -$12.46M phantom
+  assert.equal(isUnsafeSellEntry(0.0015, "SELL_YES"), true);
+});
+
+test("isUnsafeSellEntry: SELL_YES just below threshold (0.049) is rejected", () => {
+  assert.equal(isUnsafeSellEntry(0.049, "SELL_YES"), true);
+});
+
+test("isUnsafeSellEntry: SELL_YES exactly at threshold (0.05) is allowed", () => {
+  // Threshold is exclusive (matches isOTMPosition semantics)
+  assert.equal(isUnsafeSellEntry(0.05, "SELL_YES"), false);
+});
+
+test("isUnsafeSellEntry: SELL_YES at moderate price (0.10) is allowed", () => {
+  // 10% probability — leverage is bounded at 10× amount, manageable
+  assert.equal(isUnsafeSellEntry(0.10, "SELL_YES"), false);
+});
+
+test("isUnsafeSellEntry: BUY_YES at deep OTM is NOT rejected (long-shot is allowed)", () => {
+  // BUY_YES @ low price = long-shot bet, asymmetric upside, max loss = -100%
+  // Stays allowed but is gated by OTM_CAP (5% equity max).
+  assert.equal(isUnsafeSellEntry(0.0015, "BUY_YES"), false);
+});
+
+test("isUnsafeSellEntry: BUY_YES at any price is NOT rejected", () => {
+  // Track 2 only targets SELL_YES leverage explosion
+  assert.equal(isUnsafeSellEntry(0.001, "BUY_YES"), false);
+  assert.equal(isUnsafeSellEntry(0.04, "BUY_YES"), false);
+  assert.equal(isUnsafeSellEntry(0.5, "BUY_YES"), false);
+  assert.equal(isUnsafeSellEntry(0.95, "BUY_YES"), false);
+});
+
+test("isUnsafeSellEntry: zero/negative price not classified (data anomaly handled upstream)", () => {
+  // PRICE_BOUNDARY check upstream catches these; defensively: not unsafe
+  // (avoids a downstream skip masking an upstream missing filter)
+  assert.equal(isUnsafeSellEntry(0, "SELL_YES"), false);
+  assert.equal(isUnsafeSellEntry(-0.01, "SELL_YES"), false);
+});
+
+// ============================================================
+// Track 3 — Sanity guard against implausible mark prices (2026-05-10)
+// ============================================================
+//
+// Defense-in-depth: even with D-Lite (no Gamma API mark) and Track 2
+// (no SELL_YES @ entry<0.05), refuse to act on any mark that implies
+// > 1000% loss. Catches future API quirks without false-tripping on
+// legitimate tail losses.
+
+test("isUnreasonableLoss: small loss is normal", () => {
+  // -50% loss on $100 position = -$50 → reasonable
+  assert.equal(isUnreasonableLoss(-50, 100), false);
+});
+
+test("isUnreasonableLoss: full -100% loss is normal (BUY_YES max)", () => {
+  // BUY_YES going to 0: loss = -amount → -100% → still reasonable
+  assert.equal(isUnreasonableLoss(-100, 100), false);
+});
+
+test("isUnreasonableLoss: -500% loss is normal for SELL_YES tail", () => {
+  // SELL_YES @ entry=0.05 going to 0.30: loss = (0.30 - 0.05) × shares
+  // shares = amount/0.05 = 20× amount → loss = 0.25 × 20 × amount = 5× amount
+  // = 500% loss — within sanity band, allowed
+  assert.equal(isUnreasonableLoss(-500, 100), false);
+});
+
+test("isUnreasonableLoss: -10× exactly is the boundary (not flagged)", () => {
+  // Strictly less than -10× trips (SANITY_LOSS_MULTIPLIER × amount)
+  assert.equal(isUnreasonableLoss(-1000, 100), false);
+});
+
+test("isUnreasonableLoss: -1001 on $100 amount IS flagged", () => {
+  assert.equal(isUnreasonableLoss(-1001, 100), true);
+});
+
+test("isUnreasonableLoss: historical 33233% bogus trip — caught", () => {
+  // shark_l SELL_YES @ entry=0.0015, shares=25M, amount=$37,500
+  // bogus mark 0.5: loss = $37,500 - 25M×0.5 = -$12,462,500
+  // 332× position size → trips sanity guard
+  assert.equal(isUnreasonableLoss(-12_462_500, 37_500), true);
+});
+
+test("isUnreasonableLoss: zero or negative amount does not flag", () => {
+  // Defensive: amount≤0 means malformed trade, don't trip on it
+  assert.equal(isUnreasonableLoss(-1000, 0), false);
+  assert.equal(isUnreasonableLoss(-1000, -50), false);
+});
+
+test("SANITY_LOSS_MULTIPLIER is 10 (calibration anchor)", () => {
+  // Sentinel: changing this requires conscious review.
+  assert.equal(SANITY_LOSS_MULTIPLIER, 10);
 });

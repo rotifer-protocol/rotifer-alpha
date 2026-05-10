@@ -1,21 +1,29 @@
 /**
  * RiskMonitor Durable Object — high-frequency stop-loss sentinel.
  *
- * Uses DO alarms to wake every 60s, fetch live prices, and check
- * stop-loss / take-profit / trailing-stop thresholds for all open
- * positions. When a breach is detected, closes the trade in D1
- * and notifies the LiveHub for real-time UI updates.
+ * Uses DO alarms to wake every 60s, read mark prices from D1.last_price
+ * (refreshed every 5min by price-refresh.ts cron), and check stop-loss
+ * thresholds for all open positions. When a breach is detected, closes
+ * the trade in D1 and notifies the LiveHub for real-time UI updates.
+ *
+ * D-Lite (2026-05-10): no longer fetches Gamma API per-alarm. The DO
+ * runs at 60s cadence but the underlying mark refreshes at 5min — this
+ * means stop-loss reaction has up to 5min latency to live market moves
+ * (acceptable for paper trading, and the previous Gamma 24h MA was a
+ * 24-HOUR-LAG mark, so this is still an order of magnitude improvement).
+ * Stale rows are skipped — better to wait one cron tick than act wrongly.
  *
  * Architecture:
  *   Worker POST /arm   → stores fund configs + sets first alarm
- *   DO alarm()         → reads open trades, fetches prices, evaluates risk
+ *   DO alarm()         → reads open trades + last_price, evaluates risk
  *   DO alarm()         → re-arms for next cycle (self-sustaining loop)
  *   Worker POST /disarm → cancels alarm loop
  */
 
 import type { FundConfig, Settlement, AgentEvent } from "./types";
-import { calcUnrealizedPnl, fetchPrices } from "./price";
-import { getExecutionMode, recordShadowClose } from "./execution";
+import { calcUnrealizedPnl, isStale } from "./price";
+import { isUnreasonableLoss } from "./risk-policy";
+import { getExecutionMode, recordShadowClose, isKillSwitchActive } from "./execution";
 
 const ALARM_INTERVAL_MS = 60_000;
 
@@ -68,10 +76,19 @@ export class RiskMonitor {
       return;
     }
 
-    try {
-      await this.runRiskScan(config.funds);
-    } catch (e) {
-      console.error("RiskMonitor alarm error:", e);
+    // KILL_SWITCH check (round-2 fix, 2026-05-10): DO alarms run independently
+    // of runPipeline(), so the existing kill switch in index.ts only stopped
+    // the cron-driven pipeline — the DO kept firing every 60s and triggering
+    // stop-loss closures. While kill switch is on we still re-arm the DO so
+    // it can resume immediately when the operator flips the switch off, but
+    // we skip the actual risk scan to prevent acting on poisoned marks.
+    const killed = await isKillSwitchActive(this.env.DB);
+    if (!killed) {
+      try {
+        await this.runRiskScan(config.funds);
+      } catch (e) {
+        console.error("RiskMonitor alarm error:", e);
+      }
     }
 
     if (config.armed) {
@@ -91,22 +108,25 @@ export class RiskMonitor {
     if (!openTrades.results || openTrades.results.length === 0) return;
 
     const trades = openTrades.results as any[];
-    const marketIds = [...new Set(trades.map((t: any) => t.market_id as string))];
-    if (marketIds.length === 0) return;
-
-    const priceMap = await fetchPrices(marketIds);
-    if (priceMap.size === 0) return;
-
+    const nowMs = now.getTime();
     const stopped: Settlement[] = [];
 
     for (const trade of trades) {
       const fund = funds.find(f => f.id === trade.fund_id);
       if (!fund) continue;
 
-      const currentPrice = priceMap.get(trade.market_id);
-      if (currentPrice === undefined) continue;
+      // D-Lite: read mark from D1 (price-refresh.ts cron, 5min cadence).
+      // Stale → skip; never act on stale data (prevents jitter from CLOB
+      // outages bleeding into live decisions).
+      const lastPrice = trade.last_price;
+      if (typeof lastPrice !== "number" || isStale(trade.last_price_updated_at, nowMs)) {
+        continue;
+      }
+      const currentPrice = lastPrice;
 
       const unrealizedPnl = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, currentPrice);
+      // Track 3 sanity guard (2026-05-10): defer stop-loss on implausible mark.
+      if (isUnreasonableLoss(unrealizedPnl, trade.amount)) continue;
       const lossPct = -unrealizedPnl / trade.amount;
 
       if (lossPct >= fund.stopLossPercent) {

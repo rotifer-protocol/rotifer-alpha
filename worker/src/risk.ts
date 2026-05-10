@@ -8,14 +8,16 @@
  *   - effectiveSizing() — position sizing with drawdown adjustment
  *
  * DB SIDE EFFECTS:
- *   - checkRiskLimits() → reads/writes paper_trades
+ *   - checkRiskLimits() → reads/writes paper_trades (last_price for mark)
  *   - getOpenPositionCount() → reads paper_trades
  *
- * EXTERNAL SIDE EFFECTS:
- *   - fetchCurrentPrice() → live price (price.ts → Polymarket API)
+ * EXTERNAL SIDE EFFECTS (D-Lite, 2026-05-10):
+ *   - none — last_price is read from D1 (refreshed every 5min by price-refresh.ts).
+ *   - Stale rows are explicitly skipped (no risk action on stale data).
  */
 import type { FundConfig, MarketSnapshot, Settlement } from "./types";
-import { fetchCurrentPrice, calcUnrealizedPnl } from "./price";
+import { calcUnrealizedPnl, isStale } from "./price";
+import { isUnreasonableLoss } from "./risk-policy";
 import { getExecutionMode, recordShadowClose } from "./execution";
 
 export interface RiskCheckResult {
@@ -44,6 +46,8 @@ export async function checkRiskLimits(
     return { stopped, expired };
   }
 
+  const nowMs = now.getTime();
+
   for (const trade of openTrades.results as any[]) {
     const fund = funds.find(f => f.id === trade.fund_id);
     if (!fund) continue;
@@ -51,11 +55,29 @@ export async function checkRiskLimits(
     const openedAt = new Date(trade.opened_at);
     const holdDays = (now.getTime() - openedAt.getTime()) / (1000 * 60 * 60 * 24);
 
+    // D-Lite: read mark from D1 (refreshed by price-refresh.ts cron).
+    const lastPrice = trade.last_price;
+    const lastUpdatedAt = trade.last_price_updated_at;
+    const stale = typeof lastPrice !== "number" || isStale(lastUpdatedAt, nowMs);
+
     if (holdDays >= fund.maxHoldDays) {
-      const currentPrice = await fetchCurrentPrice(trade.market_id);
-      const exitPrice = currentPrice ?? trade.entry_price;
-      const pnl = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, exitPrice);
-      const closeReason = `Max hold window reached (${fund.maxHoldDays}d)`;
+      // Max-hold is a hard boundary — must close even on stale price.
+      // Conservative fallback: use entry_price (PnL=0) when stale to avoid
+      // marking a fictitious gain/loss based on stale data.
+      let exitPrice = stale ? Number(trade.entry_price) : (lastPrice as number);
+      let pnl = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, exitPrice);
+      let usedEntryFallback = stale;
+      // Track 3 sanity guard (2026-05-10): if mark implies > 1000% loss,
+      // refuse the mark and fall back to entry_price (PnL=0). Catches API
+      // placeholder values bleeding past D-Lite + Track 2.
+      if (!stale && isUnreasonableLoss(pnl, trade.amount)) {
+        exitPrice = Number(trade.entry_price);
+        pnl = 0;
+        usedEntryFallback = true;
+      }
+      const closeReason = usedEntryFallback
+        ? `Max hold window reached (${fund.maxHoldDays}d) — used entry_price (mark unavailable or unreasonable)`
+        : `Max hold window reached (${fund.maxHoldDays}d)`;
 
       await db.prepare(
         "UPDATE paper_trades SET status = 'EXPIRED', exit_price = ?, pnl = ?, closed_at = ?, monitor_reason = ? WHERE id = ?",
@@ -79,10 +101,14 @@ export async function checkRiskLimits(
       continue;
     }
 
-    const currentPrice = await fetchCurrentPrice(trade.market_id);
-    if (currentPrice === null) continue;
+    // Stop-loss is NOT a hard boundary — safe to defer until next refresh.
+    if (stale) continue;
+    const currentPrice = lastPrice as number;
 
     const unrealizedPnl = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, currentPrice);
+    // Track 3 sanity guard: skip stop-loss on implausible mark (defer
+    // decision until next refresh, when CLOB may have stabilized).
+    if (isUnreasonableLoss(unrealizedPnl, trade.amount)) continue;
     const lossPct = -unrealizedPnl / trade.amount;
 
     if (lossPct >= fund.stopLossPercent) {
@@ -127,18 +153,20 @@ export function effectiveSizing(
 }
 
 /**
- * Lightweight piggyback risk check — reuses prices already fetched by
- * getFundLiveStats(). Triggered when users view fund pages, providing
- * stop-loss coverage between cron cycles at zero extra API cost.
+ * Lightweight piggyback risk check — re-evaluates stop-loss for a fund's
+ * open positions when users view the fund page. D-Lite: reads last_price
+ * from D1 directly (no per-request fetchPrices); stale rows are skipped.
+ *
+ * Signature changed 2026-05-10 (D-Lite): priceMap parameter removed.
  */
 export async function piggybackRiskCheck(
   db: D1Database,
   fundId: string,
   fund: FundConfig,
-  priceMap: Map<string, number>,
 ): Promise<Settlement[]> {
   const stopped: Settlement[] = [];
   const now = new Date();
+  const nowMs = now.getTime();
   const ts = now.toISOString();
   const mode = await getExecutionMode(db);
 
@@ -148,10 +176,15 @@ export async function piggybackRiskCheck(
   if (!openTrades.results || openTrades.results.length === 0) return stopped;
 
   for (const trade of openTrades.results as any[]) {
-    const currentPrice = priceMap.get(trade.market_id) ?? null;
-    if (currentPrice === null) continue;
+    const lastPrice = trade.last_price;
+    if (typeof lastPrice !== "number" || isStale(trade.last_price_updated_at, nowMs)) {
+      continue;
+    }
+    const currentPrice = lastPrice;
 
     const unrealizedPnl = calcUnrealizedPnl(trade.direction, trade.shares, trade.amount, currentPrice);
+    // Track 3 sanity guard: defer stop-loss decision on implausible mark.
+    if (isUnreasonableLoss(unrealizedPnl, trade.amount)) continue;
     const lossPct = -unrealizedPnl / trade.amount;
 
     if (lossPct >= fund.stopLossPercent) {

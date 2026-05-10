@@ -17,7 +17,8 @@ import { runEvolution, loadFundsFromDB, initializeFunds, apiEvolution } from "./
 import { sendSignals, sendTrades, sendSummary, sendDailyReport, broadcast } from "./notify";
 import { handleApi } from "./api";
 import { requireAuth, handleCors, corsHeaders } from "./auth";
-import { fetchPrices, calcUnrealizedPnl } from "./price";
+import { calcUnrealizedPnl, isStale } from "./price";
+import { refreshOpenPrices } from "./price-refresh";
 import { monitor, executeMonitorActions } from "./monitor";
 import { checkAndRunMicroEvolution } from "./micro-evolve";
 import {
@@ -81,13 +82,18 @@ async function recordScan(
 }
 
 async function takeSnapshot(db: D1Database, date: string, funds: FundConfig[]): Promise<void> {
+  // D-Lite: read mark from D1.last_price (refreshed every 5min by
+  // price-refresh.ts cron). Stale rows contribute 0 to unrealized — see
+  // calculateOpenPositionStats() for stale-treatment policy. Snapshots
+  // are written daily at UTC 00:00 so a stale row at snapshot time is rare
+  // (5min stale threshold << 24h between snapshots).
   const allOpen = await db.prepare(
-    "SELECT id, fund_id, market_id, direction, entry_price, shares, amount FROM paper_trades WHERE status = 'OPEN'",
+    `SELECT id, fund_id, market_id, direction, entry_price, shares, amount,
+            last_price, last_price_updated_at
+     FROM paper_trades WHERE status = 'OPEN'`,
   ).all();
   const openTrades = (allOpen.results ?? []) as any[];
-
-  const marketIds = openTrades.map((t: any) => t.market_id as string);
-  const priceMap = marketIds.length > 0 ? await fetchPrices(marketIds) : new Map<string, number>();
+  const snapshotNowMs = Date.now();
 
   for (const fund of funds) {
     const fundOpenTrades = openTrades.filter((t: any) => t.fund_id === fund.id);
@@ -96,8 +102,9 @@ async function takeSnapshot(db: D1Database, date: string, funds: FundConfig[]): 
 
     let unrealizedPnl = 0;
     for (const t of fundOpenTrades) {
-      const price = priceMap.get(t.market_id);
-      if (price === undefined) continue;
+      const price = t.last_price;
+      if (typeof price !== "number") continue;
+      if (isStale(t.last_price_updated_at, snapshotNowMs)) continue;
       unrealizedPnl += calcUnrealizedPnl(t.direction, t.shares, t.amount, price);
     }
     unrealizedPnl = Math.round(unrealizedPnl * 100) / 100;
@@ -167,6 +174,25 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
       payload: { stage: "kill_switch", message: "Trading halted by kill switch" },
     });
     return { halted: true, reason: "KILL_SWITCH", timestamp: ts };
+  }
+
+  // ─── Phase A: D-Lite price refresh (ADR-273 path-A) ──────
+  // Runs BEFORE risk/monitor/scan/trade so all downstream decisions read the
+  // freshest mark-to-market price from D1.last_price (CLOB mid). Failures here
+  // do NOT halt the pipeline — stale positions are tolerated and surfaced via
+  // staleCount; isStale() callers decide local fallback policy.
+  let priceRefresh = { totalOpen: 0, refreshed: 0, fetchFailed: 0, missingTokenId: 0, backfilledTokenIds: 0 };
+  try {
+    const r = await refreshOpenPrices(env.DB);
+    priceRefresh = {
+      totalOpen: r.totalOpen,
+      refreshed: r.refreshed,
+      fetchFailed: r.fetchFailed,
+      missingTokenId: r.missingTokenId,
+      backfilledTokenIds: r.backfilledTokenIds,
+    };
+  } catch (e) {
+    console.error("Price refresh failed (non-fatal):", e);
   }
 
   const riskResult = await checkRiskLimits(env.DB, funds);
@@ -352,6 +378,7 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
     riskExpired: riskResult.expired.length,
     skipSummary: aggregateSkipReasons(tradeResult.skipReasons),
     skipByFund: aggregateSkipReasonsByFund(tradeResult.skipReasons),
+    priceRefresh,
   });
 
   await armRiskMonitor(env, funds);

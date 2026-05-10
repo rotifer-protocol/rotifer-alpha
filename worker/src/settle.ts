@@ -8,11 +8,89 @@
  * DB SIDE EFFECTS:
  *   - settle() → reads/writes paper_trades
  *
- * NO EXTERNAL NETWORK CALLS — settler works entirely with in-memory market data
- * that is already fetched by the scanner step.
+ * EXTERNAL SIDE EFFECTS:
+ *   - fallback fetch to Gamma market endpoint for OPEN trades whose market is no
+ *     longer returned by the active scanner set (closed/resolved markets).
  */
 import type { FundConfig, MarketSnapshot, Settlement } from "./types";
 import { getExecutionMode, recordShadowClose } from "./execution";
+
+const GAMMA_MARKET_TIMEOUT_MS = 10_000;
+
+function parseOutcomePrices(raw: unknown): number[] {
+  const values = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? (() => {
+          try { return JSON.parse(raw) as unknown[]; } catch { return []; }
+        })()
+      : [];
+  return values.map(Number).filter(price => Number.isFinite(price));
+}
+
+function gammaMarketToSnapshot(data: any): MarketSnapshot | null {
+  const outcomePrices = parseOutcomePrices(data?.outcomePrices);
+  if (!data?.id || outcomePrices.length < 2) return null;
+  return {
+    id: String(data.id),
+    question: data.question ?? "",
+    slug: data.slug ?? "",
+    outcomes: Array.isArray(data.outcomes)
+      ? data.outcomes
+      : typeof data.outcomes === "string"
+        ? (() => { try { return JSON.parse(data.outcomes) as string[]; } catch { return []; } })()
+        : [],
+    outcomePrices,
+    bestBid: Number(data.bestBid ?? 0),
+    bestAsk: Number(data.bestAsk ?? 0),
+    spread: Number(data.spread ?? 0),
+    volume24hr: Number(data.volume24hr ?? data.volume24hrClob ?? 0),
+    liquidity: Number(data.liquidityNum ?? data.liquidity ?? 0),
+    endDate: data.endDate ?? "",
+    eventSlug: Array.isArray(data.events) && data.events[0]?.slug ? data.events[0].slug : "",
+    eventTitle: Array.isArray(data.events) && data.events[0]?.title ? data.events[0].title : "",
+    active: Boolean(data.active),
+    closed: Boolean(data.closed),
+  };
+}
+
+async function fetchGammaMarket(marketId: string): Promise<MarketSnapshot | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GAMMA_MARKET_TIMEOUT_MS);
+  try {
+    const res = await fetch(`https://gamma-api.polymarket.com/markets/${marketId}`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return gammaMarketToSnapshot(await res.json());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function backfillMissingMarkets(
+  marketMap: Map<string, MarketSnapshot>,
+  openTrades: any[],
+): Promise<void> {
+  const missingMarketIds = [...new Set(
+    openTrades
+      .map(trade => String(trade.market_id ?? ""))
+      .filter(marketId => marketId && !marketMap.has(marketId)),
+  )];
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < missingMarketIds.length; i += BATCH_SIZE) {
+    const batch = missingMarketIds.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(fetchGammaMarket));
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled" && result.value) {
+        marketMap.set(batch[j], result.value);
+      }
+    }
+  }
+}
 
 /**
  * Settlement logic.
@@ -40,12 +118,16 @@ export async function settle(
   const settlements: Settlement[] = [];
   const marketMap = new Map<string, MarketSnapshot>();
   for (const m of markets) marketMap.set(m.id, m);
+  await backfillMissingMarkets(marketMap, openTrades.results as any[]);
   const mode = await getExecutionMode(db);
 
   for (const trade of openTrades.results as any[]) {
     const m = marketMap.get(trade.market_id);
     if (!m) continue;
-    if (m.active || !m.closed) continue;
+    // Gamma can report resolved markets as active=true AND closed=true
+    // (observed on 553843, 2026-05-10). Settlement should key off `closed`,
+    // not `active`, otherwise resolved stale positions remain OPEN forever.
+    if (!m.closed) continue;
     if (m.outcomePrices.length < 2) continue;
 
     const yesResolved = m.outcomePrices[0];

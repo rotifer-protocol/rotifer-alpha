@@ -7,9 +7,11 @@ import {
   calculateOpenPositionStats,
   calculateReturnPct,
   calculateTotalValue,
+  type OpenTradeWithMark,
+  OPEN_TRADE_MARK_COLUMNS_SQL,
   PERFORMANCE_REALIZED_TRADE_WHERE_SQL,
 } from "./accounting";
-import { calcUnrealizedPnl, fetchPrices } from "./price";
+import { calcUnrealizedPnl, isStale } from "./price";
 import {
   countsTowardPerformance,
   getCloseReasonCode,
@@ -133,6 +135,10 @@ export async function handleApi(
  * Live mark-to-market stats from paper_trades.
  * Total value must be initial + realized + unrealized.
  * Open principal is already part of cash accounting and must not be added again.
+ *
+ * D-Lite (2026-05-10): reads last_price from D1 (no per-request fetchPrices()).
+ * staleCount surfaces positions whose last_price is too old (or NULL) so the
+ * UI can warn users instead of silently inflating numbers.
  */
 async function getFundLiveStats(
   db: D1Database,
@@ -147,21 +153,13 @@ async function getFundLiveStats(
   lossCount: number;
   realizedPnl: number;
   unrealizedPnl: number;
-  priceMap: Map<string, number>;
+  staleCount: number;
 }> {
   const openTradesResult = await db.prepare(
-    "SELECT market_id, direction, shares, amount FROM paper_trades WHERE fund_id = ? AND status = 'OPEN'",
-  ).bind(fundId).all<{
-    market_id: string;
-    direction: string;
-    shares: number;
-    amount: number;
-  }>();
+    `SELECT ${OPEN_TRADE_MARK_COLUMNS_SQL} FROM paper_trades WHERE fund_id = ? AND status = 'OPEN'`,
+  ).bind(fundId).all<OpenTradeWithMark>();
   const openTrades = openTradesResult.results ?? [];
-  const priceMap = openTrades.length > 0
-    ? await fetchPrices(openTrades.map(trade => trade.market_id))
-    : new Map<string, number>();
-  const openStats = calculateOpenPositionStats(openTrades, priceMap);
+  const openStats = calculateOpenPositionStats(openTrades);
 
   const resolved = await db.prepare(
     `SELECT
@@ -189,40 +187,41 @@ async function getFundLiveStats(
     lossCount: l,
     realizedPnl,
     unrealizedPnl,
-    priceMap,
+    staleCount: openStats.staleCount,
   };
 }
 
-async function enrichTradesWithLivePrices(
+/**
+ * D-Lite: enrich OPEN trade rows with live mark-to-market fields using
+ * last_price already SELECTed from paper_trades (no fetchPrices). Stale
+ * rows return null current_price/value so the UI can render a "stale"
+ * indicator instead of misleading numbers.
+ *
+ * Pre-condition: trade rows MUST come from `SELECT * FROM paper_trades`
+ * (or any select that includes last_price + last_price_updated_at).
+ */
+function enrichTradesWithLivePrices(
   trades: Array<Record<string, unknown>>,
-): Promise<Array<Record<string, unknown>>> {
-  const openTrades = trades.filter(trade => trade.status === "OPEN");
-  if (openTrades.length === 0) return trades;
-
-  const priceMap = await fetchPrices(
-    openTrades
-      .map(trade => String(trade.market_id ?? ""))
-      .filter(Boolean),
-  );
-
+): Array<Record<string, unknown>> {
+  const nowMs = Date.now();
   return trades.map(trade => {
     if (trade.status !== "OPEN") return trade;
 
-    const marketId = String(trade.market_id ?? "");
-    const currentPrice = priceMap.get(marketId);
-    if (typeof currentPrice !== "number") {
+    const lastPrice = trade.last_price;
+    const updatedAt = trade.last_price_updated_at as string | null | undefined;
+    if (typeof lastPrice !== "number" || isStale(updatedAt, nowMs)) {
       return { ...trade, current_price: null, current_value: null, unrealized_pnl: null, live_return_pct: null };
     }
 
     const amount = Number(trade.amount ?? 0);
     const shares = Number(trade.shares ?? 0);
-    const unrealizedPnl = calcUnrealizedPnl(String(trade.direction ?? ""), shares, amount, currentPrice);
+    const unrealizedPnl = calcUnrealizedPnl(String(trade.direction ?? ""), shares, amount, lastPrice);
     const currentValue = calculateCurrentPositionValue(amount, unrealizedPnl);
     const liveReturnPct = amount > 0 ? (unrealizedPnl / amount) * 100 : 0;
 
     return {
       ...trade,
-      current_price: Math.round(currentPrice * 1000) / 1000,
+      current_price: Math.round(lastPrice * 1000) / 1000,
       current_value: Math.round(currentValue * 100) / 100,
       unrealized_pnl: Math.round(unrealizedPnl * 100) / 100,
       live_return_pct: Math.round(liveReturnPct * 100) / 100,
@@ -274,6 +273,9 @@ async function apiFunds(
       realizedPnl: Math.round(live.realizedPnl * 100) / 100,
       unrealizedPnl: Math.round(live.unrealizedPnl * 100) / 100,
       openPositions: live.openPositions,
+      // D-Lite (2026-05-10): positions whose last_price is NULL or older than
+      // PRICE_STALE_THRESHOLD_MS — UI uses to render a stale-price warning.
+      staleCount: live.staleCount,
       monthlyTarget: fund.monthlyTarget,
       drawdownLimit: fund.drawdownLimit,
       frozen: (snap as any)?.frozen_until
@@ -303,7 +305,8 @@ async function apiFundDetail(
 
   let live = await getFundLiveStats(db, fund.id, fund.initialBalance);
 
-  const triggered = await piggybackRiskCheck(db, fund.id, fund, live.priceMap);
+  // D-Lite: piggybackRiskCheck reads last_price from D1 directly — no priceMap arg.
+  const triggered = await piggybackRiskCheck(db, fund.id, fund);
   if (triggered.length > 0) {
     live = await getFundLiveStats(db, fund.id, fund.initialBalance);
   }
@@ -375,6 +378,7 @@ async function apiFundDetail(
       lossCount: live.lossCount,
       realizedPnl: Math.round(live.realizedPnl * 100) / 100,
       unrealizedPnl: Math.round(live.unrealizedPnl * 100) / 100,
+      staleCount: live.staleCount,
       config,
     },
   }, { headers });
@@ -420,7 +424,7 @@ async function apiTrades(
 
   const stmt = db.prepare(query);
   const result = await stmt.bind(...bindings).all();
-  const trades = (await enrichTradesWithLivePrices((result.results || []) as Array<Record<string, unknown>>))
+  const trades = enrichTradesWithLivePrices((result.results || []) as Array<Record<string, unknown>>)
     .map(decorateTradeRecord);
 
   return Response.json(
