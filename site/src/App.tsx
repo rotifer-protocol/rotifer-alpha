@@ -45,7 +45,7 @@ function InfoPopover() {
     <div className="relative inline-flex" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] transition-colors ml-1"
+        className="p-2.5 -m-2.5 text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] transition-colors ml-1"
         aria-label="Info"
       >
         <Info className="w-3.5 h-3.5" />
@@ -76,6 +76,11 @@ export interface FundData {
   realizedPnl: number;
   unrealizedPnl: number;
   openPositions: number;
+  /** D-Lite (2026-05-10): positions whose last_price is NULL or older than the
+   *  stale threshold (10 min). The fund's unrealized PnL excludes these to
+   *  avoid jitter on intermittent CLOB outages — the UI surfaces the count so
+   *  users know when numbers are partial. */
+  staleCount?: number;
   monthlyTarget: number;
   frozen: boolean;
 }
@@ -162,6 +167,7 @@ function Layout() {
         <button
               onClick={toggle}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--r-text-muted)] hover:text-[var(--r-text)] border border-[var(--r-border)] hover:border-[var(--r-border-hover)] transition-all"
+              aria-label={locale === "en" ? t("langSwitchTooltipAlt") : t("langSwitchTooltip")}
               title={locale === "en" ? t("langSwitchTooltipAlt") : t("langSwitchTooltip")}
         >
               <Languages className="w-3.5 h-3.5" />
@@ -174,12 +180,12 @@ function Layout() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <div className="sm:hidden flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1 mb-6">
+        <div className="sm:hidden flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1 mb-6 overflow-x-auto">
           <NavLink
             to="/"
             end
             className={({ isActive }) =>
-              `flex-1 px-3 py-2 rounded-md text-sm font-medium text-center transition-all ${
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
@@ -189,7 +195,7 @@ function Layout() {
           <NavLink
             to="/evolution"
             className={({ isActive }) =>
-              `flex-1 px-3 py-2 rounded-md text-sm font-medium text-center transition-all ${
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
@@ -199,7 +205,7 @@ function Layout() {
           <NavLink
             to="/shadow"
             className={({ isActive }) =>
-              `flex-1 px-3 py-2 rounded-md text-sm font-medium text-center transition-all ${
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
@@ -209,12 +215,22 @@ function Layout() {
           <NavLink
             to="/gene-evolution"
             className={({ isActive }) =>
-              `flex-1 px-3 py-2 rounded-md text-sm font-medium text-center transition-all ${
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
+              }`
+            }
+            >
+            {t("geneEvolution")}
+          </NavLink>
+          <NavLink
+            to="/diagnostics"
+            className={({ isActive }) =>
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
           >
-            {t("geneEvolution")}
+            {t("diagnostics")}
           </NavLink>
         </div>
 
@@ -423,12 +439,20 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
     : 0;
   const showUnrealizedWarning = totalPnl > 0 && unrealizedShare > 0.7;
 
+  // D-Lite (2026-05-10): aggregate stale-position count across all funds.
+  // When >0, render an amber stale-price banner so users know the displayed
+  // unrealized PnL excludes some positions whose CLOB mid-price is unavailable.
+  const totalStale = funds.reduce((s, f) => s + (f.staleCount ?? 0), 0);
+  const showStaleWarning = totalStale > 0;
+
   const pnlColor = totalPnl > 0 ? "text-[var(--r-green)]" : totalPnl < 0 ? "text-[var(--r-red)]" : "";
   const returnColor = totalReturnPct > 0 ? "text-[var(--r-green)]" : totalReturnPct < 0 ? "text-[var(--r-red)]" : "";
   const pnlPrefix = totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : "";
   const returnPrefix = totalReturnPct > 0 ? "+" : "";
 
   const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  // Mobile compact format: $6.08M / $5.55M / +$528.48K — prevents 3-column KPI overlap on narrow viewports.
+  const fmtCompact = (v: number) => v.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 2 });
   const realizedColor = totalRealized > 0 ? "text-[var(--r-green)]" : totalRealized < 0 ? "text-[var(--r-red)]" : "text-[var(--r-text-faint)]";
   const unrealizedColor = totalUnrealized > 0 ? "text-[var(--r-green)]" : totalUnrealized < 0 ? "text-[var(--r-red)]" : "text-[var(--r-text-faint)]";
   const todayColor = todayChangePct == null
@@ -443,31 +467,36 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
     <div className="glass-card p-5 mb-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-[var(--r-accent)]/5 to-transparent pointer-events-none" />
       <div className="relative">
-        {/* Primary row: 3 large metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-3">
-          <div className="text-center">
+        {/* Primary row: 3 large metrics — mobile uses compact notation to prevent column overlap (P0 audit 2026-05-10). */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-3">
+          <div className="text-center min-w-0">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalPool")}</p>
-            <p className="text-xl font-bold font-mono tabular-nums">${totalPool.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">
+              <span className="sm:hidden">${fmtCompact(totalPool)}</span>
+              <span className="hidden sm:inline">${totalPool.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
             {/* P3: today's change — visual sibling to total-return realized/unrealized split */}
             {todayChangePct != null && (
-              <p className={`text-[10px] font-mono tabular-nums mt-0.5 ${todayColor}`}>
+              <p className={`text-[10px] font-mono tabular-nums mt-0.5 whitespace-nowrap ${todayColor}`}>
                 {t("heroToday")} {fmtPct(todayChangePct)}
               </p>
             )}
           </div>
-          <div className="text-center">
+          <div className="text-center min-w-0">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalReturn")}</p>
-            <p className={`text-xl font-bold font-mono tabular-nums ${returnColor}`}>{returnPrefix}{totalReturnPct.toFixed(2)}%</p>
-            {/* P0: realized / unrealized split — industry standard B2 */}
-            <p className="text-[10px] font-mono tabular-nums mt-0.5">
-              <span className={realizedColor}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
-              <span className="text-[var(--r-text-faint)] mx-1">·</span>
-              <span className={unrealizedColor}>{t("heroUnrealized")} {fmtPct(unrealizedPct)}</span>
+            <p className={`text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap ${returnColor}`}>{returnPrefix}{totalReturnPct.toFixed(2)}%</p>
+            {/* P0: realized / unrealized split — industry standard B2.
+                On mobile, stack the two clauses vertically to keep within column width. */}
+            <p className="text-[10px] font-mono tabular-nums mt-0.5 leading-tight">
+              <span className={`whitespace-nowrap ${realizedColor}`}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
+              <span className="text-[var(--r-text-faint)] mx-1 hidden sm:inline">·</span>
+              <span className="block sm:hidden" />
+              <span className={`whitespace-nowrap ${unrealizedColor}`}>{t("heroUnrealized")} {fmtPct(unrealizedPct)}</span>
             </p>
           </div>
-          <div className="text-center">
+          <div className="text-center min-w-0">
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroActivePositions")}</p>
-            <p className="text-xl font-bold font-mono tabular-nums">{totalOpen}</p>
+            <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">{totalOpen}</p>
           </div>
         </div>
 
@@ -478,20 +507,33 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
             <span className="text-amber-200/90">{t("heroUnrealizedWarning")}</span>
           </div>
         )}
+        {/* D-Lite stale-price banner — surfaces positions excluded from unrealized due to CLOB mid being NULL or >10min old. */}
+        {showStaleWarning && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-md bg-amber-500/5 border border-amber-500/20 text-[11px]">
+            <span className="text-amber-400 font-bold tabular-nums shrink-0">{totalStale}</span>
+            <span className="text-amber-200/80">{t("heroStaleWarning")}</span>
+          </div>
+        )}
 
-        {/* Secondary row: 3 supplementary metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="text-center">
+        {/* Secondary row: 3 supplementary metrics — mobile uses compact notation. */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+          <div className="text-center min-w-0">
             <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroInitialCapital")}</p>
-            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)]">${initialCapital.toLocaleString()}</p>
+            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)] whitespace-nowrap">
+              <span className="sm:hidden">${fmtCompact(initialCapital)}</span>
+              <span className="hidden sm:inline">${initialCapital.toLocaleString()}</span>
+            </p>
           </div>
-          <div className="text-center">
+          <div className="text-center min-w-0">
             <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroTotalPnl")}</p>
-            <p className={`text-sm font-mono tabular-nums ${pnlColor}`}>{pnlPrefix}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className={`text-sm font-mono tabular-nums whitespace-nowrap ${pnlColor}`}>
+              <span className="sm:hidden">{pnlPrefix}${fmtCompact(Math.abs(totalPnl))}</span>
+              <span className="hidden sm:inline">{pnlPrefix}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
           </div>
-          <div className="text-center">
+          <div className="text-center min-w-0">
             <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroSystemWR")}</p>
-            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)]">
+            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)] whitespace-nowrap">
               {wrSufficient ? `${Math.round(avgWR * 100)}%` : t("heroWRInsufficient")}
             </p>
           </div>

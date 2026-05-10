@@ -105,7 +105,7 @@ function formatTime(iso: string, locale: string): string {
 
 export function ShadowPanel() {
   const { t, locale } = useI18n();
-  const { data: shadowData, loading: shadowLoading } = useFetch<ShadowResponse>("/api/shadow?limit=100", 30_000);
+  const { data: shadowData, loading: shadowLoading, error: shadowError } = useFetch<ShadowResponse>("/api/shadow?limit=100", 30_000);
   const { data: systemData, loading: systemLoading } = useFetch<SystemResponse>("/api/system", 10_000);
 
   if (shadowLoading || systemLoading) {
@@ -114,6 +114,14 @@ export function ShadowPanel() {
         {[...Array(4)].map((_, i) => (
           <div key={i} className="glass-card p-5 h-24 animate-pulse" />
         ))}
+      </div>
+    );
+  }
+
+  if (shadowError && !shadowData) {
+    return (
+      <div className="glass-card p-8 text-center text-sm text-[var(--r-red)]">
+        {shadowError}
       </div>
     );
   }
@@ -158,8 +166,8 @@ export function ShadowPanel() {
             />
           </div>
 
-          <div className="glass-card overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="glass-card">
+            <div className="overflow-x-auto rounded-[10px]">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-[var(--r-border)]">

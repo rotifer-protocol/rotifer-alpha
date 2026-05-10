@@ -145,6 +145,7 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
     <div className="glass-card overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="w-full px-4 py-3 flex items-center gap-3 text-sm text-left hover:bg-[var(--r-overlay-3)] transition-colors"
       >
         <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -170,7 +171,7 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
           </a>
         </div>
         <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0">{dirKey ? t(dirKey) : trade.direction}</span>
-        <span className="text-xs font-mono shrink-0">${trade.amount}</span>
+        <span className="text-xs font-mono shrink-0">${trade.amount.toLocaleString()}</span>
         {isOpen && trade.unrealized_pnl != null && (
           <span className={`text-xs font-mono font-medium shrink-0 ${livePnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
             {livePnl >= 0 ? "+" : ""}{livePnl.toFixed(2)}
@@ -335,7 +336,7 @@ for (const g of GENE_GROUPS) for (const p of g.params) PARAM_LABELS[p.key] = p.l
 export function FundDetail() {
   const { fundId } = useParams<{ fundId: string }>();
   const { t, locale } = useI18n();
-  const { data: fundResp, loading: fundLoading } = useFetch<{ fund: FundDetailData }>(`/api/funds/${fundId}`, 30_000);
+  const { data: fundResp, loading: fundLoading, error: fundError } = useFetch<{ fund: FundDetailData }>(`/api/funds/${fundId}`, 30_000);
   const { data: closedTradesResp } = useFetch<{ trades: Trade[] }>(`/api/trades?fund=${fundId}&status=CLOSED&limit=50`, 30_000);
   const { data: openTradesResp } = useFetch<{ trades: Trade[] }>(`/api/trades?fund=${fundId}&status=OPEN&limit=20`, 30_000);
   const { data: snapshotsResp } = useFetch<{ snapshots: Snapshot[] }>(`/api/snapshots?fund=${fundId}&limit=30`);
@@ -354,7 +355,9 @@ export function FundDetail() {
   if (!fund) {
     return (
       <div className="glass-card p-8 text-center">
-        <p className="text-[var(--r-text-muted)]">{t("fundNotFound")}</p>
+        <p className={fundError ? "text-[var(--r-red)]" : "text-[var(--r-text-muted)]"}>
+          {fundError ?? t("fundNotFound")}
+        </p>
         <Link to="/" className="text-[var(--r-accent)] text-sm mt-2 inline-block">{t("backToArena")}</Link>
       </div>
     );

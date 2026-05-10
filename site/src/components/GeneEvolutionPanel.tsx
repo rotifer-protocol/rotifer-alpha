@@ -80,11 +80,19 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
 
 export function GeneEvolutionPanel() {
   const { t, locale } = useI18n();
-  const { data: varData, loading: varLoading } = useFetch<VariantsResponse>(`/api/gene-variants?lang=${locale}`, 60000);
+  const { data: varData, loading: varLoading, error: varError } = useFetch<VariantsResponse>(`/api/gene-variants?lang=${locale}`, 60000);
   const { data: evoData, loading: evoLoading } = useFetch<EvolutionResponse>("/api/gene-evolution?limit=30", 60000);
 
   if (varLoading || evoLoading) {
     return <div className="glass-card p-6 animate-pulse h-48" />;
+  }
+
+  if (varError && !varData) {
+    return (
+      <div className="glass-card p-6 text-center text-sm text-[var(--r-red)]">
+        {varError}
+      </div>
+    );
   }
 
   const variants = varData?.variants ?? [];

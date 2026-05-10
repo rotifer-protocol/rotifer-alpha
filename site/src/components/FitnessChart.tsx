@@ -47,7 +47,7 @@ export function FitnessChart({ logs }: Props) {
 
   return (
     <div className="glass-card p-4">
-      <h3 className="text-sm font-medium text-[var(--r-text-muted)] tracking-widest mb-3">
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
         {t("fitnessTitle")}
       </h3>
       <ResponsiveContainer width="100%" height={260}>

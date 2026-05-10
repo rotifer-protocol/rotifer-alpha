@@ -404,7 +404,7 @@ export function EventFeed({ events }: { events: AgentEvent[] }) {
           <button
             key={tab.key}
             onClick={() => { setFilter(tab.key); setExpandedIdx(null); }}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+            className={`px-2.5 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
               filter === tab.key
                 ? "bg-[var(--r-accent)] text-white"
                 : "border border-[var(--r-border)] text-[var(--r-text-muted)] hover:border-[var(--r-border-hover)] hover:text-[var(--r-text)]"

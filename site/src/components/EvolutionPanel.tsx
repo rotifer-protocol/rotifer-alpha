@@ -226,13 +226,22 @@ function EvolutionEmptyState() {
 }
 
 export function EvolutionPanel() {
-  const { data, loading } = useFetch<EvolutionResponse>("/api/evolution", 120_000);
+  const { data, loading, error } = useFetch<EvolutionResponse>("/api/evolution", 120_000);
   const { t } = useI18n();
 
   if (loading) {
     return (
-      <div className="glass-card p-8 text-center text-[var(--r-text-muted)]">
-        {t("loadingEvolution")}
+      <div className="space-y-4">
+        <div className="glass-card p-6 h-24 animate-pulse" />
+        <div className="glass-card p-6 h-48 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="glass-card p-8 text-center text-sm text-[var(--r-red)]">
+        {error}
       </div>
     );
   }

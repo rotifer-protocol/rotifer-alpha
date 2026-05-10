@@ -102,7 +102,7 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds }: Props) {
             <button
               key={fid}
               onClick={() => setActiveFund(fid)}
-              className={`text-xs px-2 py-0.5 rounded transition-all whitespace-nowrap ${
+              className={`text-xs px-2 py-1.5 rounded transition-all whitespace-nowrap ${
                 fid === targetFund
                   ? "bg-[var(--r-accent)] text-white"
                   : hasData

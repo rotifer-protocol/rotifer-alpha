@@ -29,6 +29,8 @@ const SKIP_COLORS: Record<string, string> = {
   MAX_POSITIONS:       "bg-blue-900/40 text-blue-400",
   MAX_EVENT_EXPOSURE:  "bg-purple-900/40 text-purple-400",
   OTM_CAP:             "bg-purple-900/40 text-purple-400",
+  LOW_PRICE_REJECT:    "bg-rose-900/40 text-rose-400",
+  PRICE_BOUNDARY:      "bg-rose-900/40 text-rose-400",
   VOLUME_TOO_LOW:      "bg-amber-900/40 text-amber-400",
   LIQUIDITY_TOO_LOW:   "bg-amber-900/40 text-amber-400",
   EDGE_TOO_LOW:        "bg-yellow-900/40 text-yellow-400",
@@ -43,6 +45,8 @@ const SKIP_LABELS: Record<string, string> = {
   MAX_POSITIONS:       "MaxPos",
   MAX_EVENT_EXPOSURE:  "MaxEvent",
   OTM_CAP:             "OTM Cap",
+  LOW_PRICE_REJECT:    "Low-Price Reject",
+  PRICE_BOUNDARY:      "Price Boundary",
   VOLUME_TOO_LOW:      "Volume",
   LIQUIDITY_TOO_LOW:   "Liquidity",
   EDGE_TOO_LOW:        "Edge",
@@ -73,6 +77,7 @@ function SkipByFundSection({ skipByFund }: { skipByFund: Record<string, Record<s
     <div className="glass-card p-5">
       <button
         className="w-full flex items-center justify-between mb-3"
+        aria-expanded={expanded}
         onClick={() => setExpanded(e => !e)}
       >
         <div className="flex items-center gap-2">
@@ -133,6 +138,7 @@ function ErrorLogSection({ errors }: { errors: PipelineError[] }) {
     <div className="glass-card p-5">
       <button
         className="w-full flex items-center justify-between mb-3"
+        aria-expanded={expanded}
         onClick={() => setExpanded(e => !e)}
       >
         <div className="flex items-center gap-2">
@@ -239,6 +245,8 @@ function AdminSection({ initial }: { initial: { killSwitch: boolean; executionMo
               </p>
             </div>
             <button
+              role="switch"
+              aria-checked={ks}
               onClick={() => setKs(k => !k)}
               className={`relative w-11 h-6 rounded-full transition-colors ${ks ? "bg-red-500" : "bg-[var(--r-accent)]"}`}
             >
@@ -294,7 +302,7 @@ function AdminSection({ initial }: { initial: { killSwitch: boolean; executionMo
 
 export function DiagnosticsPage() {
   const { t } = useI18n();
-  const { data, loading } = useFetch<DiagnosticsData>("/api/diagnostics", 30_000);
+  const { data, loading, error } = useFetch<DiagnosticsData>("/api/diagnostics", 30_000);
 
   return (
     <div className="space-y-6 animate-in">
@@ -306,13 +314,15 @@ export function DiagnosticsPage() {
         </div>
       </div>
 
-      {loading && (
-        <div className="glass-card p-6 text-center text-sm text-[var(--r-text-muted)]">
-          Loading…
+      {loading && <div className="glass-card p-6 h-24 animate-pulse" />}
+
+      {!loading && error && !data && (
+        <div className="glass-card p-6 text-center text-sm text-[var(--r-red)]">
+          {error}
         </div>
       )}
 
-      {!loading && data && (
+      {!loading && !error && data && (
         <div className="space-y-4">
           <SkipByFundSection skipByFund={data.skipByFund ?? {}} />
           <ErrorLogSection errors={data.errors ?? []} />

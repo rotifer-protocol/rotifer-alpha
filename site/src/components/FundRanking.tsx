@@ -97,14 +97,14 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
 
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-1.5 flex-wrap">
-          <span className="font-bold text-lg">{fundDisplayName(fund.id, t)}</span>
+          <span className="font-bold text-lg whitespace-nowrap">{fundDisplayName(fund.id, t)}</span>
           {nameKey && (
             <span className="text-[10px] font-mono px-1 py-px rounded bg-[var(--r-surface)] text-[var(--r-text-muted)] border border-[var(--r-border)] shrink-0">
               {tierBadge}
             </span>
           )}
           <span
-            className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0"
+            className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0 whitespace-nowrap"
             title={t("evolvableStrategyBody")}
           >
             · {t("evolvableStrategyBody")}
