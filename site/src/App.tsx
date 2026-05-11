@@ -305,7 +305,7 @@ function useHighlight(events: AgentEvent[]) {
       return { text: `${warn}${t("heroHighlightSignal")} ${edgeVal.toFixed(1)}% ${t("heroHighlightEdge")} — ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
     }
     if (e.type === "TRADE_OPENED") {
-      return { text: `${tFund(p.fundName)} ${t("eventOpened")} · $${String(p.amount)} · ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
+      return { text: `${tFund(p.fundName)} ${t("eventOpened")} · $${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
     }
     if (e.type === "EVOLUTION_COMPLETED") {
       return { text: `${t("eventEvolved")} — ${t("epoch")} ${String(p.epoch)}`, positive: true, url: null };

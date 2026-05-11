@@ -398,14 +398,14 @@ export function FundDetail() {
 
       <div className="glass-card p-6">
         <div className="flex items-center gap-4">
-          {Icon && <span className={color}><Icon size={48} /></span>}
+          {Icon && <span className={`${color} shrink-0`}><Icon size={48} /></span>}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
-                <h2 className="text-2xl font-bold">{nameKey ? fundDisplayName(fund.id, t) : fund.name}</h2>
+                <h2 className="text-2xl font-bold whitespace-nowrap">{nameKey ? fundDisplayName(fund.id, t) : fund.name}</h2>
                 <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--r-surface)] text-[var(--r-text-muted)] border border-[var(--r-border)] shrink-0">{tierBadge}</span>
                 <span
-                  className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0"
+                  className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0 hidden sm:inline"
                   title={t("evolvableStrategyBody")}
                 >
                   · {t("evolvableStrategyBody")}
@@ -421,11 +421,11 @@ export function FundDetail() {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">{t("frozen")}</span>
               )}
             </div>
-            <p className="text-sm text-[var(--r-text-muted)] mt-1">{mottoKey ? t(mottoKey as any) : fund.motto}</p>
+            <p className="text-sm text-[var(--r-text-muted)] mt-1 truncate">{mottoKey ? t(mottoKey as any) : fund.motto}</p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-3xl font-bold font-mono">${fund.totalValue.toLocaleString()}</p>
-            <p className={`text-lg font-mono font-medium ${pnlClass}`}>{sign}{fund.returnPct.toFixed(2)}%</p>
+            <p className="text-xl sm:text-3xl font-bold font-mono whitespace-nowrap">${fund.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className={`text-sm sm:text-lg font-mono font-medium whitespace-nowrap ${pnlClass}`}>{sign}{fund.returnPct.toFixed(2)}%</p>
           </div>
         </div>
       </div>

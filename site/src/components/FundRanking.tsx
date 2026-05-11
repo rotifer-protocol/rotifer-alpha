@@ -104,7 +104,7 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
             </span>
           )}
           <span
-            className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0 whitespace-nowrap"
+            className="text-[10px] text-[var(--r-text-faint)] font-normal tracking-wide opacity-70 shrink-0 whitespace-nowrap hidden sm:inline"
             title={t("evolvableStrategyBody")}
           >
             · {t("evolvableStrategyBody")}
@@ -123,7 +123,7 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
       {sparklines?.[fund.id] && <MiniSparkline data={sparklines[fund.id]} positive={fund.returnPct >= 0} />}
 
       <div className="text-right shrink-0">
-        <p className="text-xl font-bold font-mono">${fund.totalValue.toLocaleString()}</p>
+        <p className="text-xl font-bold font-mono">${fund.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         <p className={`text-sm font-mono font-medium ${pnlClass}`}>
           {sign}{fund.returnPct.toFixed(2)}%
         </p>
