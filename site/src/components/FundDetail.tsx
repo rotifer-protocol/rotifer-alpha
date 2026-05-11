@@ -820,25 +820,25 @@ function CalendarHeatmap({
   if (!hasData) return <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">{t("calendarNoTrades")}</p>;
 
   return (
-    <div className="flex flex-col sm:flex-row gap-6 items-start">
-      {/* Calendar grid */}
-      <div className="overflow-x-auto shrink-0 self-center sm:self-start">
+    <div className="flex flex-col sm:flex-row gap-6 sm:items-start">
+      {/* Calendar grid — fluid on mobile (fills width), fixed on desktop */}
+      <div className="w-full sm:w-[220px] sm:shrink-0">
         {/* Month axis */}
-        <div className="flex gap-0.5 mb-1 min-w-max">
+        <div className="flex gap-[2px] mb-1">
           {weeks.map((_, wi) => (
-            <div key={wi} className="w-4 text-[8px] text-[var(--r-text-faint)] leading-none">
+            <div key={wi} className="flex-1 text-[8px] text-[var(--r-text-faint)] leading-none overflow-hidden">
               {monthLabels[wi] ?? ""}
             </div>
           ))}
         </div>
-        {/* Day grid — w-4/h-4 (16 px cells) for better visibility */}
-        <div className="flex gap-0.5 min-w-max">
+        {/* Day grid — flex-1 columns + aspect-square cells fill container width */}
+        <div className="flex gap-[2px]">
           {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-0.5">
+            <div key={wi} className="flex-1 flex flex-col gap-[2px]">
               {week.map((cell, di) => (
                 <div
                   key={di}
-                  className="w-4 h-4 rounded-[3px]"
+                  className="w-full aspect-square rounded-[2px]"
                   style={{ background: bg(cell.pnl) }}
                   title={
                     cell.pnl != null
@@ -853,9 +853,9 @@ function CalendarHeatmap({
         {/* Legend */}
         <div className="flex items-center gap-1.5 mt-3 text-[9px] text-[var(--r-text-faint)]">
           <span>{t("calendarLoss")}</span>
-          {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
-          <div className="w-4 h-4 rounded-[3px]" style={{ background: "rgba(255,255,255,0.06)" }} />
-          {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
+          {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
+          <div className="w-3 h-3 rounded-[2px]" style={{ background: "rgba(255,255,255,0.06)" }} />
+          {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
           <span>{t("calendarWin")}</span>
         </div>
       </div>
