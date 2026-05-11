@@ -1,6 +1,6 @@
 import type { Env, FundConfig } from "./types";
 import { corsHeaders } from "./auth";
-import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch, ensureStaticG1LineageBackfill, ensureNonNegativePetriScores } from "./gene-variants";
+import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch, ensureStaticG1LineageBackfill, ensureNonNegativePetriScores, ensureSaneActiveVariant } from "./gene-variants";
 import { GENE_REGISTRY, type GeneMeta } from "./gene-interface";
 import {
   calculateCurrentPositionValue,
@@ -761,6 +761,7 @@ async function apiGeneVariants(
   const geneId = url.searchParams.get("gene") ?? undefined;
   const lang = url.searchParams.get("lang") ?? "en";
   await ensureNonNegativePetriScores(db);
+  await Promise.all(GENE_REGISTRY.map(g => ensureSaneActiveVariant(db, g.id).catch(() => null)));
   const variants = await listVariants(db, geneId);
   const active = await getAllActiveVariants(db);
 

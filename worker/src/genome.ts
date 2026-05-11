@@ -29,7 +29,7 @@ import { paperTrade } from "./trade";
 import type { SkipReasonEntry } from "./trade";
 import { checkAndRunMicroEvolution } from "./micro-evolve";
 import { broadcast, sendSignals, sendTrades, sendSummary } from "./notify";
-import { getActiveVariant, listVariants } from "./gene-variants";
+import { ensureSaneActiveVariant, getActiveVariant, listVariants } from "./gene-variants";
 import { recordVariantOutcomes, selectPipelineVariant } from "./gene-evaluation";
 import {
   getScannerStrategy, getMonitorStrategy,
@@ -225,6 +225,15 @@ export async function runGenomePipeline(
   // Load active Gene variants for dispatch (all 5 evolvable genes).
   // gene_active_config is the exploitation winner; selectPipelineVariant adds a
   // bounded exploration lane so g1 challengers can earn paper/shadow samples.
+  const minTradesForEval = Number(env.MIN_TRADES_FOR_EVAL) || 3;
+  await Promise.all([
+    "polymarket-scanner",
+    "polymarket-monitor",
+    "polymarket-risk",
+    "polymarket-trader",
+    "polymarket-micro-evolver",
+  ].map(geneId => ensureSaneActiveVariant(env.DB, geneId, minTradesForEval).catch(() => null)));
+
   const [configuredScannerVariant, configuredMonitorVariant, configuredRiskVariant, configuredTraderVariant, configuredMicroEvolverVariant] =
     await Promise.all([
       getActiveVariant(env.DB, "polymarket-scanner").catch(() => null),
@@ -460,7 +469,7 @@ export async function runGenomePipeline(
   try {
     codeEvoResult = await checkAndRunCodeEvolution(env.DB, {
       epochTradeThreshold: Number(env.EPOCH_TRADE_THRESHOLD) || 10,
-      minTradesForEval: Number(env.MIN_TRADES_FOR_EVAL) || 3,
+      minTradesForEval,
     }, env);
     if (codeEvoResult.triggered) {
       emit("CODE_EVOLUTION", {

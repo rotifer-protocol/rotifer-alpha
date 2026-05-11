@@ -100,6 +100,51 @@ export async function getAllActiveVariants(db: D1Database): Promise<Map<string, 
   return map;
 }
 
+export function selectSaneActiveVariant(
+  configured: GeneVariant | null,
+  variants: GeneVariant[],
+  minTradesForEval = 3,
+): GeneVariant | null {
+  const active = variants.filter(v => v.status === "active");
+  if (active.length === 0) return configured;
+
+  const configuredActive = configured
+    ? active.find(v => v.id === configured.id) ?? null
+    : null;
+
+  const hasSufficientBadSample = configuredActive
+    ? configuredActive.petriScore <= 0 && configuredActive.tradesEvaluated >= minTradesForEval
+    : false;
+
+  if (configuredActive && !hasSufficientBadSample) return configuredActive;
+
+  const candidates = active.filter(v => v.id !== configuredActive?.id);
+  if (candidates.length === 0) return configuredActive ?? active[0];
+
+  return candidates.sort((a, b) =>
+    (b.petriScore - a.petriScore) ||
+    (b.totalPnl - a.totalPnl) ||
+    (a.tradesEvaluated - b.tradesEvaluated) ||
+    (b.generation - a.generation) ||
+    a.id.localeCompare(b.id),
+  )[0];
+}
+
+export async function ensureSaneActiveVariant(
+  db: D1Database,
+  geneId: string,
+  minTradesForEval = 3,
+): Promise<GeneVariant | null> {
+  const configuredId = await getActiveVariantId(db, geneId);
+  const variants = await listVariants(db, geneId);
+  const configured = variants.find(v => v.id === configuredId) ?? await getVariant(db, configuredId);
+  const selected = selectSaneActiveVariant(configured, variants, minTradesForEval);
+  if (selected && selected.id !== configuredId) {
+    await setActiveVariant(db, geneId, selected.id);
+  }
+  return selected;
+}
+
 // ─── Variant CRUD ───────────────────────────────────────
 
 export async function getVariant(db: D1Database, variantId: string): Promise<GeneVariant | null> {
