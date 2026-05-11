@@ -231,6 +231,11 @@ export async function ensureStaticG1LineageBackfill(db: D1Database): Promise<voi
   }
 }
 
+export async function ensureNonNegativePetriScores(db: D1Database): Promise<void> {
+  await db.prepare("UPDATE gene_variants SET petri_score = 0 WHERE petri_score < 0").bind().run();
+  await db.prepare("UPDATE gene_evolution_log SET petri_score = 0 WHERE petri_score < 0").bind().run();
+}
+
 // ─── Evolution Log ──────────────────────────────────────
 
 export async function logEvolution(
@@ -304,7 +309,7 @@ function mapLogRow(row: any): EvolutionLogEntry {
     action: row.action,
     variantId: row.variant_id,
     details: row.details,
-    petriScore: row.petri_score,
+    petriScore: row.petri_score != null ? Math.max(0, row.petri_score) : null,
     createdAt: row.created_at,
   };
 }

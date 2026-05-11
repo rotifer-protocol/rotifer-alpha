@@ -94,6 +94,14 @@ class FakeDb {
           (row.win_count as number) += args[1] as number;
           (row.loss_count as number) += args[2] as number;
         }
+      } else if (table === "gene_variants" && lc.includes("petri_score < 0")) {
+        for (const row of this.tables[table]) {
+          if ((row.petri_score as number) < 0) row.petri_score = 0;
+        }
+      } else if (table === "gene_evolution_log" && lc.includes("petri_score < 0")) {
+        for (const row of this.tables[table]) {
+          if ((row.petri_score as number) < 0) row.petri_score = 0;
+        }
       } else if (table === "gene_variants" && lc.includes("petri_score =")) {
         const id = args[1];
         const row = this.tables[table].find(r => r.id === id);
@@ -318,4 +326,26 @@ test("ensureStaticG1LineageBackfill inserts static challenger lineage rows", asy
   assert.ok(lineage.some(l => l.childId === "polymarket-risk:conservative g1"));
   assert.ok(lineage.some(l => l.childId === "polymarket-trader:high-edge g1"));
   assert.ok(lineage.some(l => l.childId === "polymarket-micro-evolver:aggressive g1"));
+});
+
+test("ensureNonNegativePetriScores clamps historical negative stored scores", async () => {
+  const {
+    createVariant,
+    getVariant,
+    getEvolutionLog,
+    ensureNonNegativePetriScores,
+    logEvolution,
+  } = await import("../src/gene-variants");
+  const db = new FakeDb() as unknown as D1Database;
+
+  await createVariant(db, "polymarket-risk", "conservative g1", "conservative", "Conservative", null, 1);
+  (db as unknown as FakeDb).tables.gene_variants[0].petri_score = -48.5;
+  await logEvolution(db, 65, "polymarket-risk", "variant_promoted", "polymarket-risk:conservative g1", "{}", -48.5);
+
+  await ensureNonNegativePetriScores(db);
+
+  const variant = await getVariant(db, "polymarket-risk:conservative g1");
+  const log = await getEvolutionLog(db);
+  assert.equal(variant?.petriScore, 0);
+  assert.equal(log[0].petriScore, 0);
 });
