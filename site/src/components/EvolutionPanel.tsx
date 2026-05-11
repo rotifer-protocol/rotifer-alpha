@@ -449,6 +449,24 @@ export function EvolutionPanel() {
   const [mutShowAll,   setMutShowAll]   = useState(false);
   const MUT_PAGE_SIZE = 10;
 
+  // ── Epoch stats — must live before early returns (Rules of Hooks) ─────────
+  const epochStats = useMemo(() => {
+    if (activeEpoch == null || !data?.logs) return null;
+    const epLogs = data.logs.filter(l => l.epoch === activeEpoch && l.action !== "UNCHANGED");
+    const evolved  = epLogs.filter(l => EVO_ACTIONS.includes(l.action) || RESET_ACTIONS.includes(l.action)).length;
+    const skipped  = epLogs.filter(l => NOISE_ACTIONS.has(l.action)).length;
+    const deltas   = epLogs.filter(l => l.fitness_before != null && l.fitness_after != null)
+      .map(l => l.fitness_after! - l.fitness_before!);
+    const avgDelta = deltas.length > 0 ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null;
+    const bestLog  = epLogs.reduce<EvolutionLog | null>((best, l) => {
+      if (l.fitness_before == null || l.fitness_after == null) return best;
+      const d = l.fitness_after - l.fitness_before;
+      if (!best || d > (best.fitness_after! - best.fitness_before!)) return l;
+      return best;
+    }, null);
+    return { total: epLogs.length, evolved, skipped, avgDelta, bestLog };
+  }, [data?.logs, activeEpoch]);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -506,24 +524,6 @@ export function EvolutionPanel() {
   const hiddenMutCount   = sortedMutLogs.length - displayedMutLogs.length;
   const isFilterActive   = mutTypeGroup !== "all" || mutFundId !== "all";
   const availableFunds   = [...new Set(baseMutLogs.map(l => l.fund_id))].sort();
-
-  // ── Epoch stats for P2 summary bar ───────────────────────────────────────
-  const epochStats = useMemo(() => {
-    if (activeEpoch == null) return null;
-    const epLogs = data.logs.filter(l => l.epoch === activeEpoch && l.action !== "UNCHANGED");
-    const evolved  = epLogs.filter(l => EVO_ACTIONS.includes(l.action) || RESET_ACTIONS.includes(l.action)).length;
-    const skipped  = epLogs.filter(l => NOISE_ACTIONS.has(l.action)).length;
-    const deltas   = epLogs.filter(l => l.fitness_before != null && l.fitness_after != null)
-      .map(l => l.fitness_after! - l.fitness_before!);
-    const avgDelta = deltas.length > 0 ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null;
-    const bestLog  = epLogs.reduce<EvolutionLog | null>((best, l) => {
-      if (l.fitness_before == null || l.fitness_after == null) return best;
-      const d = l.fitness_after - l.fitness_before;
-      if (!best || d > (best.fitness_after! - best.fitness_before!)) return l;
-      return best;
-    }, null);
-    return { total: epLogs.length, evolved, skipped, avgDelta, bestLog };
-  }, [data.logs, activeEpoch]);
 
   // Epoch fitness deltas for cards
   const epochDelta = (ep: number) => {
