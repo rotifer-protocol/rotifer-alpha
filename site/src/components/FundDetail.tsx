@@ -793,7 +793,7 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
   return (
     <div className="flex flex-col sm:flex-row gap-6 items-start">
       {/* Calendar grid */}
-      <div className="overflow-x-auto shrink-0">
+      <div className="overflow-x-auto shrink-0 self-center sm:self-start">
         {/* Month axis */}
         <div className="flex gap-0.5 mb-1 min-w-max">
           {weeks.map((_, wi) => (
@@ -832,7 +832,7 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
       </div>
 
       {/* Period stats panel — fills remaining width */}
-      <div className="flex-1 grid grid-cols-2 gap-2 min-w-0">
+      <div className="w-full sm:flex-1 grid grid-cols-2 gap-2">
         <div className="glass-card px-3 py-2.5">
           <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Period PnL</p>
           <p className={`text-base font-bold font-mono ${periodPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
