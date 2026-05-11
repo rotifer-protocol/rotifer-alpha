@@ -95,7 +95,7 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
         <span className="text-3xl shrink-0">{fund.emoji}</span>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-baseline gap-1.5 flex-wrap">
           <span className="font-bold text-lg whitespace-nowrap">{fundDisplayName(fund.id, t)}</span>
           {nameKey && (

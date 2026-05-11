@@ -162,11 +162,11 @@ export function fmtUSD(v: number, decimals = 2): string {
   })}`;
 }
 
-/** Compact USD for mobile: $1.22M / $124K / $99.50 */
+/** Compact USD for mobile: $1.22M / $124K / $9.2K / $999.00 */
 export function fmtCompact(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
   if (v >= 100_000)   return `$${Math.round(v / 1_000)}K`;
-  if (v >= 10_000)    return `$${(v / 1_000).toFixed(1)}K`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
