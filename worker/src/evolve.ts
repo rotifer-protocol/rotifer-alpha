@@ -148,9 +148,80 @@ function gaussianRandom(): number {
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
+// ─── Adaptive Epoch Gate ─────────────────────────────────
+//
+// Decision: roundtable D1-D4 (2026-05-11)
+//   D1: per-variant eval threshold (not system-wide total)
+//   D2: tier-aware MIN_TRADES_FOR_EVAL (L=10 / M=5 / S=3)
+//   D3: four-parameter adaptive model (floor / ceiling / min-eligible / target)
+//   D4: extended log states
+
+/** Hard floor: never evolve twice in fewer than this many days. */
+export const MIN_EPOCH_DAYS = 2;
+/** Hard ceiling: force evolution even if TARGET_TRADES not met. */
+export const MAX_EPOCH_DAYS = 7;
+/** Minimum number of funds that must be eligible (≥ minTradesForEval) to proceed. */
+export const MIN_ELIGIBLE_VARIANTS = 4;
+/** System-level total closed trades soft trigger before checking per-fund eligibility. */
+export const TARGET_TRADES_SYSTEM = 60;
+
+/** Tier-aware minimum closed trades a fund needs in the epoch window for PBT scoring. */
+export function minTradesForEval(initialBalance: number): number {
+  const tier = fundTier(initialBalance);
+  if (tier === "large") return 10;
+  if (tier === "medium") return 5;
+  return 3;
+}
+
+export type EpochGateReason =
+  | "SKIP_TOO_SOON"
+  | "SKIP_LOW_TRADES"
+  | "SKIP_LOW_ELIGIBLE_VARIANTS"
+  | "EVOLVE_TARGET_MET"
+  | "FORCE_EVOLVE_MAX_DAYS";
+
+export interface EpochGateResult {
+  shouldEvolve: boolean;
+  reason: EpochGateReason;
+  daysSinceLastEpoch: number;
+  tradesSinceLastEpoch: number;
+  eligibleVariants: number;
+}
+
+/**
+ * Pure function — decide whether to run evolution today.
+ * All inputs are pre-fetched; no DB calls here (enables unit testing).
+ */
+export function evaluateEpochGate(
+  daysSinceLastEpoch: number,
+  tradesSinceLastEpoch: number,
+  eligibleVariants: number,
+): EpochGateResult {
+  const base = { daysSinceLastEpoch, tradesSinceLastEpoch, eligibleVariants };
+
+  if (daysSinceLastEpoch < MIN_EPOCH_DAYS) {
+    return { shouldEvolve: false, reason: "SKIP_TOO_SOON", ...base };
+  }
+  if (daysSinceLastEpoch >= MAX_EPOCH_DAYS) {
+    return { shouldEvolve: true, reason: "FORCE_EVOLVE_MAX_DAYS", ...base };
+  }
+  if (tradesSinceLastEpoch < TARGET_TRADES_SYSTEM) {
+    return { shouldEvolve: false, reason: "SKIP_LOW_TRADES", ...base };
+  }
+  if (eligibleVariants < MIN_ELIGIBLE_VARIANTS) {
+    return { shouldEvolve: false, reason: "SKIP_LOW_ELIGIBLE_VARIANTS", ...base };
+  }
+  return { shouldEvolve: true, reason: "EVOLVE_TARGET_MET", ...base };
+}
+
 // ─── Meta-Control Rules ─────────────────────────────────
 
-type EvolutionAction = "SKIP_INSUFFICIENT" | "SKIP_ALL_GOOD" | "GLOBAL_RESET" | "STANDARD_PBT";
+type EvolutionAction =
+  | "SKIP_INSUFFICIENT"
+  | "VARIANT_INSUFFICIENT"
+  | "SKIP_ALL_GOOD"
+  | "GLOBAL_RESET"
+  | "STANDARD_PBT";
 
 function decideEvolutionAction(results: FitnessResult[]): EvolutionAction {
   const totalTrades = results.reduce((s, r) => s + r.tradeCount, 0);
@@ -356,6 +427,8 @@ export interface EvolutionReport {
     fitnessBefore: number;
     changedParams: string[];
   }>;
+  /** Adaptive gate result — present when gate was evaluated (non-forced runs). */
+  gateResult?: EpochGateResult;
 }
 
 // ─── Per-Tier PBT ───────────────────────────────────────
@@ -368,9 +441,20 @@ async function runTierPBT(
   allFitnessResults: FitnessResult[],
   mutations: EvolutionReport["mutations"],
 ): Promise<EvolutionAction> {
-  const tierResults = allFitnessResults
-    .filter(fr => tierFunds.some(f => f.id === fr.fundId))
+  const allTierResults = allFitnessResults
+    .filter(fr => tierFunds.some(f => f.id === fr.fundId));
+
+  // D1/D2: funds with fitness=-1 are ineligible this epoch (VARIANT_INSUFFICIENT).
+  const ineligible = allTierResults.filter(fr => fr.fitness < 0);
+  const tierResults = allTierResults
+    .filter(fr => fr.fitness >= 0)
     .sort((a, b) => b.fitness - a.fitness);
+
+  // Log ineligible funds separately so the UI can show why they were skipped.
+  for (const fr of ineligible) {
+    await logEvolution(db, epoch, "VARIANT_INSUFFICIENT", fr.fundId, {}, {}, null, null,
+      `Tier ${tier}: only ${fr.tradeCount} trade(s) in epoch window (below tier threshold)`);
+  }
 
   const action = decideEvolutionAction(tierResults);
 
@@ -458,12 +542,80 @@ async function runTierPBT(
   return action;
 }
 
+// ─── Adaptive Gate DB Helpers ────────────────────────────
+
+async function getLastEpochStartedAt(db: D1Database): Promise<string | null> {
+  const r = await db.prepare(
+    "SELECT MIN(executed_at) as started_at FROM evolution_log WHERE epoch = (SELECT MAX(epoch) FROM evolution_log)",
+  ).first<{ started_at: string | null }>();
+  return r?.started_at ?? null;
+}
+
+async function countTradesSince(db: D1Database, since: string): Promise<number> {
+  const r = await db.prepare(
+    `SELECT COUNT(*) as n FROM paper_trades
+     WHERE opened_at >= ? AND status NOT IN ('INVALID_PRICE')`,
+  ).bind(since).first<{ n: number }>();
+  return r?.n ?? 0;
+}
+
+async function countEligibleFunds(
+  db: D1Database,
+  since: string,
+  funds: FundConfig[],
+): Promise<number> {
+  let eligible = 0;
+  for (const fund of funds) {
+    const threshold = minTradesForEval(fund.initialBalance);
+    const r = await db.prepare(
+      `SELECT COUNT(*) as n FROM paper_trades
+       WHERE fund_id = ? AND opened_at >= ? AND status NOT IN ('INVALID_PRICE')`,
+    ).bind(fund.id, since).first<{ n: number }>();
+    if ((r?.n ?? 0) >= threshold) eligible++;
+  }
+  return eligible;
+}
+
 // ─── Evolution Engine ───────────────────────────────────
 
-export async function runEvolution(env: Env): Promise<EvolutionReport> {
+export async function runEvolution(env: Env, forceRun = false): Promise<EvolutionReport> {
   const db = env.DB;
   const epoch = await getEpoch(db);
   const ts = new Date().toISOString();
+
+  // ── Adaptive epoch gate (D1-D4) ──────────────────────
+  // Skip if called from a manual /evolve POST with forceRun=true.
+  if (!forceRun) {
+    let funds = await loadFundsFromDB(db);
+    if (!funds || funds.length === 0) funds = DEFAULT_FUNDS;
+
+    const lastEpochAt = await getLastEpochStartedAt(db);
+    const epochSince = lastEpochAt ?? new Date(0).toISOString();
+    const daysSince = (Date.now() - new Date(epochSince).getTime()) / 86400000;
+    const tradesSince = await countTradesSince(db, epochSince);
+    const eligibleVariants = await countEligibleFunds(db, epochSince, funds);
+
+    const gate = evaluateEpochGate(daysSince, tradesSince, eligibleVariants);
+
+    if (!gate.shouldEvolve) {
+      // Log the skip so the evolution page reflects the adaptive decision.
+      await logEvolution(db, epoch - 1, `ADAPTIVE_SKIP:${gate.reason}`, "_system", {}, {},
+        null, null,
+        `days=${gate.daysSinceLastEpoch.toFixed(1)} trades=${gate.tradesSinceLastEpoch} eligible=${gate.eligibleVariants}`);
+      console.log(`[Evolution] Gate: ${gate.reason} — skipping epoch ${epoch}`);
+      return {
+        epoch: epoch - 1,
+        action: "SKIP_INSUFFICIENT",
+        tierActions: {},
+        fitnessResults: [],
+        mutations: [],
+        gateResult: gate,
+      } as EvolutionReport;
+    }
+
+    console.log(`[Evolution] Gate: ${gate.reason} — proceeding with epoch ${epoch} `
+      + `(days=${gate.daysSinceLastEpoch.toFixed(1)}, trades=${gate.tradesSinceLastEpoch}, eligible=${gate.eligibleVariants})`);
+  }
 
   await broadcast(env, {
     type: "EVOLUTION_STARTED",
@@ -477,9 +629,33 @@ export async function runEvolution(env: Env): Promise<EvolutionReport> {
     funds = DEFAULT_FUNDS;
   }
 
-  // Calculate fitness for all funds
+  // ── Last epoch start time (for per-fund trade window) ─
+  const lastEpochAt = await getLastEpochStartedAt(db);
+  const epochSince = lastEpochAt ?? new Date(0).toISOString();
+
+  // Calculate fitness for all funds; mark ineligible ones as VARIANT_INSUFFICIENT
   const allFitnessResults: FitnessResult[] = [];
   for (const fund of funds) {
+    const threshold = minTradesForEval(fund.initialBalance);
+    const r = await db.prepare(
+      `SELECT COUNT(*) as n FROM paper_trades
+       WHERE fund_id = ? AND opened_at >= ? AND status NOT IN ('INVALID_PRICE')`,
+    ).bind(fund.id, epochSince).first<{ n: number }>();
+    const epochTrades = r?.n ?? 0;
+
+    if (epochTrades < threshold) {
+      // Insufficient per-fund data: mark with sentinel score -1 (filtered in tier PBT)
+      allFitnessResults.push({
+        fundId: fund.id,
+        fitness: -1,
+        sharpe: 0,
+        winRate: 0,
+        maxDrawdown: 0,
+        complexity: 0,
+        tradeCount: epochTrades,
+      });
+      continue;
+    }
     const result = await calculateFitness(
       db,
       { fundId: fund.id, initialBalance: fund.initialBalance },
@@ -616,6 +792,7 @@ async function sendEvolutionTelegram(env: Env, report: EvolutionReport): Promise
 function actionLabel(action: EvolutionAction): string {
   switch (action) {
     case "SKIP_INSUFFICIENT": return "跳过——样本不足 (<10 trades)";
+    case "VARIANT_INSUFFICIENT": return "跳过——变体本轮数据不足（免评）";
     case "SKIP_ALL_GOOD": return "跳过——全体表现良好 (F(g)>0.6)";
     case "GLOBAL_RESET": return "全局重置——全体低迷 (F(g)<0.2)";
     case "STANDARD_PBT": return "标准 PBT——末位继承 + 变异";

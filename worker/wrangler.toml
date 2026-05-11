@@ -41,9 +41,12 @@ routes = [
 [triggers]
 # */5 * * * *  = scan+trade pipeline (every 5 min)
 # 0 1 * * *    = daily report (UTC 01:00 = BJ 09:00)
-# 0 0 * * SUN  = PBT parameter evolution (UTC Sunday 00:00 = BJ Sunday 08:00)
+# 0 0 * * *    = adaptive PBT evolution check (daily 00:00 UTC = BJ 08:00)
+#               runEvolution() internally applies adaptive decision logic:
+#               MIN_EPOCH_DAYS=2, MAX_EPOCH_DAYS=7, TARGET_TRADES=60.
+#               Actual evolution only fires when conditions are met; otherwise logs a skip reason.
 #               MUST match the string literal in index.ts scheduled() handler.
-crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * SUN"]
+crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * *"]
 
 [ai]
 binding = "AI"

@@ -438,9 +438,12 @@ export default {
     const funds = await getFunds(env.DB);
     const cron = ev.cron;
 
-    if (cron === "0 0 * * SUN") {
-      // Kill-switch guard: skip evolution if the operator has halted the system.
-      // Avoids scoring gene variants against poisoned/rollback-state trade data.
+    if (cron === "0 0 * * *") {
+      // Adaptive evolution check (daily 00:00 UTC).
+      // runEvolution() internally applies the adaptive decision logic:
+      //   MIN_EPOCH_DAYS / MAX_EPOCH_DAYS / TARGET_TRADES / tier-aware MIN_TRADES_FOR_EVAL.
+      // Kill-switch guard: skip if operator has halted the system to avoid scoring
+      // gene variants against poisoned/rollback-state trade data.
       ctx.waitUntil((async () => {
         if (await isKillSwitchActive(env.DB)) {
           console.warn("[Evolution] Skipped — KILL_SWITCH is active");
@@ -532,7 +535,9 @@ export default {
       const authError = requireAuth(req, env);
       if (authError) return authError;
       try {
-        const report = await runEvolution(env);
+        // Manual /evolve bypasses the adaptive gate (forceRun=true) so operators can
+        // trigger a catch-up epoch (e.g. after a missed Sunday due to kill-switch or bug).
+        const report = await runEvolution(env, /* forceRun */ true);
         return Response.json(report, { headers: corsHeaders(origin) });
       } catch (e: unknown) {
         console.error("Manual evolution failed:", e);
