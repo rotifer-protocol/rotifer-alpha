@@ -39,11 +39,11 @@ routes = [
 ]
 
 [triggers]
-# */5 = pipeline cron (every 5 min)
-# 0 1 = daily report (01:00 UTC)
-# 0 0 * * * = PBT parameter evolution (daily 00:00 UTC, was weekly SUN)
-#   SKIP_INSUFFICIENT guard in evolve.ts ensures no-op when data is insufficient.
-crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * *"]
+# */5 * * * *  = scan+trade pipeline (every 5 min)
+# 0 1 * * *    = daily report (UTC 01:00 = BJ 09:00)
+# 0 0 * * SUN  = PBT parameter evolution (UTC Sunday 00:00 = BJ Sunday 08:00)
+#               MUST match the string literal in index.ts scheduled() handler.
+crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * SUN"]
 
 [ai]
 binding = "AI"

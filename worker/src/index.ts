@@ -439,7 +439,15 @@ export default {
     const cron = ev.cron;
 
     if (cron === "0 0 * * SUN") {
-      ctx.waitUntil(runEvolution(env).catch(e => {
+      // Kill-switch guard: skip evolution if the operator has halted the system.
+      // Avoids scoring gene variants against poisoned/rollback-state trade data.
+      ctx.waitUntil((async () => {
+        if (await isKillSwitchActive(env.DB)) {
+          console.warn("[Evolution] Skipped — KILL_SWITCH is active");
+          return;
+        }
+        await runEvolution(env);
+      })().catch(e => {
         console.error("Evolution failed:", e);
       }));
     } else if (cron === "0 1 * * *") {
