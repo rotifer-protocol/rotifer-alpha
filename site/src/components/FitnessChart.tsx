@@ -105,12 +105,20 @@ export function FitnessChart({ logs }: Props) {
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
 
-  // Recharts v3 sets tabIndex="0" on the SVG, causing browser focus ring on click.
-  // Remove focusability from the SVG element after mount to prevent the blue outline.
+  // Recharts v3 re-renders the SVG on every interaction, resetting tabIndex="0" each time.
+  // The only reliable fix: capture every focusin on the SVG and immediately blur it
+  // synchronously, before the browser schedules the next paint (which would render the ring).
   const chartWrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const svg = chartWrapRef.current?.querySelector("svg");
-    if (svg) svg.setAttribute("tabindex", "-1");
+    const wrap = chartWrapRef.current;
+    if (!wrap) return;
+    const suppressSvgFocus = (e: FocusEvent) => {
+      if (e.target instanceof SVGElement) {
+        (e.target as unknown as { blur?: () => void }).blur?.();
+      }
+    };
+    wrap.addEventListener("focusin", suppressSvgFocus);
+    return () => wrap.removeEventListener("focusin", suppressSvgFocus);
   });
 
   useEffect(() => {
