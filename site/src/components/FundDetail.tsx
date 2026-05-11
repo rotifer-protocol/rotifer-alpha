@@ -739,6 +739,7 @@ export function FundDetail() {
 
 // ─── Calendar heatmap ────────────────────────────────────────────────────────
 function CalendarHeatmap({ trades }: { trades: Trade[] }) {
+  const { t } = useI18n();
   // Aggregate PnL by closed_at date
   const pnlByDate: Record<string, number> = {};
   for (const tr of trades) {
@@ -788,7 +789,7 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
     return null;
   });
 
-  if (!hasData) return <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">No closed trades yet</p>;
+  if (!hasData) return <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">{t("calendarNoTrades")}</p>;
 
   return (
     <div className="flex flex-col sm:flex-row gap-6 items-start">
@@ -823,40 +824,40 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
         </div>
         {/* Legend */}
         <div className="flex items-center gap-1.5 mt-3 text-[9px] text-[var(--r-text-faint)]">
-          <span>Loss</span>
+          <span>{t("calendarLoss")}</span>
           {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
           <div className="w-4 h-4 rounded-[3px]" style={{ background: "rgba(255,255,255,0.06)" }} />
           {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
-          <span>Win</span>
+          <span>{t("calendarWin")}</span>
         </div>
       </div>
 
       {/* Period stats panel — fills remaining width */}
       <div className="w-full sm:flex-1 grid grid-cols-2 gap-2">
         <div className="glass-card px-3 py-2.5">
-          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Period PnL</p>
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("calendarPeriodPnl")}</p>
           <p className={`text-base font-bold font-mono ${periodPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
             {periodPnl >= 0 ? "+" : "−"}${Math.abs(periodPnl).toFixed(2)}
           </p>
-          <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">last 91 days</p>
+          <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("calendarLast91Days")}</p>
         </div>
         <div className="glass-card px-3 py-2.5">
-          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Win Days</p>
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("calendarWinDays")}</p>
           <p className="text-base font-bold font-mono">
             {windowVals.length > 0 ? `${Math.round((winDays / windowVals.length) * 100)}%` : "—"}
           </p>
           <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">
-            {winDays}W / {windowVals.length - winDays}L · {windowVals.length} active
+            {winDays}{t("wins")} / {windowVals.length - winDays}{t("losses")} · {windowVals.length} {t("calendarActiveDays")}
           </p>
         </div>
         <div className="glass-card px-3 py-2.5">
-          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Best Day</p>
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("calendarBestDay")}</p>
           <p className="text-base font-bold font-mono pnl-positive">
             {bestDay != null ? `+$${bestDay.toFixed(2)}` : "—"}
           </p>
         </div>
         <div className="glass-card px-3 py-2.5">
-          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Worst Day</p>
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("calendarWorstDay")}</p>
           <p className="text-base font-bold font-mono pnl-negative">
             {worstDay != null && worstDay < 0 ? `-$${Math.abs(worstDay).toFixed(2)}` : "—"}
           </p>
@@ -970,7 +971,7 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
               <p className={`text-base font-bold font-mono ${totalPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
                 {totalPnl >= 0 ? "+" : "−"}${Math.abs(totalPnl).toFixed(2)}
               </p>
-              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{wins.length}W / {losses.length}L</p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{wins.length}{t("wins")} / {losses.length}{t("losses")}</p>
             </div>
             <div className="glass-card px-3 py-2.5">
               <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("winRate")}</p>
@@ -1024,7 +1025,7 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
                   onClick={() => setVisible(v => v + HISTORY_PAGE_SIZE)}
                   className="mt-3 w-full py-2 rounded-lg text-xs text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05] transition-colors border border-[var(--r-border)]"
                 >
-                  {t("showMore")} · {filtered.length - visible} remaining
+                  {t("showMore")} · {filtered.length - visible} {t("remainingCount")}
                 </button>
               )}
             </>
