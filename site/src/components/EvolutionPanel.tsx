@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Dna, Shuffle, RotateCcw, SkipForward, Sparkles, Minus, Swords, BarChart3, GitBranch, Zap, Clock, TrendingUp, RefreshCw, ChevronDown, ChevronUp, Fingerprint } from "lucide-react";
+import { Dna, Shuffle, RotateCcw, SkipForward, Sparkles, Minus, Swords, BarChart3, GitBranch, Zap, Clock, TrendingUp, RefreshCw, ChevronDown, ChevronUp, Fingerprint, X } from "lucide-react";
 import { useFetch } from "../hooks/useApi";
 import { FitnessChart } from "./FitnessChart";
 import { ParamHeatmap } from "./ParamHeatmap";
@@ -116,92 +116,147 @@ const PANEL_PARAM_I18N: Record<string, TranslationKey> = {
   sizingBase: "paramSizingBase", sizingScale: "paramSizingScale",
 };
 
+// ─── Visual weight classification ────────────────────────────────────────────
+const NOISE_ACTIONS  = new Set(["SKIP_INSUFFICIENT", "SKIP_ALL_GOOD"]);
+const RESET_ACTIONS  = ["GLOBAL_RESET"];
+const EVO_ACTIONS    = ["STANDARD_PBT", "PBT_INHERIT_MUTATE", "MICRO_EVOLUTION"];
+const MAJOR_DELTA_THRESHOLD = 0.05;
+
+function logWeight(log: EvolutionLog): { isNoise: boolean; isMajor: boolean } {
+  const fd = log.fitness_before != null && log.fitness_after != null
+    ? log.fitness_after - log.fitness_before : null;
+  return {
+    isNoise: NOISE_ACTIONS.has(log.action),
+    isMajor: log.action === "GLOBAL_RESET" || (fd != null && Math.abs(fd) >= MAJOR_DELTA_THRESHOLD),
+  };
+}
+
+// ─── Compact mutation card (collapsed by default, expand on click) ────────────
 function EvoMutCard({ log }: { log: EvolutionLog }) {
   const { t, locale } = useI18n();
-  const [paramExpanded, setParamExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const fd = log.fitness_before != null && log.fitness_after != null
     ? log.fitness_after - log.fitness_before : null;
   const improved = fd != null && fd >= 0;
   const { Icon, color, bg } = EVO_PANEL_TYPE_CFG[log.action] ?? EVO_PANEL_TYPE_DEFAULT;
-  const heatAlpha = fd != null ? Math.min(0.10, Math.abs(fd) * 0.8) : 0;
+  const { isNoise, isMajor } = logWeight(log);
 
   let paramCount = 0;
   try {
-    const b = JSON.parse(log.params_before); const a = JSON.parse(log.params_after);
+    const b = JSON.parse(log.params_before);
+    const a = JSON.parse(log.params_after);
     paramCount = Object.keys({ ...b, ...a }).filter(k => b[k] !== a[k]).length;
   } catch { /* ignore */ }
 
+  const hasDetails = fd != null || paramCount > 0 || !!log.reason;
+
   return (
-    <div
-      className="glass-card px-4 py-3 transition-colors"
-      style={heatAlpha > 0.01 ? { background: `rgba(${improved ? "34,197,94" : "239,68,68"},${heatAlpha})` } : undefined}
-    >
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className={`glass-card overflow-hidden transition-all
+      ${isNoise ? "opacity-55" : ""}
+      ${isMajor ? "border-l-[3px] border-l-[var(--r-accent)]" : ""}
+    `}>
+      {/* ── Compact single-line header ─────────────────────────────────── */}
+      <button
+        type="button"
+        className={`w-full flex items-center gap-2 px-3 text-left
+          ${isNoise ? "py-1.5" : "py-2.5"}
+          ${hasDetails ? "cursor-pointer hover:bg-white/[0.02]" : "cursor-default"}
+        `}
+        onClick={() => hasDetails && setExpanded(e => !e)}
+        disabled={!hasDetails}
+      >
+        {/* Type icon */}
         <div className={`p-1 rounded-md shrink-0 ${bg}`}>
-          <Icon className={`w-3.5 h-3.5 ${color}`} />
+          <Icon className={`w-3 h-3 ${color}`} />
         </div>
-        <span className={`text-xs font-semibold ${color}`}>
+
+        {/* Action label — fixed width for alignment */}
+        <span className={`text-[11px] font-semibold ${color} shrink-0 w-[76px] truncate`}>
           {ACTION_CONFIG[log.action] ? t(ACTION_CONFIG[log.action].labelKey) : log.action}
         </span>
-        <span className="text-xs text-[var(--r-text-muted)] font-medium">
+
+        {/* Fund name */}
+        <span className="text-[11px] text-[var(--r-text-muted)] font-medium shrink-0">
           {fundDisplayName(log.fund_id, t)}
         </span>
-        <span className="text-xs text-[var(--r-text-faint)] ml-auto shrink-0">
-          {t("epoch")} {log.epoch} · {relativeTime(log.executed_at, locale)}
+
+        {/* Inline fitness summary */}
+        {fd != null ? (
+          <span className="flex items-center gap-1 flex-1 min-w-0 ml-1 overflow-hidden">
+            <span className="text-[10px] font-mono text-[var(--r-text-faint)] shrink-0">
+              {log.fitness_before!.toFixed(3)}
+            </span>
+            <span className="text-[9px] text-[var(--r-border)] shrink-0">→</span>
+            <span className="text-[10px] font-mono text-[var(--r-text-muted)] shrink-0">
+              {log.fitness_after!.toFixed(3)}
+            </span>
+            <span className={`text-[10px] font-mono ml-0.5 shrink-0 font-semibold
+              ${improved ? "pnl-positive" : "pnl-negative"}`}>
+              {improved ? "+" : ""}{fd.toFixed(3)}
+            </span>
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+
+        {/* Epoch + time */}
+        <span className="text-[10px] text-[var(--r-text-faint)] shrink-0 ml-auto">
+          {t("epoch")} {log.epoch}
+          {!isNoise && ` · ${relativeTime(log.executed_at, locale)}`}
         </span>
-      </div>
 
-      {/* Fitness bars */}
-      {log.fitness_before != null && log.fitness_after != null && (
-        <div className="mt-2 space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1 rounded-full bg-[var(--r-border)] overflow-hidden">
-              <div className="h-full rounded-full bg-[var(--r-text-faint)] opacity-40"
-                style={{ width: `${(log.fitness_before * 100).toFixed(1)}%` }} />
+        {/* Chevron */}
+        {hasDetails && (
+          <ChevronDown className={`w-3 h-3 text-[var(--r-text-faint)] shrink-0 transition-transform ml-1
+            ${expanded ? "rotate-180" : ""}`}
+          />
+        )}
+      </button>
+
+      {/* ── Expanded detail panel ──────────────────────────────────────── */}
+      {expanded && hasDetails && (
+        <div className="px-3 pb-3 pt-2 border-t border-[var(--r-border)] space-y-1.5">
+          {/* Full fitness bars */}
+          {log.fitness_before != null && log.fitness_after != null && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 rounded-full bg-[var(--r-border)] overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--r-text-faint)] opacity-40"
+                    style={{ width: `${(log.fitness_before * 100).toFixed(1)}%` }} />
+                </div>
+                <span className="text-[10px] font-mono text-[var(--r-text-faint)] w-10 text-right shrink-0">
+                  {log.fitness_before.toFixed(3)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-[5px] rounded-full bg-[var(--r-border)] overflow-hidden">
+                  <div className={`h-full rounded-full ${improved ? "bg-[var(--r-accent)]" : "bg-red-400"}`}
+                    style={{ width: `${(log.fitness_after! * 100).toFixed(1)}%` }} />
+                </div>
+                <span className={`text-[10px] font-mono w-10 text-right shrink-0
+                  ${improved ? "pnl-positive" : "pnl-negative"}`}>
+                  {log.fitness_after!.toFixed(3)}
+                </span>
+              </div>
+              <p className="text-[10px] font-mono text-right">
+                <span className={improved ? "pnl-positive" : "pnl-negative"}>
+                  {improved ? "+" : ""}{fd!.toFixed(3)}
+                </span>
+              </p>
             </div>
-            <span className="text-[10px] font-mono text-[var(--r-text-faint)] w-10 text-right shrink-0">
-              {log.fitness_before.toFixed(3)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-[5px] rounded-full bg-[var(--r-border)] overflow-hidden">
-              <div className={`h-full rounded-full ${improved ? "bg-[var(--r-accent)]" : "bg-red-400"}`}
-                style={{ width: `${(log.fitness_after * 100).toFixed(1)}%` }} />
-            </div>
-            <span className={`text-[10px] font-mono w-10 text-right shrink-0 ${improved ? "pnl-positive" : "pnl-negative"}`}>
-              {log.fitness_after.toFixed(3)}
-            </span>
-          </div>
-          <p className="text-[10px] font-mono text-right">
-            <span className={improved ? "pnl-positive" : "pnl-negative"}>
-              {improved ? "+" : ""}{fd!.toFixed(3)}
-            </span>
-          </p>
+          )}
+          {/* Reason */}
+          {log.reason && (
+            <p className="text-xs text-[var(--r-text-muted)]">
+              {translateReason(t, log.reason)}
+            </p>
+          )}
+          {/* Param diff */}
+          {paramCount > 0 && (
+            <EvoInlineParamDiff before={log.params_before} after={log.params_after} />
+          )}
         </div>
-      )}
-
-      {/* Reason */}
-      {log.reason && (
-        <p className="text-xs text-[var(--r-text-muted)] mt-1.5">
-          {translateReason(t, log.reason)}
-        </p>
-      )}
-
-      {/* Param diff — collapsed */}
-      {paramCount > 0 && (
-        <>
-          <button
-            type="button"
-            className="mt-2 flex items-center gap-1 text-xs text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors"
-            onClick={() => setParamExpanded(e => !e)}
-          >
-            {paramExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            {paramCount} {t("evoParamChanges")}
-          </button>
-          {paramExpanded && <EvoInlineParamDiff before={log.params_before} after={log.params_after} />}
-        </>
       )}
     </div>
   );
@@ -383,9 +438,16 @@ function EvolutionEmptyState() {
 
 export function EvolutionPanel() {
   const { data, loading, error } = useFetch<EvolutionResponse>("/api/evolution", 120_000);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [activeEpoch, setActiveEpoch] = useState<number | null>(null);
   const [selectedFund, setSelectedFund] = useState<string | null>(null);
+
+  // ── Mutation filter/sort state ────────────────────────────────────────────
+  const [mutTypeGroup, setMutTypeGroup] = useState<string>("all");
+  const [mutSortKey,   setMutSortKey]   = useState<string>("time");
+  const [mutFundId,    setMutFundId]    = useState<string>("all");
+  const [mutShowAll,   setMutShowAll]   = useState(false);
+  const MUT_PAGE_SIZE = 10;
 
   if (loading) {
     return (
@@ -409,8 +471,59 @@ export function EvolutionPanel() {
   }
 
   const sortedEpochs = [...data.epochs].sort((a, b) => a.epoch - b.epoch);
-  const filteredLogs = data.logs.filter(l => l.action !== "UNCHANGED" &&
-    (activeEpoch == null || l.epoch === activeEpoch));
+
+  // ── Mutation filter/sort logic ────────────────────────────────────────────
+  const mutTypeMap: Record<string, string[]> = {
+    evolution: EVO_ACTIONS,
+    skip:      [...NOISE_ACTIONS],
+    reset:     RESET_ACTIONS,
+  };
+  const mutTypeActions = mutTypeMap[mutTypeGroup] ?? [];
+
+  // Base: epoch filter only (for empty-state discrimination)
+  const baseMutLogs = data.logs.filter(l =>
+    l.action !== "UNCHANGED" && (activeEpoch == null || l.epoch === activeEpoch)
+  );
+  // Active: epoch + type + fund
+  const activeMutLogs = baseMutLogs.filter(l =>
+    (mutTypeActions.length === 0 || mutTypeActions.includes(l.action)) &&
+    (mutFundId === "all" || l.fund_id === mutFundId)
+  );
+  const sortedMutLogs = [...activeMutLogs].sort((a, b) => {
+    if (mutSortKey === "best") {
+      const da = (a.fitness_after ?? 0) - (a.fitness_before ?? 0);
+      const db = (b.fitness_after ?? 0) - (b.fitness_before ?? 0);
+      return db - da;
+    }
+    if (mutSortKey === "worst") {
+      const da = (a.fitness_after ?? 0) - (a.fitness_before ?? 0);
+      const db = (b.fitness_after ?? 0) - (b.fitness_before ?? 0);
+      return da - db;
+    }
+    return b.executed_at.localeCompare(a.executed_at);
+  });
+  const displayedMutLogs = mutShowAll ? sortedMutLogs : sortedMutLogs.slice(0, MUT_PAGE_SIZE);
+  const hiddenMutCount   = sortedMutLogs.length - displayedMutLogs.length;
+  const isFilterActive   = mutTypeGroup !== "all" || mutFundId !== "all";
+  const availableFunds   = [...new Set(baseMutLogs.map(l => l.fund_id))].sort();
+
+  // ── Epoch stats for P2 summary bar ───────────────────────────────────────
+  const epochStats = useMemo(() => {
+    if (activeEpoch == null) return null;
+    const epLogs = data.logs.filter(l => l.epoch === activeEpoch && l.action !== "UNCHANGED");
+    const evolved  = epLogs.filter(l => EVO_ACTIONS.includes(l.action) || RESET_ACTIONS.includes(l.action)).length;
+    const skipped  = epLogs.filter(l => NOISE_ACTIONS.has(l.action)).length;
+    const deltas   = epLogs.filter(l => l.fitness_before != null && l.fitness_after != null)
+      .map(l => l.fitness_after! - l.fitness_before!);
+    const avgDelta = deltas.length > 0 ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null;
+    const bestLog  = epLogs.reduce<EvolutionLog | null>((best, l) => {
+      if (l.fitness_before == null || l.fitness_after == null) return best;
+      const d = l.fitness_after - l.fitness_before;
+      if (!best || d > (best.fitness_after! - best.fitness_before!)) return l;
+      return best;
+    }, null);
+    return { total: epLogs.length, evolved, skipped, avgDelta, bestLog };
+  }, [data.logs, activeEpoch]);
 
   // Epoch fitness deltas for cards
   const epochDelta = (ep: number) => {
@@ -494,22 +607,156 @@ export function EvolutionPanel() {
         />
       </div>
 
-      {/* Mutations section — upgraded cards */}
+      {/* ── Mutations section ─────────────────────────────────────────── */}
       <div>
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
-          {t("recentMutations")}
-          {activeEpoch != null && (
-            <span className="ml-2 normal-case text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
+        {/* Header + toolbar */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0">
+            {t("recentMutations")}
+            {activeEpoch != null && (
+              <span className="ml-2 normal-case text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
+            )}
+          </h3>
+
+          {/* Type filter pills */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {([
+              { key: "all",       label: t("evoFilterAll") },
+              { key: "evolution", label: t("evoFilterEvo") },
+              { key: "skip",      label: t("evoFilterSkip") },
+              { key: "reset",     label: t("evoFilterReset") },
+            ] as const).map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => { setMutTypeGroup(opt.key); setMutShowAll(false); }}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors
+                  ${mutTypeGroup === opt.key
+                    ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] ring-1 ring-[var(--r-accent)]/40"
+                    : "text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] hover:bg-white/5"
+                  }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sort select */}
+          <select
+            value={mutSortKey}
+            onChange={e => { setMutSortKey(e.target.value); setMutShowAll(false); }}
+            className="text-[11px] bg-transparent text-[var(--r-text-muted)] border border-[var(--r-border)] rounded px-2 py-0.5 cursor-pointer"
+          >
+            <option value="time">{t("evoSortTime")}</option>
+            <option value="best">{t("evoSortJump")}</option>
+            <option value="worst">{t("evoSortWorst")}</option>
+          </select>
+
+          {/* Fund select */}
+          {availableFunds.length > 1 && (
+            <select
+              value={mutFundId}
+              onChange={e => { setMutFundId(e.target.value); setMutShowAll(false); }}
+              className="text-[11px] bg-transparent text-[var(--r-text-muted)] border border-[var(--r-border)] rounded px-2 py-0.5 cursor-pointer"
+            >
+              <option value="all">{t("evoAllFunds")}</option>
+              {availableFunds.map(fid => (
+                <option key={fid} value={fid}>{fundDisplayName(fid, t)}</option>
+              ))}
+            </select>
           )}
-        </h3>
-        <div className="space-y-1.5">
-          {filteredLogs.slice(0, 15).map(log => (
-            <EvoMutCard key={log.id} log={log} />
-          ))}
-          {filteredLogs.length === 0 && (
-            <p className="text-center text-sm text-[var(--r-text-muted)] py-4">{t("fitnessEmpty")}</p>
+
+          {/* Clear filter button */}
+          {isFilterActive && (
+            <button
+              type="button"
+              onClick={() => { setMutTypeGroup("all"); setMutFundId("all"); setMutShowAll(false); }}
+              className="flex items-center gap-0.5 text-[11px] text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors ml-auto"
+            >
+              <X className="w-3 h-3" />
+              {t("evoClearFilters")}
+            </button>
           )}
         </div>
+
+        {/* P2: Epoch stats bar */}
+        {epochStats && epochStats.total > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono
+            text-[var(--r-text-faint)] bg-white/[0.03] border border-[var(--r-border)]
+            rounded-lg px-3 py-2 mb-3">
+            <span>{t("epoch")} {activeEpoch} · {epochStats.total} {locale === "zh" ? "条" : "events"}</span>
+            <span className="pnl-positive">{epochStats.evolved} {t("evoEvolvedCount")}</span>
+            <span>{epochStats.skipped} {t("evoSkippedCount")}</span>
+            {epochStats.avgDelta != null && (
+              <span>
+                {t("evoAvgDelta")}{" "}
+                <span className={epochStats.avgDelta >= 0 ? "pnl-positive" : "pnl-negative"}>
+                  {epochStats.avgDelta >= 0 ? "+" : ""}{epochStats.avgDelta.toFixed(3)}
+                </span>
+              </span>
+            )}
+            {epochStats.bestLog?.fitness_before != null && (
+              <span>
+                {t("evoBestDelta")}{" "}
+                <span className="pnl-positive">
+                  +{(epochStats.bestLog.fitness_after! - epochStats.bestLog.fitness_before!).toFixed(3)}
+                </span>
+                {" "}({fundDisplayName(epochStats.bestLog.fund_id, t)})
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Card list */}
+        <div className="space-y-1">
+          {displayedMutLogs.map(log => (
+            <EvoMutCard key={log.id} log={log} />
+          ))}
+        </div>
+
+        {/* Load more / collapse */}
+        {hiddenMutCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setMutShowAll(true)}
+            className="mt-2 w-full text-center text-xs text-[var(--r-text-faint)]
+              hover:text-[var(--r-text-muted)] transition-colors py-1.5 glass-card"
+          >
+            {t("evoShowMore")} {sortedMutLogs.length} {locale === "zh" ? "条" : "records"} ↓
+          </button>
+        )}
+        {mutShowAll && sortedMutLogs.length > MUT_PAGE_SIZE && (
+          <button
+            type="button"
+            onClick={() => setMutShowAll(false)}
+            className="mt-2 w-full text-center text-xs text-[var(--r-text-faint)]
+              hover:text-[var(--r-text-muted)] transition-colors py-1.5 glass-card"
+          >
+            <ChevronUp className="inline w-3 h-3 mr-1" />{t("evoShowLess")}
+          </button>
+        )}
+
+        {/* Empty states */}
+        {sortedMutLogs.length === 0 && (
+          <div className="py-6 text-center space-y-2">
+            {isFilterActive && baseMutLogs.length > 0 ? (
+              <>
+                <p className="text-sm text-[var(--r-text-muted)]">{t("evoNoResults")}</p>
+                <button
+                  type="button"
+                  onClick={() => { setMutTypeGroup("all"); setMutFundId("all"); }}
+                  className="text-xs text-[var(--r-accent)] hover:underline"
+                >
+                  {t("evoClearFilters")}
+                </button>
+              </>
+            ) : baseMutLogs.length === 0 && activeEpoch != null && epochStats?.evolved === 0 ? (
+              <p className="text-sm text-[var(--r-text-muted)]">{t("evoAllSkipped")}</p>
+            ) : (
+              <p className="text-sm text-[var(--r-text-muted)]">{t("fitnessEmpty")}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
