@@ -427,7 +427,7 @@ export function EvolutionPanel() {
       <EvoKpiStrip logs={data.logs} epochs={data.epochs} />
 
       {/* Epoch timeline — interactive */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 pt-1 -mt-1 px-0.5 -mx-0.5">
         {/* "All" chip */}
         <button
           type="button"
@@ -445,14 +445,22 @@ export function EvolutionPanel() {
           const Icon = config.icon;
           const delta = epochDelta(ep.epoch);
           const isActive = activeEpoch === ep.epoch;
+          // P2-②: convergence/divergence top color bar
+          const barColor = delta != null && delta > 0.005
+            ? "bg-green-400/50"
+            : delta != null && delta < -0.005
+              ? "bg-red-400/50"
+              : "bg-transparent";
           return (
             <button
               key={ep.epoch}
               type="button"
               onClick={() => setActiveEpoch(isActive ? null : ep.epoch)}
-              className={`glass-card px-4 py-3 shrink-0 min-w-[120px] text-center transition-colors
+              className={`glass-card px-4 py-3 shrink-0 min-w-[120px] text-center transition-colors relative overflow-hidden
                 ${isActive ? "ring-1 ring-[var(--r-accent)]" : "opacity-70 hover:opacity-100"}`}
             >
+              {/* Convergence/divergence top bar */}
+              <div className={`absolute top-0 left-0 right-0 h-0.5 ${barColor}`} />
               <Icon className={`w-4 h-4 mx-auto mb-1 ${config.color}`} />
               <div className="text-sm font-bold">{t("epoch")} {ep.epoch}</div>
               <div className={`text-xs ${config.color}`}>{t(config.labelKey)}</div>

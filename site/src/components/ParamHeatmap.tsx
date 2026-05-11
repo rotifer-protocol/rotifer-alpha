@@ -86,7 +86,13 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds }: Props) {
     }
   }
 
-  const activeParams = PARAM_KEYS.filter(p => grid.some(g => g.param === p));
+  const activeParams = PARAM_KEYS
+    .filter(p => grid.some(g => g.param === p))
+    .sort((a, b) => {
+      const sumAbs = (param: string) =>
+        grid.filter(g => g.param === param).reduce((s, g) => s + Math.abs(g.pctChange), 0);
+      return sumAbs(b) - sumAbs(a);
+    });
 
   return (
     <div className="glass-card p-4">
