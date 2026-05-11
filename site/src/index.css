@@ -123,6 +123,15 @@ body {
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
+/* Recharts SVG elements receive browser focus after click interactions;
+   suppress the default blue outline without affecting keyboard accessibility */
+.recharts-surface {
+  outline: none;
+}
+.recharts-wrapper:focus {
+  outline: none;
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
