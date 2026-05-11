@@ -18,6 +18,7 @@ interface Row {
   id: string;
   market_id: string;
   token_id: string | null;
+  direction?: string;
   last_price: number | null;
   last_price_updated_at: string | null;
 }
@@ -42,8 +43,8 @@ function makeDb(initialRows: Row[]) {
     return {
       bind: (...args: unknown[]) => makeStmt(sql, args),
       all: async <T>() => {
-        if (sql.includes("SELECT id, market_id, token_id FROM paper_trades")) {
-          return { results: rows.map(r => ({ id: r.id, market_id: r.market_id, token_id: r.token_id })) as unknown as T[] };
+        if (sql.includes("FROM paper_trades WHERE status = 'OPEN'")) {
+          return { results: rows.map(r => ({ id: r.id, market_id: r.market_id, token_id: r.token_id, direction: r.direction ?? "BUY_YES" })) as unknown as T[] };
         }
         return { results: [] as T[] };
       },
@@ -266,6 +267,69 @@ test("refreshOpenPrices: thin CLOB book (0.01/0.99) treated as fetchFailed (roun
     assert.equal(r.fetchFailed, 1);
     // Critical: last_price NOT overwritten with 0.5 placeholder.
     assert.equal(rows[0].last_price, 0.4);
+    assert.equal(rows[0].last_price_updated_at, oldTs);
+  } finally {
+    restore();
+  }
+});
+
+test("refreshOpenPrices: ask-only book refreshes SELL_YES using best ask", async () => {
+  const oldTs = "2026-04-01T00:00:00Z";
+  const { db, rows } = makeDb([
+    {
+      id: "short-yes",
+      market_id: "m-76ers",
+      token_id: "tok-76ers-yes",
+      direction: "SELL_YES",
+      last_price: 0.0015,
+      last_price_updated_at: oldTs,
+    },
+  ]);
+  const restore = mockFetch({
+    "clob.polymarket.com/book?token_id=tok-76ers-yes": () => ({
+      bids: [],
+      asks: [
+        { price: "0.999", size: "11100099" },
+        { price: "0.001", size: "305410.43" },
+      ],
+    }),
+  });
+  try {
+    const r = await refreshOpenPrices(db);
+    assert.equal(r.totalOpen, 1);
+    assert.equal(r.refreshed, 1);
+    assert.equal(r.fetchFailed, 0);
+    assert.equal(rows[0].last_price, 0.001);
+    assert.notEqual(rows[0].last_price_updated_at, oldTs);
+  } finally {
+    restore();
+  }
+});
+
+test("refreshOpenPrices: ask-only book keeps BUY_YES stale", async () => {
+  const oldTs = "2026-04-01T00:00:00Z";
+  const { db, rows } = makeDb([
+    {
+      id: "long-yes",
+      market_id: "m-76ers",
+      token_id: "tok-76ers-yes",
+      direction: "BUY_YES",
+      last_price: 0.0015,
+      last_price_updated_at: oldTs,
+    },
+  ]);
+  const restore = mockFetch({
+    "clob.polymarket.com/book?token_id=tok-76ers-yes": () => ({
+      bids: [],
+      asks: [{ price: "0.001", size: "305410.43" }],
+    }),
+  });
+  try {
+    const r = await refreshOpenPrices(db);
+    assert.equal(r.totalOpen, 1);
+    assert.equal(r.refreshed, 0);
+    assert.equal(r.fetchFailed, 1);
+    assert.equal(rows[0].last_price, 0.0015);
     assert.equal(rows[0].last_price_updated_at, oldTs);
   } finally {
     restore();

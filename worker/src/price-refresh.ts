@@ -11,7 +11,7 @@
  *
  * EXTERNAL SIDE EFFECTS:
  *   - fetchClobTokenIds() → Gamma API (only for backfill of missing token_id)
- *   - fetchClobPrices()   → CLOB book API (mid_price source of truth)
+ *   - fetchClobMarkPrices() → CLOB book API (direction-sensitive mark)
  *
  * Cron integration (index.ts scheduled handler):
  *   refreshOpenPrices() runs as Phase A on every 5min cron BEFORE
@@ -26,7 +26,7 @@
  *
  * Source: 2026-05-10 founder authorization (D-Lite, Q1=a one-shot, Q2=a accept reval).
  */
-import { fetchClobPrices, fetchClobTokenIds } from "./price";
+import { clobMarkKey, fetchClobMarkPrices, fetchClobTokenIds } from "./price";
 
 export interface PriceRefreshResult {
   /** OPEN trades discovered at the start of this refresh cycle */
@@ -49,6 +49,7 @@ interface OpenTradeRow {
   id: string;
   market_id: string;
   token_id: string | null;
+  direction: string;
 }
 
 /**
@@ -78,7 +79,7 @@ export async function refreshOpenPrices(db: D1Database): Promise<PriceRefreshRes
 
   // ─── Step 1: load all OPEN trades ────────────────────────
   const openResult = await db.prepare(
-    "SELECT id, market_id, token_id FROM paper_trades WHERE status = 'OPEN'",
+    "SELECT id, market_id, token_id, direction FROM paper_trades WHERE status = 'OPEN'",
   ).all<OpenTradeRow>();
   const trades = openResult.results ?? [];
   result.totalOpen = trades.length;
@@ -127,13 +128,12 @@ export async function refreshOpenPrices(db: D1Database): Promise<PriceRefreshRes
     }
   }
 
-  // ─── Step 3: batch fetch CLOB mid-prices ─────────────────
-  const tokenIds = trades
-    .map(t => t.token_id)
-    .filter((id): id is string => Boolean(id));
-  const uniqueTokenIds = [...new Set(tokenIds)];
-  const priceMap = uniqueTokenIds.length > 0
-    ? await fetchClobPrices(uniqueTokenIds)
+  // ─── Step 3: batch fetch direction-sensitive CLOB marks ───
+  const markRequests = trades
+    .filter((t): t is OpenTradeRow & { token_id: string } => Boolean(t.token_id))
+    .map(t => ({ tokenId: t.token_id, direction: t.direction }));
+  const priceMap = markRequests.length > 0
+    ? await fetchClobMarkPrices(markRequests)
     : new Map<string, number>();
 
   // ─── Step 4: write last_price + last_price_updated_at ────
@@ -144,7 +144,7 @@ export async function refreshOpenPrices(db: D1Database): Promise<PriceRefreshRes
       result.fetchFailed++;
       continue;
     }
-    const price = priceMap.get(t.token_id);
+    const price = priceMap.get(clobMarkKey(t.token_id, t.direction));
     if (price === undefined) {
       result.fetchFailed++;
       continue;

@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  clobMarkPrice,
   clobMidPrice,
   isStale,
   calcUnrealizedPnl,
@@ -73,6 +74,56 @@ test("clobMidPrice: one-sided book returns null (avoids fictitious mark)", () =>
   );
   assert.equal(
     clobMidPrice({ bids: [], asks: [{ price: "0.55", size: "100" }] }),
+    null,
+  );
+});
+
+test("clobMarkPrice: SELL_YES uses best ask for ask-only book", () => {
+  // 553869-style book: no bids, but YES can be bought back at best ask.
+  // For a SELL_YES short, this is a conservative close cost and should not
+  // leave the position stale.
+  assert.equal(
+    clobMarkPrice({
+      bids: [],
+      asks: [
+        { price: "0.999", size: "11100099" },
+        { price: "0.001", size: "305410.43" },
+      ],
+    }, "SELL_YES"),
+    0.001,
+  );
+});
+
+test("clobMarkPrice: BUY_YES stays stale for ask-only book", () => {
+  // A long cannot conservatively value itself from asks when there are no bids.
+  assert.equal(
+    clobMarkPrice({
+      bids: [],
+      asks: [{ price: "0.001", size: "305410.43" }],
+    }, "BUY_YES"),
+    null,
+  );
+});
+
+test("clobMarkPrice: BUY_YES uses best bid for bid-only book", () => {
+  assert.equal(
+    clobMarkPrice({
+      bids: [
+        { price: "0.001", size: "100" },
+        { price: "0.42", size: "100" },
+      ],
+      asks: [],
+    }, "BUY_YES"),
+    0.42,
+  );
+});
+
+test("clobMarkPrice: SELL_YES stays stale for bid-only book", () => {
+  assert.equal(
+    clobMarkPrice({
+      bids: [{ price: "0.42", size: "100" }],
+      asks: [],
+    }, "SELL_YES"),
     null,
   );
 });

@@ -148,12 +148,30 @@ interface ClobBook {
   asks?: ClobBookSide[];
 }
 
+interface ClobTopOfBook {
+  bestBid: number;
+  bestAsk: number;
+}
+
 /** IEEE-754 cushion for spread comparison: 0.55 − 0.45 = 0.10000000000000003,
  *  not 0.10. Without ε the boundary case (spread === CLOB_MAX_SPREAD) flips
  *  to "rejected" arbitrarily. 1e-9 is a billion times finer than CLOB's
  *  1e-3 minimum tick, so it widens the accept-band by an undetectable amount
  *  while squashing all realistic float artifacts. */
 const SPREAD_FLOAT_EPSILON = 1e-9;
+
+function topOfBook(book: ClobBook): ClobTopOfBook {
+  const bidPrices = (book.bids ?? [])
+    .map(side => Number(side.price))
+    .filter(price => Number.isFinite(price));
+  const askPrices = (book.asks ?? [])
+    .map(side => Number(side.price))
+    .filter(price => Number.isFinite(price));
+  return {
+    bestBid: bidPrices.length > 0 ? Math.max(...bidPrices) : NaN,
+    bestAsk: askPrices.length > 0 ? Math.min(...askPrices) : NaN,
+  };
+}
 
 /**
  * Compute mid-price from CLOB order book.
@@ -177,14 +195,7 @@ const SPREAD_FLOAT_EPSILON = 1e-9;
  * a counterfeit "fair value" that propagates as bogus PnL through D1.
  */
 export function clobMidPrice(book: ClobBook): number | null {
-  const bidPrices = (book.bids ?? [])
-    .map(side => Number(side.price))
-    .filter(price => Number.isFinite(price));
-  const askPrices = (book.asks ?? [])
-    .map(side => Number(side.price))
-    .filter(price => Number.isFinite(price));
-  const bestBid = bidPrices.length > 0 ? Math.max(...bidPrices) : NaN;
-  const bestAsk = askPrices.length > 0 ? Math.min(...askPrices) : NaN;
+  const { bestBid, bestAsk } = topOfBook(book);
   if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk)) return null;
   if (bestBid <= 0 || bestAsk <= 0) return null;
   if (bestAsk < bestBid) return null;
@@ -193,24 +204,58 @@ export function clobMidPrice(book: ClobBook): number | null {
 }
 
 /**
- * Fetch CLOB mid-price for a single token.
- * Returns null on network failure, empty book, or invalid book state.
+ * Direction-sensitive mark price from CLOB.
+ *
+ * For two-sided books, use the filtered midpoint (same as clobMidPrice).
+ * For one-sided books, only mark when the available side is conservative for
+ * the position:
+ *   - SELL_YES short: ask-only book gives a buy-to-close cost (best ask).
+ *   - BUY_YES long:  bid-only book gives a sell/liquidation value (best bid).
+ *
+ * We intentionally do NOT mark BUY_YES from ask-only books or SELL_YES from
+ * bid-only books because that would be optimistic for the holder.
  */
-export async function fetchClobPrice(tokenId: string): Promise<number | null> {
+export function clobMarkPrice(book: ClobBook, direction: string): number | null {
+  const mid = clobMidPrice(book);
+  if (mid !== null) return mid;
+
+  const { bestBid, bestAsk } = topOfBook(book);
+  const hasBid = Number.isFinite(bestBid) && bestBid > 0;
+  const hasAsk = Number.isFinite(bestAsk) && bestAsk > 0;
+
+  if (direction === "SELL_YES" && !hasBid && hasAsk) return bestAsk;
+  if (direction === "BUY_YES" && hasBid && !hasAsk) return bestBid;
+  return null;
+}
+
+export function clobMarkKey(tokenId: string, direction: string): string {
+  return `${tokenId}:${direction}`;
+}
+
+async function fetchClobBook(tokenId: string): Promise<ClobBook | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PRICE_FETCH_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PRICE_FETCH_TIMEOUT_MS);
     const res = await fetch(
       `https://clob.polymarket.com/book?token_id=${tokenId}`,
       { signal: controller.signal },
     );
-    clearTimeout(timer);
     if (!res.ok) return null;
-    const book = await res.json() as ClobBook;
-    return clobMidPrice(book);
+    return await res.json() as ClobBook;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Fetch CLOB mid-price for a single token.
+ * Returns null on network failure, empty book, or invalid book state.
+ */
+export async function fetchClobPrice(tokenId: string): Promise<number | null> {
+  const book = await fetchClobBook(tokenId);
+  return book ? clobMidPrice(book) : null;
 }
 
 /**
@@ -235,6 +280,42 @@ export async function fetchClobPrices(tokenIds: string[]): Promise<Map<string, n
       if (e.status === "fulfilled" && e.value[1] !== null) {
         map.set(e.value[0], e.value[1]);
       }
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Batch-fetch direction-sensitive CLOB marks.
+ * Returns map of `${token_id}:${direction}` → mark price.
+ */
+export async function fetchClobMarkPrices(
+  requests: Array<{ tokenId: string; direction: string }>,
+): Promise<Map<string, number>> {
+  const uniqueTokenIds = [...new Set(requests.map(r => r.tokenId).filter(Boolean))];
+  const bookMap = new Map<string, ClobBook>();
+  const map = new Map<string, number>();
+  const BATCH_SIZE = 10;
+
+  for (let i = 0; i < uniqueTokenIds.length; i += BATCH_SIZE) {
+    const batch = uniqueTokenIds.slice(i, i + BATCH_SIZE);
+    const entries = await Promise.allSettled(
+      batch.map(async tokenId => [tokenId, await fetchClobBook(tokenId)] as const),
+    );
+    for (const e of entries) {
+      if (e.status === "fulfilled" && e.value[1] !== null) {
+        bookMap.set(e.value[0], e.value[1]);
+      }
+    }
+  }
+
+  for (const request of requests) {
+    const book = bookMap.get(request.tokenId);
+    if (!book) continue;
+    const price = clobMarkPrice(book, request.direction);
+    if (price !== null) {
+      map.set(clobMarkKey(request.tokenId, request.direction), price);
     }
   }
 
