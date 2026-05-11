@@ -4,7 +4,7 @@ import { useI18n } from "../i18n/context";
 import {
   FUND_COLORS, FUND_GRADIENTS, FUND_BORDER_COLORS,
   FUND_NAME_KEYS, FUND_MOTTO_KEYS,
-  fundDisplayName, fundTierLabel, groupByTier,
+  fundDisplayName, fundTierLabel, groupByTier, fmtUSD, fmtCompact,
 } from "../lib/fundMeta";
 
 // Re-export for backward compat (FundDetail imports FUND_COLORS from here)
@@ -99,7 +99,7 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
         <div className="flex items-baseline gap-1.5 flex-wrap">
           <span className="font-bold text-lg whitespace-nowrap">{fundDisplayName(fund.id, t)}</span>
           {nameKey && (
-            <span className="text-[10px] font-mono px-1 py-px rounded bg-[var(--r-surface)] text-[var(--r-text-muted)] border border-[var(--r-border)] shrink-0">
+            <span className="text-[10px] font-mono px-1 py-px rounded bg-[var(--r-surface)] text-[var(--r-text-muted)] border border-[var(--r-border)] shrink-0 hidden sm:inline">
               {tierBadge}
             </span>
           )}
@@ -123,8 +123,11 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
       {sparklines?.[fund.id] && <MiniSparkline data={sparklines[fund.id]} positive={fund.returnPct >= 0} />}
 
       <div className="text-right shrink-0">
-        <p className="text-xl font-bold font-mono">${fund.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-        <p className={`text-sm font-mono font-medium ${pnlClass}`}>
+        <p className="text-xl font-bold font-mono whitespace-nowrap">
+          <span className="sm:hidden">{fmtCompact(fund.totalValue)}</span>
+          <span className="hidden sm:inline">{fmtUSD(fund.totalValue)}</span>
+        </p>
+        <p className={`text-sm font-mono font-medium whitespace-nowrap ${pnlClass}`}>
           {sign}{fund.returnPct.toFixed(2)}%
         </p>
       </div>

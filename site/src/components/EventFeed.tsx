@@ -8,7 +8,7 @@ import {
 import type { AgentEvent } from "../hooks/useWebSocket";
 import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
-import { fundDisplayName } from "../lib/fundMeta";
+import { fundDisplayName, fmtUSD } from "../lib/fundMeta";
 import type { LucideIcon } from "lucide-react";
 
 interface EventCfg {
@@ -149,7 +149,7 @@ function EventSummary({ event }: { event: AgentEvent }) {
     case "SIGNAL_FOUND":
       return <span className="text-[var(--r-text-muted)]">{tSignalType(t, p.type)} · {t("edge")} {String(p.edge)}% · {String(p.question).slice(0, 50)}</span>;
     case "TRADE_OPENED":
-      return <span className="text-[var(--r-text-muted)]">{tFundName(t, p.fundName)} · ${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {String(p.question).slice(0, 40)}</span>;
+      return <span className="text-[var(--r-text-muted)]">{tFundName(t, p.fundName)} · {fmtUSD(Number(p.amount))} · {String(p.question).slice(0, 40)}</span>;
     case "TRADE_SETTLED":
     case "TRADE_STOPPED":
     case "TRADE_EXPIRED":
@@ -256,7 +256,7 @@ function ExpandedDetail({ event }: { event: AgentEvent }) {
             <DetailItem label={t("fund")} value={
               <RouterLink to={`/fund/${fundId}`} className="text-[var(--r-accent)] hover:underline">{tFundName(t, p.fundName || fundId)}</RouterLink>
             } />
-            <DetailItem label={t("amount")} value={`$${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+            <DetailItem label={t("amount")} value={fmtUSD(Number(p.amount))} />
             <DetailItem label={t("entryPrice")} value={p.price != null ? `$${Number(p.price).toFixed(3)}` : "—"} />
             <DetailItem label={t("direction")} value={tDirection(t, p.direction)} />
           </div>

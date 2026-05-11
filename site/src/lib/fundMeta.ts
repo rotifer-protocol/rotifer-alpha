@@ -148,6 +148,28 @@ export const FUND_HEX_COLORS: Record<string, string> = Object.fromEntries(
 // Export TIER_OPACITY for components that want tier-based visual variation
 export { TIER_OPACITY };
 
+// ─── Currency formatting helpers ──────────────────────────────────────────
+//
+// Always use 'en-US' locale to guarantee comma thousand-separators on all
+// devices (zh-CN Intl may use thin-space U+202F or Chinese grouping digits
+// which causes line-breaks and layout overflow on mobile).
+
+/** Full USD format: $1,223,743.02 */
+export function fmtUSD(v: number, decimals = 2): string {
+  return `$${v.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
+
+/** Compact USD for mobile: $1.22M / $124K / $99.50 */
+export function fmtCompact(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 100_000)   return `$${Math.round(v / 1_000)}K`;
+  if (v >= 10_000)    return `$${(v / 1_000).toFixed(1)}K`;
+  return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 // ─── Tier grouping helper ──────────────────────────────────────────────────
 
 export type TierGroup = { tier: FundTier; label: "S" | "M" | "L"; funds: string[] };

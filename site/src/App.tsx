@@ -13,7 +13,7 @@ import { GeneEvolutionPanel } from "./components/GeneEvolutionPanel";
 import { DiagnosticsPage } from "./components/DiagnosticsPage";
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
-import { fundDisplayName } from "./lib/fundMeta";
+import { fundDisplayName, fmtUSD } from "./lib/fundMeta";
 
 const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? "wss://api.rotifer.xyz/ws" : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`);
 
@@ -305,7 +305,7 @@ function useHighlight(events: AgentEvent[]) {
       return { text: `${warn}${t("heroHighlightSignal")} ${edgeVal.toFixed(1)}% ${t("heroHighlightEdge")} — ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
     }
     if (e.type === "TRADE_OPENED") {
-      return { text: `${tFund(p.fundName)} ${t("eventOpened")} · $${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
+      return { text: `${tFund(p.fundName)} ${t("eventOpened")} · ${fmtUSD(Number(p.amount))} · ${String(p.question).slice(0, 40)}`, positive: true, url: polymarketUrl(p.slug, p.question) };
     }
     if (e.type === "EVOLUTION_COMPLETED") {
       return { text: `${t("eventEvolved")} — ${t("epoch")} ${String(p.epoch)}`, positive: true, url: null };
@@ -473,7 +473,7 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
             <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalPool")}</p>
             <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">
               <span className="sm:hidden">${fmtCompact(totalPool)}</span>
-              <span className="hidden sm:inline">${totalPool.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="hidden sm:inline">${totalPool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </p>
             {/* P3: today's change — visual sibling to total-return realized/unrealized split */}
             {todayChangePct != null && (
@@ -521,14 +521,14 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
             <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroInitialCapital")}</p>
             <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)] whitespace-nowrap">
               <span className="sm:hidden">${fmtCompact(initialCapital)}</span>
-              <span className="hidden sm:inline">${initialCapital.toLocaleString()}</span>
+              <span className="hidden sm:inline">${initialCapital.toLocaleString("en-US")}</span>
             </p>
           </div>
           <div className="text-center min-w-0">
             <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroTotalPnl")}</p>
             <p className={`text-sm font-mono tabular-nums whitespace-nowrap ${pnlColor}`}>
               <span className="sm:hidden">{pnlPrefix}${fmtCompact(Math.abs(totalPnl))}</span>
-              <span className="hidden sm:inline">{pnlPrefix}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="hidden sm:inline">{pnlPrefix}${Math.abs(totalPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </p>
           </div>
           <div className="text-center min-w-0">

@@ -10,7 +10,7 @@ import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
 import { useI18n } from "../i18n/context";
 import { formatFundGeneration, type TranslationKey } from "../i18n/translations";
-import { FUND_NAME_KEYS, FUND_MOTTO_KEYS, fundDisplayName, fundTierLabel } from "../lib/fundMeta";
+import { FUND_NAME_KEYS, FUND_MOTTO_KEYS, fundDisplayName, fundTierLabel, fmtUSD } from "../lib/fundMeta";
 
 const REASON_I18N: Record<string, TranslationKey> = {
   STANDARD_PBT: "actionPbt", PBT_INHERIT_MUTATE: "actionInherit",
@@ -171,7 +171,7 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
           </a>
         </div>
         <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0">{dirKey ? t(dirKey) : trade.direction}</span>
-        <span className="text-xs font-mono shrink-0">${trade.amount.toLocaleString()}</span>
+                <span className="text-xs font-mono shrink-0">{fmtUSD(trade.amount)}</span>
         {isOpen && trade.unrealized_pnl != null && (
           <span className={`text-xs font-mono font-medium shrink-0 ${livePnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
             {livePnl >= 0 ? "+" : ""}{livePnl.toFixed(2)}
@@ -424,7 +424,7 @@ export function FundDetail() {
             <p className="text-sm text-[var(--r-text-muted)] mt-1 truncate">{mottoKey ? t(mottoKey as any) : fund.motto}</p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xl sm:text-3xl font-bold font-mono whitespace-nowrap">${fund.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-xl sm:text-3xl font-bold font-mono whitespace-nowrap">{fmtUSD(fund.totalValue)}</p>
             <p className={`text-sm sm:text-lg font-mono font-medium whitespace-nowrap ${pnlClass}`}>{sign}{fund.returnPct.toFixed(2)}%</p>
           </div>
         </div>
@@ -434,7 +434,7 @@ export function FundDetail() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard icon={TrendingUp} label={t("winRate")} value={`${Math.round(fund.winRate * 100)}%`} sub={`${fund.winCount}${t("wins")} / ${fund.lossCount}${t("losses")}`} />
         <StatCard icon={Activity} label={t("openPositions")} value={String(fund.openPositions)} sub={`${t("max")} ${cfg.maxOpenPositions}`} />
-        <StatCard icon={Target} label={t("monthlyTarget")} value={`+${(fund.monthlyTarget * 100).toFixed(0)}%`} sub={`$${fund.initialBalance.toLocaleString()} ${t("initial")}`} />
+        <StatCard icon={Target} label={t("monthlyTarget")} value={`+${(fund.monthlyTarget * 100).toFixed(0)}%`} sub={`${fmtUSD(fund.initialBalance, 0)} ${t("initial")}`} />
         <StatCard icon={Shield} label={t("drawdown")} value={`${(cfg.drawdownLimit * 100).toFixed(0)}%`} sub={`${t("soft")} ${(cfg.drawdownSoftLimit * 100).toFixed(0)}%`} />
       </div>
 
@@ -452,10 +452,10 @@ export function FundDetail() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--r-border)" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} domain={["dataMin - 100", "dataMax + 100"]} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
+              <YAxis tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} domain={["dataMin - 100", "dataMax + 100"]} tickFormatter={(v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })} />
               <Tooltip
                 contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
-                formatter={(value: unknown) => [`$${Number(value).toLocaleString()}`, t("totalValue")]}
+                formatter={(value: unknown) => [fmtUSD(Number(value)), t("totalValue")]}
               />
               <Area type="monotone" dataKey="value" stroke="var(--r-accent)" fill="url(#equityGrad)" strokeWidth={2} />
             </AreaChart>
@@ -611,7 +611,7 @@ function formatConfigValue(key: string, value: unknown, t: (k: TranslationKey) =
       return `${(value * 100).toFixed(1)}%`;
     }
     if (key.includes("Volume") || key.includes("Liquidity") || key === "sizingBase") {
-      return `$${value.toLocaleString()}`;
+      return fmtUSD(value, 0);
     }
     return String(value);
   }
