@@ -112,6 +112,19 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
 
   const maxGen = Math.max(...lineage.map(f => f.generation));
   const hasLineage = maxGen > 0;
+
+  // Split: funds involved in actual evolution vs Gen.0 unstarted funds
+  const fundsWithChildren = new Set(
+    lineage.filter(f => f.parent_id != null).map(f => f.parent_id!),
+  );
+  // "Active" = has a parent, OR has been evolved (gen > 0), OR has children
+  const activeFundIds = new Set(
+    lineage
+      .filter(f => f.parent_id != null || f.generation > 0 || fundsWithChildren.has(f.id))
+      .map(f => f.id),
+  );
+  const activeLineage = lineage.filter(f => activeFundIds.has(f.id));
+  const passiveFunds = lineage.filter(f => !activeFundIds.has(f.id));
   const isInteractive = !!onSelectFund;
 
   return (
@@ -163,7 +176,7 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
       ) : (
         /* Multi-generation: CSS tree with connectors + F(g) */
         <div className="space-y-0.5">
-          {buildTreeEntries(lineage).map(({ fund, depth, isLast, ancestorIsLast }) => {
+          {buildTreeEntries(activeLineage).map(({ fund, depth, isLast, ancestorIsLast }) => {
             const Icon = FUND_ICONS[fund.id];
             const colorClass = FUND_COLORS[fund.id] || "text-[var(--r-text-muted)]";
             const fg = latestFitness[fund.id];
@@ -259,6 +272,38 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Gen.0 funds that have no evolution history – shown as a compact strip below the tree */}
+      {hasLineage && passiveFunds.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-[var(--r-border)]">
+          <p className="text-[10px] text-[var(--r-text-muted)] uppercase tracking-wider mb-2">
+            {locale === "zh" ? "其余品系（第 0 代，未进化）" : "Other strains (Gen 0, unevolved)"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {passiveFunds.map(f => {
+              const Icon = FUND_ICONS[f.id];
+              const colorClass = FUND_COLORS[f.id] || "text-[var(--r-text-muted)]";
+              const isSelected = selectedFund === f.id;
+              return (
+                <div
+                  key={f.id}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${
+                    isInteractive ? "cursor-pointer hover:bg-[var(--r-surface)]" : "cursor-default"
+                  } ${isSelected ? "bg-[var(--r-surface-hover)] ring-1 ring-[var(--r-accent)]" : "bg-[var(--r-surface)]/40"}`}
+                  onClick={() => onSelectFund?.(isSelected ? null : f.id)}
+                >
+                  {Icon ? (
+                    <span className={`shrink-0 ${colorClass}`}><Icon size={13} /></span>
+                  ) : (
+                    <span className="text-sm">{f.emoji}</span>
+                  )}
+                  <span className="text-[var(--r-text-muted)]">{fundDisplayName(f.id, t)}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

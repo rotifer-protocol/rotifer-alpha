@@ -276,6 +276,8 @@ export function FitnessChart({ logs }: Props) {
       </div>
 
       {/* ── Chart ── */}
+      {/* outline-none suppresses the browser's default focus ring on the SVG */}
+      <div className="[&_svg]:outline-none [&_.recharts-surface]:outline-none">
       <ResponsiveContainer width="100%" height={isMobile ? 200 : 260}>
         <ComposedChart
           data={data}
@@ -294,7 +296,9 @@ export function FitnessChart({ logs }: Props) {
             domain={["auto", "auto"]}
             tickFormatter={(v: number) => v.toFixed(2)}
           />
-          <Tooltip content={(props: object) => (
+          <Tooltip
+            cursor={{ stroke: "rgba(255,255,255,0.12)", strokeWidth: 1, fill: "none" }}
+            content={(props: object) => (
             <ChartTooltip
               {...(props as Parameters<typeof ChartTooltip>[0])}
               t={t}
@@ -381,6 +385,7 @@ export function FitnessChart({ logs }: Props) {
           ))}
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
 
       {/* ── Interactive fund tags (hover to focus) ── */}
       <div
