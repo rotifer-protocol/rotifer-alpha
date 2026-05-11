@@ -47,6 +47,30 @@ export interface EvolutionLogEntry {
   createdAt: string;
 }
 
+const STATIC_G1_LINEAGE_BACKFILL = [
+  {
+    id: "lineage-risk-v1-to-conservative-g1",
+    parentId: "polymarket-risk:v1-baseline",
+    childId: "polymarket-risk:conservative g1",
+    mutationType: "threshold_tightening",
+    mutationDescription: "Tightened stop-loss and max-hold thresholds to cut losses faster.",
+  },
+  {
+    id: "lineage-trader-v1-to-high-edge-g1",
+    parentId: "polymarket-trader:v1-baseline",
+    childId: "polymarket-trader:high-edge g1",
+    mutationType: "signal_filter",
+    mutationDescription: "Raised entry bar to edge >= 2x fund minEdge for fewer, higher-conviction trades.",
+  },
+  {
+    id: "lineage-micro-evolver-v1-to-aggressive-g1",
+    parentId: "polymarket-micro-evolver:v1-baseline",
+    childId: "polymarket-micro-evolver:aggressive g1",
+    mutationType: "adaptation_rate",
+    mutationDescription: "Increased parameter nudge ratio and lowered trade threshold so fund params adapt faster.",
+  },
+] as const;
+
 // ─── Active Variant Lookup ──────────────────────────────
 
 export async function getActiveVariantId(db: D1Database, geneId: string): Promise<string> {
@@ -180,6 +204,30 @@ export async function getLineage(db: D1Database, geneId?: string): Promise<Linea
   }
   const rows = await db.prepare("SELECT * FROM gene_lineage ORDER BY created_at DESC").all();
   return (rows.results ?? []).map(mapLineageRow);
+}
+
+/**
+ * Runtime idempotent backfill for static g1 challengers.
+ *
+ * The SQL migration remains the durable schema path, but production D1 API
+ * access can be unavailable to the deploy token. Running the same INSERT OR
+ * IGNORE through the Worker DB binding keeps the public lineage view complete
+ * without requiring broader Cloudflare account permissions.
+ */
+export async function ensureStaticG1LineageBackfill(db: D1Database): Promise<void> {
+  const now = new Date().toISOString();
+  for (const row of STATIC_G1_LINEAGE_BACKFILL) {
+    await db.prepare(
+      "INSERT OR IGNORE INTO gene_lineage (id, parent_id, child_id, mutation_type, mutation_description, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(
+      row.id,
+      row.parentId,
+      row.childId,
+      row.mutationType,
+      row.mutationDescription,
+      now,
+    ).run();
+  }
 }
 
 // ─── Evolution Log ──────────────────────────────────────

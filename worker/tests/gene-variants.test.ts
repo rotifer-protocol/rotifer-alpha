@@ -286,3 +286,19 @@ test("getAllActiveVariants returns map of gene→variant", async () => {
   assert.equal(map.get("polymarket-scanner"), "polymarket-scanner:v1-baseline");
   assert.equal(map.get("polymarket-monitor"), "polymarket-monitor:v2-adaptive");
 });
+
+test("ensureStaticG1LineageBackfill inserts static challenger lineage rows", async () => {
+  const {
+    ensureStaticG1LineageBackfill,
+    getLineage,
+  } = await import("../src/gene-variants");
+  const db = new FakeDb() as unknown as D1Database;
+
+  await ensureStaticG1LineageBackfill(db);
+
+  const lineage = await getLineage(db);
+  assert.equal(lineage.length, 3);
+  assert.ok(lineage.some(l => l.childId === "polymarket-risk:conservative g1"));
+  assert.ok(lineage.some(l => l.childId === "polymarket-trader:high-edge g1"));
+  assert.ok(lineage.some(l => l.childId === "polymarket-micro-evolver:aggressive g1"));
+});

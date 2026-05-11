@@ -1,6 +1,6 @@
 import type { Env, FundConfig } from "./types";
 import { corsHeaders } from "./auth";
-import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch } from "./gene-variants";
+import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch, ensureStaticG1LineageBackfill } from "./gene-variants";
 import { GENE_REGISTRY, type GeneMeta } from "./gene-interface";
 import {
   calculateCurrentPositionValue,
@@ -693,6 +693,7 @@ async function apiGeneLineage(
 ): Promise<Response> {
   const url = new URL(req.url);
   const geneId = url.searchParams.get("gene") ?? undefined;
+  await ensureStaticG1LineageBackfill(db);
   const lineage = await getLineage(db, geneId);
   return Response.json({ lineage }, { headers });
 }
