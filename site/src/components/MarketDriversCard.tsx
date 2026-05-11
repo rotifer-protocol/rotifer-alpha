@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, TrendingUp, TrendingDown, ExternalLink } from "lucide-react";
 import { useFetch } from "../hooks/useApi";
 import { useI18n } from "../i18n/context";
@@ -11,11 +11,9 @@ import { useI18n } from "../i18n/context";
  * forcing users to pull up the diagnostics page or D1 queries.
  *
  * Behavior:
- *   - Default collapsed (one-line summary). Saves vertical space when nothing
- *     interesting happened.
- *   - Auto-expands when |totalNet| > 0.5% of total pool (i.e. when the user
- *     would actually want to see attribution).
- *   - User can manually toggle, which overrides the auto-decision.
+ *   - Default collapsed. Saves vertical space; state persists across reloads.
+ *   - User toggle is persisted to localStorage (key: petri-mdc-open).
+ *   - Selected time window is also persisted (key: petri-mdc-hours).
  *   - Time window selector: 1h / 3h / 12h / 24h (default 3h).
  *
  * Limitation:
@@ -56,6 +54,22 @@ const WINDOW_LABEL_KEY = {
   24: "driversWindow24h",
 } as const;
 
+const STORAGE_OPEN  = "petri-mdc-open";
+const STORAGE_HOURS = "petri-mdc-hours";
+
+function readLS<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw !== null ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLS(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / SSR */ }
+}
+
 interface Props {
   /** Total pool in USD; used for auto-expand threshold and pct framing. */
   totalPool: number;
@@ -77,19 +91,25 @@ function fmtUsdAbs(v: number): string {
 
 export function MarketDriversCard({ totalPool }: Props) {
   const { t } = useI18n();
-  const [hours, setHours] = useState<Window>(3);
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+
+  // Persistent state — reads localStorage on mount, defaults to collapsed / 3h
+  const [hours, setHoursRaw] = useState<Window>(() => readLS<Window>(STORAGE_HOURS, 3));
+  const [open, setOpenRaw]   = useState<boolean>(() => readLS<boolean>(STORAGE_OPEN, false));
+
+  function setHours(w: Window) {
+    setHoursRaw(w);
+    writeLS(STORAGE_HOURS, w);
+  }
+
+  function toggleOpen() {
+    setOpenRaw(prev => {
+      const next = !prev;
+      writeLS(STORAGE_OPEN, next);
+      return next;
+    });
+  }
 
   const { data } = useFetch<MarketDriversResp>(`/api/market-drivers?hours=${hours}`, 60_000);
-
-  // Auto-expand when |totalNet| exceeds 0.5% of pool — the threshold below
-  // which intraday volatility is visually noisy and not worth pre-expanding.
-  const autoOpen = useMemo(() => {
-    if (!data || totalPool <= 0) return false;
-    return Math.abs(data.totalNet) > totalPool * 0.005;
-  }, [data, totalPool]);
-
-  const open = manualOpen !== null ? manualOpen : autoOpen;
 
   // Don't render the card if we have no data yet — avoids a brief flash
   // of an empty card on initial load.
@@ -107,7 +127,7 @@ export function MarketDriversCard({ totalPool }: Props) {
     <div className="glass-card mb-6 overflow-hidden">
       <button
         type="button"
-        onClick={() => setManualOpen(!open)}
+        onClick={() => toggleOpen()}
         className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors"
         aria-expanded={open}
       >
