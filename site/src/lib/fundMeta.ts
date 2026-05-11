@@ -30,7 +30,7 @@ export function fundTierLabel(id: string): "S" | "M" | "L" {
   return "S";
 }
 
-/** Fund display name: base personality name + tier suffix for M/L. */
+/** Fund display name: base personality name + explicit tier suffix for all tiers. */
 export function fundDisplayName(
   id: string,
   t: (k: TranslationKey) => string,
@@ -39,7 +39,9 @@ export function fundDisplayName(
   const key = FUND_NAME_KEYS[p] as TranslationKey | undefined;
   const baseName = key ? t(key) : id;
   const tl = fundTierLabel(id);
-  return tl === "S" ? baseName : `${baseName}·${tl}`;
+  // All three tiers now show their suffix so the hierarchy is unambiguous:
+  // S = $10k (active/evolved) · M = medium tier · L = large tier
+  return `${baseName}·${tl}`;
 }
 
 // ─── All 15 fund IDs ────────────────────────────────────────────────────────
