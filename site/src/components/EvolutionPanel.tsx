@@ -623,8 +623,7 @@ export function EvolutionPanel() {
             ${activeEpoch == null ? "ring-1 ring-[var(--r-accent)]" : "opacity-70 hover:opacity-100"}`}
         >
           <div className="text-xs text-[var(--r-text-muted)] mb-0.5">{t("evoAllEpochs")}</div>
-          <div className="text-base font-bold font-mono">{data.epochs.length}</div>
-          <div className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{locale === "zh" ? "个世代" : "epochs"}</div>
+          <div className="text-[11px] text-[var(--r-text-faint)]">{locale === "zh" ? "全部" : "All"}</div>
         </button>
 
         {sortedEpochs.map(ep => {
