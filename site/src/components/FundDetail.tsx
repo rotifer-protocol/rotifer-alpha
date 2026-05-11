@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, TrendingUp, Activity, Target,
@@ -528,6 +528,22 @@ export function FundDetail() {
           <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
             <Activity className="w-4 h-4 inline-block mr-1.5 -mt-0.5 text-yellow-400" />{t("openPositions")} ({openTrades.length})
           </h3>
+          {/* Exposure bar */}
+          {fund.initialBalance > 0 && (() => {
+            const deployed = openTrades.reduce((s, tr) => s + tr.amount, 0);
+            const pct = Math.min(100, (deployed / fund.initialBalance) * 100);
+            return (
+              <div className="glass-card px-4 py-3 mb-3">
+                <div className="flex justify-between text-xs text-[var(--r-text-muted)] mb-1.5">
+                  <span>{t("deployedCapital")}</span>
+                  <span className="font-mono">{fmtUSD(deployed)} / {fmtUSD(fund.initialBalance, 0)}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[var(--r-border)] overflow-hidden">
+                  <div className="h-full rounded-full bg-[var(--r-accent)] transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })()}
           <div className="space-y-1.5">
             {openTrades.map(trade => <TradeRow key={trade.id} trade={trade} maxHoldDays={cfg.maxHoldDays} />)}
           </div>
@@ -535,22 +551,7 @@ export function FundDetail() {
       )}
 
       {/* Trade History */}
-      <div>
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
-          {t("tradeHistory")} ({closedTrades.length})
-        </h3>
-        {closedTrades.length > 0 ? (
-          <div className="space-y-1.5">
-            {closedTrades.map(trade => <TradeRow key={trade.id} trade={trade} maxHoldDays={cfg.maxHoldDays} />)}
-          </div>
-        ) : (
-          <div className="glass-card p-8 text-center">
-            <Target className="w-8 h-8 mx-auto mb-3 text-[var(--r-accent)] opacity-60" />
-            <p className="font-medium text-sm mb-1">{t("emptyTradesTitle")}</p>
-            <p className="text-xs text-[var(--r-text-muted)]">{t("emptyTradesDesc")}</p>
-          </div>
-        )}
-      </div>
+      <TradeHistorySection trades={closedTrades} maxHoldDays={cfg.maxHoldDays} />
 
       {/* Evolution Log */}
       {fundEvoLogs.length > 0 && (
@@ -579,6 +580,146 @@ export function FundDetail() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+function readLS<T>(key: string, fallback: T): T {
+  try { const v = localStorage.getItem(key); return v !== null ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
+}
+function writeLS(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore quota */ }
+}
+
+const HISTORY_FILTER_KEY = "petri-fd-history-filter";
+const HISTORY_PAGE_SIZE  = 20;
+type HistoryFilter = "all" | "win" | "loss" | "void";
+
+function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHoldDays?: number }) {
+  const { t } = useI18n();
+  const [filter, setFilterRaw] = useState<HistoryFilter>(() => readLS<HistoryFilter>(HISTORY_FILTER_KEY, "all"));
+  const [visible, setVisible]  = useState(HISTORY_PAGE_SIZE);
+
+  function setFilter(f: HistoryFilter) {
+    setFilterRaw(f);
+    setVisible(HISTORY_PAGE_SIZE);
+    writeLS(HISTORY_FILTER_KEY, f);
+  }
+
+  const countable = useMemo(() => trades.filter(tr => tr.counts_toward_performance !== false && tr.status !== "INVALIDATED"), [trades]);
+  const wins       = useMemo(() => countable.filter(tr => (tr.pnl ?? 0) >= 0), [countable]);
+  const losses     = useMemo(() => countable.filter(tr => (tr.pnl ?? 0) < 0),  [countable]);
+  const totalPnl   = useMemo(() => countable.reduce((s, tr) => s + (tr.pnl ?? 0), 0), [countable]);
+  const avgWin     = wins.length  > 0 ? wins.reduce((s, tr) => s + (tr.pnl ?? 0), 0) / wins.length  : null;
+  const avgLoss    = losses.length > 0 ? losses.reduce((s, tr) => s + (tr.pnl ?? 0), 0) / losses.length : null;
+  const bestPnl    = wins.length  > 0 ? Math.max(...wins.map(tr => tr.pnl ?? 0)) : null;
+  const winRate    = countable.length > 0 ? wins.length / countable.length : null;
+  const voidCount  = trades.length - countable.length;
+
+  const filtered = useMemo(() => {
+    switch (filter) {
+      case "win":  return trades.filter(tr => (tr.pnl ?? 0) >= 0 && tr.status !== "INVALIDATED" && tr.counts_toward_performance !== false);
+      case "loss": return trades.filter(tr => (tr.pnl ?? 0) < 0);
+      case "void": return trades.filter(tr => tr.status === "INVALIDATED" || tr.counts_toward_performance === false);
+      default:     return trades;
+    }
+  }, [trades, filter]);
+
+  const shown   = filtered.slice(0, visible);
+  const hasMore = filtered.length > visible;
+
+  const filterOpts: { key: HistoryFilter; label: string; count: number }[] = [
+    { key: "all",  label: t("filterAll"),    count: trades.length },
+    { key: "win",  label: t("filterWins"),   count: wins.length   },
+    { key: "loss", label: t("filterLosses"), count: losses.length },
+    { key: "void", label: t("filterVoid"),   count: voidCount     },
+  ];
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
+        {t("tradeHistory")} ({trades.length})
+      </h3>
+
+      {trades.length > 0 ? (
+        <>
+          {/* Stats header — 4 metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div className="glass-card px-3 py-2.5">
+              <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("historyTotalPnl")}</p>
+              <p className={`text-base font-bold font-mono ${totalPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
+                {totalPnl >= 0 ? "+" : "−"}${Math.abs(totalPnl).toFixed(2)}
+              </p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{wins.length}W / {losses.length}L</p>
+            </div>
+            <div className="glass-card px-3 py-2.5">
+              <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("winRate")}</p>
+              <p className="text-base font-bold font-mono">{winRate != null ? `${Math.round(winRate * 100)}%` : "—"}</p>
+              {winRate != null && (
+                <div className="h-1 rounded-full bg-[var(--r-border)] overflow-hidden mt-1">
+                  <div className="h-full rounded-full bg-[var(--r-accent)]" style={{ width: `${Math.round(winRate * 100)}%` }} />
+                </div>
+              )}
+            </div>
+            <div className="glass-card px-3 py-2.5">
+              <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("historyAvgWin")}</p>
+              <p className="text-base font-bold font-mono pnl-positive">{avgWin != null ? `+$${avgWin.toFixed(2)}` : "—"}</p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">
+                {t("historyAvgLoss")}: {avgLoss != null ? `-$${Math.abs(avgLoss).toFixed(2)}` : "—"}
+              </p>
+            </div>
+            <div className="glass-card px-3 py-2.5">
+              <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("historyBest")}</p>
+              <p className="text-base font-bold font-mono pnl-positive">{bestPnl != null ? `+$${bestPnl.toFixed(2)}` : "—"}</p>
+            </div>
+          </div>
+
+          {/* Filter tabs */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {filterOpts.map(({ key, label, count }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  filter === key
+                    ? "bg-[var(--r-accent)] text-white"
+                    : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05]"
+                }`}
+              >
+                {label}{count > 0 && <span className="ml-1 opacity-60">{count}</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Trade list */}
+          {shown.length > 0 ? (
+            <>
+              <div className="space-y-1.5">
+                {shown.map(tr => <TradeRow key={tr.id} trade={tr} maxHoldDays={maxHoldDays} />)}
+              </div>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setVisible(v => v + HISTORY_PAGE_SIZE)}
+                  className="mt-3 w-full py-2 rounded-lg text-xs text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05] transition-colors border border-[var(--r-border)]"
+                >
+                  {t("showMore")} · {filtered.length - visible} remaining
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">{t("filterEmpty")}</p>
+          )}
+        </>
+      ) : (
+        <div className="glass-card p-8 text-center">
+          <Target className="w-8 h-8 mx-auto mb-3 text-[var(--r-accent)] opacity-60" />
+          <p className="font-medium text-sm mb-1">{t("emptyTradesTitle")}</p>
+          <p className="text-xs text-[var(--r-text-muted)]">{t("emptyTradesDesc")}</p>
         </div>
       )}
     </div>
