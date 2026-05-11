@@ -153,6 +153,11 @@ const en = {
   thresholdReset: "0.2: Global Reset threshold",
   thresholdGood: "0.6: All Good threshold",
   fitnessLabel: "F(g)",
+  fitnessToggleBefore: "Before/After",
+  fitnessExpand: "Expand",
+  fitnessCollapse: "Collapse",
+  fitnessGoodZone: "Good ✓",
+  fitnessResetZone: "Reset",
 
   // Param Heatmap
   heatmapTitle: "Parameter Evolution Heatmap",
@@ -634,6 +639,11 @@ const zh: Record<TranslationKey, string> = {
   thresholdReset: "0.2：全局重置阈值",
   thresholdGood: "0.6：良好阈值",
   fitnessLabel: "F(g)",
+  fitnessToggleBefore: "对比进化前",
+  fitnessExpand: "展开规格",
+  fitnessCollapse: "折叠",
+  fitnessGoodZone: "良好区间 ✓",
+  fitnessResetZone: "重置区间",
 
   heatmapTitle: "参数进化热力图",
   heatmapEmpty: "参数热力图将在首次进化后显示。",
