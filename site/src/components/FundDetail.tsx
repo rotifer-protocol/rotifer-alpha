@@ -755,16 +755,25 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
     const d = new Date(today);
     d.setDate(today.getDate() - (90 - i));
     const key = d.toISOString().slice(0, 10);
-    return { date: key, pnl: pnlByDate[key] ?? null, month: d.getMonth() };
+    return { date: key, pnl: pnlByDate[key] ?? null };
   });
 
   // Split into weeks (columns of 7)
   const weeks: (typeof cells)[] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  const vals    = Object.values(pnlByDate);
-  const maxAbs  = vals.length > 0 ? Math.max(...vals.map(Math.abs)) : 1;
-  const hasData = vals.length > 0;
+  // Only count days within the 91-day window for stats
+  const windowStart = cells[0].date;
+  const windowVals  = Object.entries(pnlByDate)
+    .filter(([d]) => d >= windowStart)
+    .map(([, v]) => v);
+
+  const maxAbs    = windowVals.length > 0 ? Math.max(...windowVals.map(Math.abs)) : 1;
+  const hasData   = windowVals.length > 0;
+  const periodPnl = windowVals.reduce((s, v) => s + v, 0);
+  const winDays   = windowVals.filter(v => v >= 0).length;
+  const bestDay   = windowVals.length > 0 ? Math.max(...windowVals) : null;
+  const worstDay  = windowVals.length > 0 ? Math.min(...windowVals) : null;
 
   function bg(pnl: number | null): string {
     if (pnl == null) return "rgba(255,255,255,0.06)";
@@ -782,41 +791,76 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
   if (!hasData) return <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">No closed trades yet</p>;
 
   return (
-    <div className="overflow-x-auto">
-      {/* Month axis */}
-      <div className="flex gap-0.5 mb-1 min-w-max">
-        {weeks.map((_, wi) => (
-          <div key={wi} className="w-3 text-[8px] text-[var(--r-text-faint)] leading-none">
-            {monthLabels[wi] ?? ""}
-          </div>
-        ))}
+    <div className="flex flex-col sm:flex-row gap-6 items-start">
+      {/* Calendar grid */}
+      <div className="overflow-x-auto shrink-0">
+        {/* Month axis */}
+        <div className="flex gap-0.5 mb-1 min-w-max">
+          {weeks.map((_, wi) => (
+            <div key={wi} className="w-4 text-[8px] text-[var(--r-text-faint)] leading-none">
+              {monthLabels[wi] ?? ""}
+            </div>
+          ))}
+        </div>
+        {/* Day grid — w-4/h-4 (16 px cells) for better visibility */}
+        <div className="flex gap-0.5 min-w-max">
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-0.5">
+              {week.map((cell, di) => (
+                <div
+                  key={di}
+                  className="w-4 h-4 rounded-[3px]"
+                  style={{ background: bg(cell.pnl) }}
+                  title={
+                    cell.pnl != null
+                      ? `${cell.date}: ${cell.pnl >= 0 ? "+" : ""}$${cell.pnl.toFixed(2)}`
+                      : cell.date
+                  }
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+        {/* Legend */}
+        <div className="flex items-center gap-1.5 mt-3 text-[9px] text-[var(--r-text-faint)]">
+          <span>Loss</span>
+          {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
+          <div className="w-4 h-4 rounded-[3px]" style={{ background: "rgba(255,255,255,0.06)" }} />
+          {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-4 h-4 rounded-[3px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
+          <span>Win</span>
+        </div>
       </div>
-      {/* Day grid */}
-      <div className="flex gap-0.5 min-w-max">
-        {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-0.5">
-            {week.map((cell, di) => (
-              <div
-                key={di}
-                className="w-3 h-3 rounded-[2px]"
-                style={{ background: bg(cell.pnl) }}
-                title={
-                  cell.pnl != null
-                    ? `${cell.date}: ${cell.pnl >= 0 ? "+" : ""}$${cell.pnl.toFixed(2)}`
-                    : cell.date
-                }
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-      {/* Legend */}
-      <div className="flex items-center gap-1.5 mt-3 text-[9px] text-[var(--r-text-faint)]">
-        <span>Loss</span>
-        {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
-        <div className="w-3 h-3 rounded-[2px]" style={{ background: "rgba(255,255,255,0.06)" }} />
-        {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
-        <span>Win</span>
+
+      {/* Period stats panel — fills remaining width */}
+      <div className="flex-1 grid grid-cols-2 gap-2 min-w-0">
+        <div className="glass-card px-3 py-2.5">
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Period PnL</p>
+          <p className={`text-base font-bold font-mono ${periodPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
+            {periodPnl >= 0 ? "+" : "−"}${Math.abs(periodPnl).toFixed(2)}
+          </p>
+          <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">last 91 days</p>
+        </div>
+        <div className="glass-card px-3 py-2.5">
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Win Days</p>
+          <p className="text-base font-bold font-mono">
+            {windowVals.length > 0 ? `${Math.round((winDays / windowVals.length) * 100)}%` : "—"}
+          </p>
+          <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">
+            {winDays}W / {windowVals.length - winDays}L · {windowVals.length} active
+          </p>
+        </div>
+        <div className="glass-card px-3 py-2.5">
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Best Day</p>
+          <p className="text-base font-bold font-mono pnl-positive">
+            {bestDay != null ? `+$${bestDay.toFixed(2)}` : "—"}
+          </p>
+        </div>
+        <div className="glass-card px-3 py-2.5">
+          <p className="text-[10px] text-[var(--r-text-muted)] mb-1">Worst Day</p>
+          <p className="text-base font-bold font-mono pnl-negative">
+            {worstDay != null && worstDay < 0 ? `-$${Math.abs(worstDay).toFixed(2)}` : "—"}
+          </p>
+        </div>
       </div>
     </div>
   );
