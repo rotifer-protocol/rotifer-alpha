@@ -123,6 +123,12 @@ body {
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
+/* Suppress focus ring for pointer (mouse/touch) interactions on all elements.
+   Keyboard-triggered focus (:focus-visible) is preserved for accessibility. */
+:focus:not(:focus-visible) {
+  outline: none !important;
+}
+
 /* Recharts SVG elements receive browser focus after click interactions;
    suppress the default blue outline without affecting keyboard accessibility */
 .recharts-surface,

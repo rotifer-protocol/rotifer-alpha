@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dna, Shuffle, RotateCcw, SkipForward, Sparkles, Minus, Swords, BarChart3, GitBranch, Zap, Clock, TrendingUp, RefreshCw, ChevronDown, ChevronUp, Fingerprint, X } from "lucide-react";
 import { useFetch } from "../hooks/useApi";
 import { FitnessChart } from "./FitnessChart";
@@ -284,6 +284,79 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
         );
       })}
       {changes.length > 6 && <div className="text-[var(--r-text-muted)]">+{changes.length - 6} {t("nMore")}</div>}
+    </div>
+  );
+}
+
+// ─── Custom dropdown (replaces native <select> to match dark design system) ──
+interface SelectOption { value: string; label: string }
+
+function DropdownSelect({
+  value, options, onChange, className,
+}: {
+  value: string;
+  options: SelectOption[];
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div ref={wrapRef} className={`relative ${className ?? ""}`}>
+      <button
+        type="button"
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+        className={`flex items-center gap-1 text-[11px] text-[var(--r-text-muted)] border rounded px-2 py-0.5
+          transition-colors outline-none
+          ${open
+            ? "border-[var(--r-accent)]/60 text-[var(--r-text)]"
+            : "border-[var(--r-border)] hover:border-[var(--r-text-faint)]"
+          }`}
+      >
+        {selected?.label}
+        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 min-w-[130px] glass-card py-1 shadow-xl
+          border border-[var(--r-border)] rounded-lg overflow-hidden">
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors outline-none
+                ${opt.value === value
+                  ? "bg-[var(--r-accent)]/15 text-[var(--r-accent)]"
+                  : "text-[var(--r-text-muted)] hover:bg-white/5 hover:text-[var(--r-text)]"
+                }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -641,29 +714,27 @@ export function EvolutionPanel() {
             ))}
           </div>
 
-          {/* Sort select */}
-          <select
+          {/* Sort dropdown */}
+          <DropdownSelect
             value={mutSortKey}
-            onChange={e => { setMutSortKey(e.target.value); setMutShowAll(false); }}
-            className="text-[11px] bg-transparent text-[var(--r-text-muted)] border border-[var(--r-border)] rounded px-2 py-0.5 cursor-pointer"
-          >
-            <option value="time">{t("evoSortTime")}</option>
-            <option value="best">{t("evoSortJump")}</option>
-            <option value="worst">{t("evoSortWorst")}</option>
-          </select>
+            options={[
+              { value: "time",  label: t("evoSortTime") },
+              { value: "best",  label: t("evoSortJump") },
+              { value: "worst", label: t("evoSortWorst") },
+            ]}
+            onChange={v => { setMutSortKey(v); setMutShowAll(false); }}
+          />
 
-          {/* Fund select */}
+          {/* Fund dropdown */}
           {availableFunds.length > 1 && (
-            <select
+            <DropdownSelect
               value={mutFundId}
-              onChange={e => { setMutFundId(e.target.value); setMutShowAll(false); }}
-              className="text-[11px] bg-transparent text-[var(--r-text-muted)] border border-[var(--r-border)] rounded px-2 py-0.5 cursor-pointer"
-            >
-              <option value="all">{t("evoAllFunds")}</option>
-              {availableFunds.map(fid => (
-                <option key={fid} value={fid}>{fundDisplayName(fid, t)}</option>
-              ))}
-            </select>
+              options={[
+                { value: "all", label: t("evoAllFunds") },
+                ...availableFunds.map(fid => ({ value: fid, label: fundDisplayName(fid, t) })),
+              ]}
+              onChange={v => { setMutFundId(v); setMutShowAll(false); }}
+            />
           )}
 
           {/* Clear filter button */}
