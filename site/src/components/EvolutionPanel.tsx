@@ -663,7 +663,7 @@ export function EvolutionPanel() {
         })}
       </div>
 
-      <FitnessChart logs={data.logs} />
+      <FitnessChart logs={data.logs} allFundIds={data.lineage.map(l => l.id)} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <LineageTree

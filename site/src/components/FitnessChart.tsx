@@ -17,6 +17,8 @@ interface EvolutionLog {
 
 interface Props {
   logs: EvolutionLog[];
+  /** All fund IDs from lineage — includes funds with no fitness data yet */
+  allFundIds?: string[];
 }
 
 // ─── Custom Tooltip (excludes _min/_bandSize from display) ──────────────────
@@ -96,8 +98,8 @@ function ThresholdLabel({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
-export function FitnessChart({ logs }: Props) {
-  const { t } = useI18n();
+export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
+  const { t, locale } = useI18n();
   const [showBefore, setShowBefore] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -127,7 +129,16 @@ export function FitnessChart({ logs }: Props) {
     return () => window.removeEventListener("resize", h);
   }, []);
 
-  const allFundIds = [...new Set(logs.map(l => l.fund_id))];
+  // Funds that appear in logs
+  const logFundIds = [...new Set(logs.map(l => l.fund_id))];
+  // Full list: use lineage-passed prop so funds with no log entries are included
+  const allFundIds = allFundIdsProp
+    ? [...new Set([...logFundIds, ...allFundIdsProp])]
+    : logFundIds;
+  // Which funds have actual plotable fitness data (at least one non-null fitness_after)
+  const fundsWithData = new Set(
+    logs.filter(l => l.fitness_after != null).map(l => l.fund_id)
+  );
   const epochs = [...new Set(logs.map(l => l.epoch))].sort((a, b) => a - b);
 
   if (epochs.length === 0) {
@@ -407,7 +418,8 @@ export function FitnessChart({ logs }: Props) {
         className="flex flex-wrap gap-1.5 mt-2 px-1"
         onMouseLeave={() => setHoveredId(null)}
       >
-        {displayIds.map(did => {
+        {/* Active tags — have fitness data, hover highlights their line */}
+        {displayIds.filter(did => fundsWithData.has(did)).map(did => {
           const color = getColor(did);
           const isBest = did === bestId;
           const isHov = hoveredId === did;
@@ -428,6 +440,27 @@ export function FitnessChart({ logs }: Props) {
             </button>
           );
         })}
+
+        {/* Inactive tags — no fitness data yet; shown dimmed, no hover interaction */}
+        {effectiveExpanded && displayIds.filter(did => !fundsWithData.has(did)).map(did => {
+          const color = getColor(did);
+          return (
+            <span
+              key={did}
+              title={locale === "zh" ? "尚未参与进化" : "Not yet evolved"}
+              className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded cursor-default opacity-30"
+              style={{
+                color,
+                background: `${color}10`,
+                border: `1px solid ${color}18`,
+              }}
+            >
+              <span>{getLabel(did)}</span>
+              <span className="ml-0.5 text-[9px]">—</span>
+            </span>
+          );
+        })}
+
         {isMobile && (
           <span className="text-[9px] text-[var(--r-text-muted)] self-center ml-1">
             {t("fitnessExpand")}
