@@ -13,6 +13,7 @@ interface EvolutionLog {
   fitness_before: number | null;
   fitness_after: number | null;
   action: string;
+  reason?: string;
 }
 
 interface Props {
@@ -27,18 +28,21 @@ function ChartTooltip({
   payload,
   label,
   t,
+  inheritAtEpoch,
 }: {
   active?: boolean;
   payload?: { dataKey?: string; value?: unknown; stroke?: string }[];
   label?: string;
   t: (k: TranslationKey) => string;
+  inheritAtEpoch?: { fundId: string; from: string }[];
 }) {
   if (!active || !payload?.length) return null;
   const visible = payload.filter(p => {
     const k = String(p.dataKey ?? "");
     return (k.endsWith("_after") || k.endsWith("_before")) && !k.startsWith("_");
   });
-  if (!visible.length) return null;
+  const hasInherit = (inheritAtEpoch?.length ?? 0) > 0;
+  if (!visible.length && !hasInherit) return null;
   return (
     <div
       style={{
@@ -69,6 +73,27 @@ function ChartTooltip({
           </div>
         );
       })}
+      {hasInherit && (
+        <>
+          <div style={{ height: 1, background: "#27272a", margin: "6px 0" }} />
+          {inheritAtEpoch!.map(ev => (
+            <div
+              key={ev.fundId}
+              style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#a1a1aa", fontSize: 11 }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ opacity: 0.7 }}>⇅</span>
+                <span style={{ color: FUND_HEX_COLORS[ev.fundId] ?? "#a1a1aa" }}>
+                  {fundDisplayName(ev.fundId, t)}
+                </span>
+              </span>
+              <span>
+                {t("fitnessInheritFrom")} {fundDisplayName(ev.from, t)}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -141,6 +166,20 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
   );
   const epochs = [...new Set(logs.map(l => l.epoch))].sort((a, b) => a - b);
 
+  // ── Inherit events: PBT_INHERIT_MUTATE (fitness_after=null, fitness_before=last known) ──
+  const inheritEvents = logs.filter(
+    l => l.action === "PBT_INHERIT_MUTATE" && l.fitness_before != null,
+  );
+  // Map: epochLabel ("E5") → [{fundId, from}]
+  const inheritByEpoch: Record<string, { fundId: string; from: string }[]> = {};
+  for (const ev of inheritEvents) {
+    const key = `E${ev.epoch}`;
+    if (!inheritByEpoch[key]) inheritByEpoch[key] = [];
+    const match = ev.reason?.match(/inherited from (\S+)/);
+    const from = match?.[1]?.replace(/[,)]/g, "") ?? "unknown";
+    inheritByEpoch[key].push({ fundId: ev.fund_id, from });
+  }
+
   if (epochs.length === 0) {
     return (
       <div className="glass-card p-6 text-center text-sm text-[var(--r-text-muted)]">
@@ -206,6 +245,15 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
       const mx = Math.max(...afterVals);
       point._min = mn;
       point._bandSize = mx - mn;
+    }
+
+    // Inherit markers (expanded mode only — individual fund view)
+    if (effectiveExpanded) {
+      for (const ev of inheritEvents) {
+        if (ev.epoch === epoch && ev.fitness_before != null) {
+          point[`${ev.fund_id}_inherit`] = ev.fitness_before;
+        }
+      }
     }
 
     return point;
@@ -324,12 +372,16 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
           />
           <Tooltip
             cursor={{ stroke: "rgba(255,255,255,0.12)", strokeWidth: 1, fill: "none" }}
-            content={(props: object) => (
-            <ChartTooltip
-              {...(props as Parameters<typeof ChartTooltip>[0])}
-              t={t}
-            />
-          )} />
+            content={(props: object) => {
+              const p = props as Parameters<typeof ChartTooltip>[0] & { label?: string };
+              return (
+                <ChartTooltip
+                  {...p}
+                  t={t}
+                  inheritAtEpoch={inheritByEpoch[p.label ?? ""] ?? []}
+                />
+              );
+            }} />
 
           {/* Threshold zones */}
           <ReferenceArea y1={0} y2={0.2} fill="#ef4444" fillOpacity={0.04} />
@@ -409,6 +461,37 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
               legendType="none"
             />
           ))}
+
+          {/* ── Inherit markers (hollow dashed ring) — expanded mode only ── */}
+          {effectiveExpanded && inheritEvents.length > 0 &&
+            [...new Set(inheritEvents.map(e => e.fund_id))].map(did => {
+              const color = getColor(did);
+              return (
+                <Line
+                  key={`${did}_inherit`}
+                  type="monotone"
+                  dataKey={`${did}_inherit`}
+                  stroke="none"
+                  dot={(props: object) => {
+                    const { cx, cy } = props as { cx?: number; cy?: number; value?: unknown };
+                    if (cx === undefined || cy === undefined) return <circle key="empty" r={0} fill="none" />;
+                    return (
+                      <g key={`inherit-marker-${did}-${cx}-${cy}`}>
+                        {/* Outer dashed ring */}
+                        <circle cx={cx} cy={cy} r={6} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="3 2" opacity={0.75} />
+                        {/* Inner dot */}
+                        <circle cx={cx} cy={cy} r={2} fill={color} opacity={0.5} />
+                      </g>
+                    );
+                  }}
+                  activeDot={false}
+                  legendType="none"
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              );
+            })
+          }
         </ComposedChart>
       </ResponsiveContainer>
       </div>

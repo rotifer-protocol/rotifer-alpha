@@ -170,6 +170,7 @@ const en = {
   fitnessCollapse: "Collapse",
   fitnessGoodZone: "Good ✓",
   fitnessResetZone: "Reset",
+  fitnessInheritFrom: "Inherited from",
 
   // Param Heatmap
   heatmapTitle: "Parameter Evolution Heatmap",
@@ -674,6 +675,7 @@ const zh: Record<TranslationKey, string> = {
   fitnessCollapse: "折叠",
   fitnessGoodZone: "良好区间 ✓",
   fitnessResetZone: "重置区间",
+  fitnessInheritFrom: "继承自",
 
   heatmapTitle: "参数进化热力图",
   heatmapEmpty: "参数热力图将在首次进化后显示。",
