@@ -385,6 +385,7 @@ export function EvolutionPanel() {
   const { data, loading, error } = useFetch<EvolutionResponse>("/api/evolution", 120_000);
   const { t } = useI18n();
   const [activeEpoch, setActiveEpoch] = useState<number | null>(null);
+  const [selectedFund, setSelectedFund] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -479,11 +480,17 @@ export function EvolutionPanel() {
       <FitnessChart logs={data.logs} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LineageTree lineage={data.lineage} />
+        <LineageTree
+          lineage={data.lineage}
+          logs={data.logs}
+          selectedFund={selectedFund}
+          onSelectFund={setSelectedFund}
+        />
         <ParamHeatmap
           logs={data.logs}
-          selectedFund={null}
+          selectedFund={selectedFund}
           allFundIds={data.lineage.map(l => l.id)}
+          activeEpoch={activeEpoch}
         />
       </div>
 
