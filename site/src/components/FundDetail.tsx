@@ -739,7 +739,7 @@ export function FundDetail() {
 
 // ─── Calendar heatmap ────────────────────────────────────────────────────────
 function CalendarHeatmap({ trades }: { trades: Trade[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // Aggregate PnL by closed_at date
   const pnlByDate: Record<string, number> = {};
   for (const tr of trades) {
@@ -785,7 +785,7 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
   // Month label on the week that contains the 1st of a month
   const monthLabels = weeks.map(week => {
     const pivot = week.find(c => c.date.slice(8, 10) === "01");
-    if (pivot) return new Date(pivot.date + "T12:00:00").toLocaleString("en-US", { month: "short" });
+    if (pivot) return new Date(pivot.date + "T12:00:00").toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { month: "short" });
     return null;
   });
 
