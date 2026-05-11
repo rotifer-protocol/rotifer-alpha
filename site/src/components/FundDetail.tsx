@@ -838,14 +838,24 @@ function CalendarHeatmap({
               {week.map((cell, di) => (
                 <div
                   key={di}
-                  className="w-full aspect-square rounded-[2px]"
+                  className="relative w-full aspect-square rounded-[2px]"
                   style={{ background: bg(cell.pnl) }}
                   title={
                     cell.pnl != null
                       ? `${cell.date}: ${cell.pnl >= 0 ? "+" : ""}$${cell.pnl.toFixed(2)}`
                       : cell.date
                   }
-                />
+                >
+                  {cell.pnl != null && cell.pnl !== 0 && (
+                    <span className="absolute inset-0 flex items-center justify-center text-[5px] leading-none font-mono text-white/80 sm:hidden pointer-events-none select-none">
+                      {Math.abs(cell.pnl) >= 1000
+                        ? `${(Math.abs(cell.pnl) / 1000).toFixed(1)}k`
+                        : Math.abs(cell.pnl) >= 10
+                          ? `${Math.round(Math.abs(cell.pnl))}`
+                          : `${Math.abs(cell.pnl).toFixed(1)}`}
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
           ))}
