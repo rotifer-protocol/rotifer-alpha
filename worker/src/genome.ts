@@ -29,7 +29,8 @@ import { paperTrade } from "./trade";
 import type { SkipReasonEntry } from "./trade";
 import { checkAndRunMicroEvolution } from "./micro-evolve";
 import { broadcast, sendSignals, sendTrades, sendSummary } from "./notify";
-import { getActiveVariant, recordTradeResult } from "./gene-variants";
+import { getActiveVariant, listVariants } from "./gene-variants";
+import { recordVariantOutcomes, selectPipelineVariant } from "./gene-evaluation";
 import {
   getScannerStrategy, getMonitorStrategy,
   getRiskStrategy, getTraderStrategy, getMicroEvolverStrategy,
@@ -221,8 +222,10 @@ export async function runGenomePipeline(
     events.push({ type, timestamp: ts, payload });
   }
 
-  // Load active Gene variants for dispatch (all 5 evolvable genes)
-  const [scannerVariant, monitorVariant, riskVariant, traderVariant, microEvolverVariant] =
+  // Load active Gene variants for dispatch (all 5 evolvable genes).
+  // gene_active_config is the exploitation winner; selectPipelineVariant adds a
+  // bounded exploration lane so g1 challengers can earn paper/shadow samples.
+  const [configuredScannerVariant, configuredMonitorVariant, configuredRiskVariant, configuredTraderVariant, configuredMicroEvolverVariant] =
     await Promise.all([
       getActiveVariant(env.DB, "polymarket-scanner").catch(() => null),
       getActiveVariant(env.DB, "polymarket-monitor").catch(() => null),
@@ -230,6 +233,20 @@ export async function runGenomePipeline(
       getActiveVariant(env.DB, "polymarket-trader").catch(() => null),
       getActiveVariant(env.DB, "polymarket-micro-evolver").catch(() => null),
     ]);
+  const [scannerVariants, monitorVariants, riskVariants, traderVariants, microEvolverVariants] =
+    await Promise.all([
+      listVariants(env.DB, "polymarket-scanner").catch(() => []),
+      listVariants(env.DB, "polymarket-monitor").catch(() => []),
+      listVariants(env.DB, "polymarket-risk").catch(() => []),
+      listVariants(env.DB, "polymarket-trader").catch(() => []),
+      listVariants(env.DB, "polymarket-micro-evolver").catch(() => []),
+    ]);
+  const explorationInterval = Number(env.GENE_EXPLORATION_INTERVAL ?? 2);
+  const scannerVariant = selectPipelineVariant(configuredScannerVariant, scannerVariants, ts, { interval: explorationInterval });
+  const monitorVariant = selectPipelineVariant(configuredMonitorVariant, monitorVariants, ts, { interval: explorationInterval });
+  const riskVariant = selectPipelineVariant(configuredRiskVariant, riskVariants, ts, { interval: explorationInterval });
+  const traderVariant = selectPipelineVariant(configuredTraderVariant, traderVariants, ts, { interval: explorationInterval });
+  const microEvolverVariant = selectPipelineVariant(configuredMicroEvolverVariant, microEvolverVariants, ts, { interval: explorationInterval });
   const scannerKey      = scannerVariant?.strategyKey      ?? "baseline";
   const monitorKey      = monitorVariant?.strategyKey      ?? "baseline";
   const riskKey         = riskVariant?.strategyKey         ?? "baseline";
@@ -419,7 +436,26 @@ export async function runGenomePipeline(
     });
   }
 
-  // Step 7: Code Evolution
+  // Step 7: Attribute realized outcomes to the variants that executed this cycle.
+  // Scanner keeps the historical settlement-only attribution. Risk/monitor close
+  // actions also credit trader and micro-evolver as pipeline-level contributors
+  // until per-trade Gene provenance is available.
+  try {
+    const riskOutcomes = [...risk.stopped, ...risk.expired].map(x => ({ pnl: x.pnl }));
+    const settlementOutcomes = settler.settlements.map(x => ({ pnl: x.pnl }));
+    const monitorOutcomes = monitorOut.actions.map(x => ({ pnl: x.pnl }));
+    const closedOutcomes = [...riskOutcomes, ...settlementOutcomes, ...monitorOutcomes];
+
+    await recordVariantOutcomes(env.DB, riskVariant, riskOutcomes);
+    await recordVariantOutcomes(env.DB, scannerVariant, settlementOutcomes);
+    await recordVariantOutcomes(env.DB, monitorVariant, monitorOutcomes);
+    await recordVariantOutcomes(env.DB, traderVariant, closedOutcomes);
+    await recordVariantOutcomes(env.DB, microEvolverVariant, closedOutcomes);
+  } catch {
+    // non-critical
+  }
+
+  // Step 8: Code Evolution
   let codeEvoResult;
   try {
     codeEvoResult = await checkAndRunCodeEvolution(env.DB, {
@@ -440,18 +476,6 @@ export async function runGenomePipeline(
     }
   } catch {
     // non-critical — code evolution failure doesn't block pipeline
-  }
-
-  // Record trade results for active scanner/monitor variants (scoring)
-  try {
-    for (const s of settler.settlements) {
-      if (scannerVariant) await recordTradeResult(env.DB, scannerVariant.id, s.pnl, s.pnl > 0);
-    }
-    for (const ma of monitorOut.actions) {
-      if (monitorVariant) await recordTradeResult(env.DB, monitorVariant.id, ma.pnl, ma.pnl > 0);
-    }
-  } catch {
-    // non-critical
   }
 
   // Store final heartbeat BEFORE broadcast so it's always written even if broadcast hangs.

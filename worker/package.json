@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --import tsx --test tests/accounting.test.ts tests/trade-semantics.test.ts tests/trade-price-boundary.test.ts tests/risk-policy.test.ts tests/monitor.test.ts tests/api-events.test.ts tests/execution.test.ts tests/gene-variants.test.ts tests/code-evolver.test.ts tests/evolve-tier.test.ts tests/price.test.ts tests/price-refresh.test.ts tests/risk-monitor-kill-switch.test.ts tests/genome-kill-switch.test.ts tests/settle.test.ts"
+    "test": "node --import tsx --test tests/accounting.test.ts tests/trade-semantics.test.ts tests/trade-price-boundary.test.ts tests/risk-policy.test.ts tests/monitor.test.ts tests/api-events.test.ts tests/execution.test.ts tests/gene-variants.test.ts tests/gene-evaluation.test.ts tests/code-evolver.test.ts tests/evolve-tier.test.ts tests/price.test.ts tests/price-refresh.test.ts tests/risk-monitor-kill-switch.test.ts tests/genome-kill-switch.test.ts tests/settle.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.0.0",

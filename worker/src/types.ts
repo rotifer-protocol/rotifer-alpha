@@ -14,6 +14,8 @@ export interface Env {
   EPOCH_TRADE_THRESHOLD?: string;
   /** Minimum trades per variant required for evaluation. Default 3. */
   MIN_TRADES_FOR_EVAL?: string;
+  /** Run challenger variants once every N 5-minute pipeline buckets. 0 disables exploration. */
+  GENE_EXPLORATION_INTERVAL?: string;
   /** Feature flag: set to "true" to route pipeline through runGenomePipeline (Genome orchestrator).
    *  Default "false" keeps the legacy runPipeline path. Rollback: set back to "false" and redeploy. */
   ENABLE_GENOME_PIPELINE?: string;

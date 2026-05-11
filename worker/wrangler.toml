@@ -30,6 +30,10 @@ EPOCH_TRADE_THRESHOLD = "5"
 # Default 3 (was 5) — lower bar matches the smaller epoch window.
 MIN_TRADES_FOR_EVAL = "3"
 
+# Gene variant exploration: every N 5-minute pipeline buckets, run the least
+# evaluated challenger instead of the current exploitation winner. 0 disables.
+GENE_EXPLORATION_INTERVAL = "2"
+
 routes = [
   { pattern = "api.rotifer.xyz", custom_domain = true }
 ]
