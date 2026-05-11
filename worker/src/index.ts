@@ -626,6 +626,7 @@ export default {
           "GET /api/trades": "Trade history (query: status, fund, limit)",
           "GET /api/signals": "Recent signals (query: limit)",
           "GET /api/snapshots": "Portfolio snapshots (query: fund, limit)",
+          "GET /api/market-drivers": "Top markets by realized PnL in time window (query: hours=1|3|12|24|72|168, default 3)",
           "GET /api/evolution": "Evolution log and epoch history",
           "GET /api/shadow": "Shadow order log and paper-vs-shadow comparison (query: fund, limit)",
           "GET /api/system": "System config (kill switch, execution mode)",

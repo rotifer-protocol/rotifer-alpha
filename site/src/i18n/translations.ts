@@ -388,6 +388,21 @@ const en = {
   heroUnrealizedWarning: "of profit is unrealized — settle to lock in",
   heroStaleWarning: "positions awaiting price refresh — excluded from unrealized PnL",
   heroToday: "Today",
+
+  // Market Drivers card (P1, 2026-05-11): explains intraday PnL changes
+  // by attributing realized PnL to specific markets in a time window.
+  driversTitle: "Recent Market Drivers",
+  driversNet: "net",
+  driversTradesClosed: "trades closed",
+  driversTradeUnit: "trades",
+  driversFundUnit: "funds",
+  driversEmpty: "No closures in this window.",
+  driversNote: "Realized PnL only — open positions' mark-to-market drift not attributed to specific markets.",
+  driversWindow1h: "1h",
+  driversWindow3h: "3h",
+  driversWindow12h: "12h",
+  driversWindow24h: "24h",
+
   heroGeneration: "Generation",
   heroHighlight: "Highlight",
   heroHighlightSettled: "just settled",
@@ -784,6 +799,21 @@ const zh: Record<TranslationKey, string> = {
   heroUnrealizedWarning: "的盈利尚未结算——平仓后才能落袋",
   heroStaleWarning: "个仓位的价格暂未刷新——已从未实现盈亏中剔除",
   heroToday: "今日",
+
+  // Market Drivers card (P1, 2026-05-11): explains intraday PnL changes
+  // by attributing realized PnL to specific markets in a time window.
+  driversTitle: "近期市场推手",
+  driversNet: "净",
+  driversTradesClosed: "笔已收割",
+  driversTradeUnit: "笔",
+  driversFundUnit: "支",
+  driversEmpty: "本时段无成交事件。",
+  driversNote: "仅计入已实现盈亏；未实现浮动无法精确归因到单一市场，故不在此卡内。",
+  driversWindow1h: "1 小时",
+  driversWindow3h: "3 小时",
+  driversWindow12h: "12 小时",
+  driversWindow24h: "24 小时",
+
   heroGeneration: "世代",
   heroHighlight: "亮点",
   heroHighlightSettled: "刚刚结算",

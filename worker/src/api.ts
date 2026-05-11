@@ -52,6 +52,9 @@ export async function handleApi(
   if (path === "/api/snapshots") {
     return await apiSnapshots(env.DB, req, headers);
   }
+  if (path === "/api/market-drivers") {
+    return await apiMarketDrivers(env.DB, req, headers);
+  }
   if (path === "/api/events") {
     return await apiEvents(env.DB, req, headers);
   }
@@ -589,6 +592,91 @@ async function apiSnapshots(
     "SELECT * FROM portfolio_snapshots ORDER BY date DESC LIMIT ?",
   ).bind(limit * 5).all();
   return Response.json({ snapshots: result.results || [] }, { headers });
+}
+
+/**
+ * Market drivers — aggregate realized PnL by market in a recent time window.
+ *
+ * Powers the "Recent Market Drivers" card on the arena page (added 2026-05-11).
+ * Only realized PnL is attributed (closed trades within the window). Unrealized
+ * mark drift on long-held open positions is intentionally excluded — without
+ * intra-day snapshot history we can't reliably attribute it to specific markets.
+ *
+ * Query params:
+ *   - hours: window length in hours (1 / 3 / 12 / 24, default 3, max 168)
+ *
+ * Response:
+ *   - windowHours, windowStart, windowEnd: window metadata
+ *   - totalNet, totalAbs, totalCount: aggregate stats over ALL trades closed in window
+ *   - drivers: top 10 markets by abs(net_pnl), each with net/profit/loss split + counts
+ */
+async function apiMarketDrivers(
+  db: D1Database,
+  req: Request,
+  headers: HeadersInit,
+): Promise<Response> {
+  const url = new URL(req.url);
+  const ALLOWED = [1, 3, 12, 24, 72, 168];
+  const hoursRaw = parseInt(url.searchParams.get("hours") || "3", 10);
+  const hours = Number.isFinite(hoursRaw) && ALLOWED.includes(hoursRaw) ? hoursRaw : 3;
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  const driversResult = await db.prepare(
+    `SELECT
+       market_id,
+       MAX(question) AS question,
+       MAX(slug) AS slug,
+       SUM(COALESCE(pnl, 0)) AS net_pnl,
+       SUM(CASE WHEN COALESCE(pnl, 0) > 0 THEN COALESCE(pnl, 0) ELSE 0 END) AS gross_profit,
+       SUM(CASE WHEN COALESCE(pnl, 0) < 0 THEN COALESCE(pnl, 0) ELSE 0 END) AS gross_loss,
+       COUNT(*) AS trade_count,
+       COUNT(DISTINCT fund_id) AS fund_count,
+       MAX(closed_at) AS last_closed_at
+     FROM paper_trades
+     WHERE closed_at >= ?
+       AND status NOT IN ('OPEN', 'INVALID_PRICE')
+     GROUP BY market_id
+     ORDER BY ABS(SUM(COALESCE(pnl, 0))) DESC
+     LIMIT 10`,
+  ).bind(cutoff).all();
+
+  const drivers = (driversResult.results ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      marketId: String(row.market_id ?? ""),
+      question: row.question == null ? null : String(row.question),
+      slug: row.slug == null ? null : String(row.slug),
+      netPnl: Math.round(Number(row.net_pnl ?? 0) * 100) / 100,
+      grossProfit: Math.round(Number(row.gross_profit ?? 0) * 100) / 100,
+      grossLoss: Math.round(Number(row.gross_loss ?? 0) * 100) / 100,
+      tradeCount: Number(row.trade_count ?? 0),
+      fundCount: Number(row.fund_count ?? 0),
+      lastClosedAt: row.last_closed_at == null ? null : String(row.last_closed_at),
+    };
+  });
+
+  const totalsRow = await db.prepare(
+    `SELECT
+       SUM(COALESCE(pnl, 0)) AS total_net,
+       SUM(ABS(COALESCE(pnl, 0))) AS total_abs,
+       COUNT(*) AS total_count
+     FROM paper_trades
+     WHERE closed_at >= ?
+       AND status NOT IN ('OPEN', 'INVALID_PRICE')`,
+  ).bind(cutoff).first<{ total_net: number; total_abs: number; total_count: number }>();
+
+  return Response.json(
+    {
+      windowHours: hours,
+      windowStart: cutoff,
+      windowEnd: new Date().toISOString(),
+      totalNet: Math.round(Number(totalsRow?.total_net ?? 0) * 100) / 100,
+      totalAbs: Math.round(Number(totalsRow?.total_abs ?? 0) * 100) / 100,
+      totalCount: Number(totalsRow?.total_count ?? 0),
+      drivers,
+    },
+    { headers },
+  );
 }
 
 async function apiShadow(

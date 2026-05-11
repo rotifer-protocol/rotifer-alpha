@@ -11,6 +11,7 @@ import { FundDetail } from "./components/FundDetail";
 import { ShadowPanel } from "./components/ShadowPanel";
 import { GeneEvolutionPanel } from "./components/GeneEvolutionPanel";
 import { DiagnosticsPage } from "./components/DiagnosticsPage";
+import { MarketDriversCard } from "./components/MarketDriversCard";
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
 import { fundDisplayName, fmtUSD } from "./lib/fundMeta";
@@ -581,9 +582,12 @@ function ArenaPage() {
     }
   }
 
+  const totalPool = funds.reduce((s, f) => s + f.totalValue, 0);
+
   return (
     <div>
       {funds.length > 0 && <HeroOverview funds={funds} events={events} />}
+      {funds.length > 0 && <MarketDriversCard totalPool={totalPool} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-3">
