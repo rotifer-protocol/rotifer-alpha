@@ -1237,24 +1237,76 @@ function EvoLogEntry({
 }
 
 const EVO_PAGE_SIZE = 5;
+const EVO_SKIP_ACTIONS = new Set(["SKIP_INSUFFICIENT", "SKIP_ALL_GOOD"]);
 
 function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [filter, setFilter]     = useState<"all" | "evo" | "skip">("all");
+  const [sortBy, setSortBy]     = useState<"time" | "jump">("time");
 
-  const withFitness = logs.filter(l => l.fitness_before != null && l.fitness_after != null);
-  const latestId    = logs[0]?.id;
-  const bestJumpId  = withFitness.length > 0
-    ? withFitness.reduce((best, l) =>
-        (l.fitness_after! - l.fitness_before!) > (best.fitness_after! - best.fitness_before!) ? l : best
-      ).id
-    : null;
+  // ── Sort source: always by executed_at DESC (wall-clock newest first)
+  const sorted = useMemo(() =>
+    [...logs].sort((a, b) => b.executed_at.localeCompare(a.executed_at)),
+    [logs]
+  );
 
-  // Sparkline — chronological (oldest → newest)
-  const sparkData = [...withFitness].reverse().map((l, i) => ({ i, f: l.fitness_after! }));
+  // ── LATEST = most recent by wall-clock; BEST JUMP = max positive delta only
+  const latestId   = sorted[0]?.id;
+  const bestJumpId = useMemo(() => {
+    const candidates = sorted.filter(
+      l => l.fitness_before != null && l.fitness_after != null &&
+           (l.fitness_after! - l.fitness_before!) > 0.001
+    );
+    return candidates.length > 0
+      ? candidates.reduce((b, l) =>
+          (l.fitness_after! - l.fitness_before!) > (b.fitness_after! - b.fitness_before!) ? l : b
+        ).id
+      : null;
+  }, [sorted]);
 
-  const visible = expanded ? logs : logs.slice(0, EVO_PAGE_SIZE);
-  const hasMore = logs.length > EVO_PAGE_SIZE;
+  // ── Filter
+  const filtered = useMemo(() => {
+    if (filter === "evo")  return sorted.filter(l => !EVO_SKIP_ACTIONS.has(l.action));
+    if (filter === "skip") return sorted.filter(l => EVO_SKIP_ACTIONS.has(l.action));
+    return sorted;
+  }, [sorted, filter]);
+
+  // ── Secondary sort (within filter result)
+  const displayed = useMemo(() => {
+    if (sortBy === "jump") {
+      return [...filtered].sort((a, b) => {
+        const da = a.fitness_after != null && a.fitness_before != null
+          ? a.fitness_after - a.fitness_before : -Infinity;
+        const db = b.fitness_after != null && b.fitness_before != null
+          ? b.fitness_after - b.fitness_before : -Infinity;
+        return db - da;
+      });
+    }
+    return filtered;
+  }, [filtered, sortBy]);
+
+  // ── Sparkline — chronological (oldest → newest), always from full sorted list
+  const sparkData = useMemo(() =>
+    [...sorted]
+      .filter(l => l.fitness_after != null)
+      .reverse()
+      .map((l, i) => ({ i, f: l.fitness_after! })),
+    [sorted]
+  );
+
+  const visible = expanded ? displayed : displayed.slice(0, EVO_PAGE_SIZE);
+  const hasMore = displayed.length > EVO_PAGE_SIZE;
+
+  const filterBtns: { key: "all" | "evo" | "skip"; label: TranslationKey }[] = [
+    { key: "all",  label: "evoFilterAll"  },
+    { key: "evo",  label: "evoFilterEvo"  },
+    { key: "skip", label: "evoFilterSkip" },
+  ];
+  const sortBtns: { key: "time" | "jump"; label: TranslationKey }[] = [
+    { key: "time", label: "evoSortTime" },
+    { key: "jump", label: "evoSortJump" },
+  ];
 
   return (
     <div>
@@ -1262,7 +1314,7 @@ function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
         {t("evolutionLog")} ({logs.length})
       </h3>
 
-      {/* ── P1-⑤: Fitness sparkline ── */}
+      {/* ── Fitness sparkline ── */}
       {sparkData.length >= 3 && (
         <div className="h-10 mb-4 -mx-0.5 opacity-70">
           <ResponsiveContainer width="100%" height="100%">
@@ -1272,6 +1324,47 @@ function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* ── Filter + Sort bar ── */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Type filter chips */}
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          {filterBtns.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setFilter(key); setExpanded(false); }}
+              className={`px-2.5 py-1 rounded-full text-xs transition-colors whitespace-nowrap
+                ${filter === key
+                  ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] border border-[var(--r-accent)]/40"
+                  : "text-[var(--r-text-faint)] hover:text-[var(--r-text)] border border-[var(--r-border)]"
+                }`}
+            >
+              {t(label)}
+              {key === "all"  && ` (${sorted.length})`}
+              {key === "evo"  && ` (${sorted.filter(l => !EVO_SKIP_ACTIONS.has(l.action)).length})`}
+              {key === "skip" && ` (${sorted.filter(l =>  EVO_SKIP_ACTIONS.has(l.action)).length})`}
+            </button>
+          ))}
+        </div>
+        {/* Sort toggle */}
+        <div className="flex items-center gap-1 shrink-0">
+          {sortBtns.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setSortBy(key); setExpanded(false); }}
+              className={`px-2.5 py-1 rounded-full text-xs transition-colors whitespace-nowrap
+                ${sortBy === key
+                  ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] border border-[var(--r-accent)]/40"
+                  : "text-[var(--r-text-faint)] hover:text-[var(--r-text)] border border-[var(--r-border)]"
+                }`}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ── Log entries ── */}
       <div className="space-y-1.5">
@@ -1285,14 +1378,14 @@ function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
         ))}
       </div>
 
-      {/* ── P1-⑦: Show more ── */}
+      {/* ── Show more ── */}
       {hasMore && !expanded && (
         <button
           type="button"
           onClick={() => setExpanded(true)}
           className="mt-3 w-full py-2 rounded-lg text-xs text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05] transition-colors border border-[var(--r-border)]"
         >
-          {t("showMore")} · {logs.length - EVO_PAGE_SIZE} {t("remainingCount")}
+          {t("showMore")} · {displayed.length - EVO_PAGE_SIZE} {t("remainingCount")}
         </button>
       )}
     </div>
