@@ -8,6 +8,7 @@ interface EvolutionLog {
   epoch: number;
   fund_id: string;
   fitness_before: number | null;
+  fitness_after: number | null;
   action: string;
 }
 
@@ -33,15 +34,18 @@ export function FitnessChart({ logs }: Props) {
 
   const data = epochs.map(epoch => {
     const point: Record<string, number | string> = { epoch: `E${epoch}` };
-    const vals: number[] = [];
+    const vBefore: number[] = [];
     for (const fid of fundIds) {
       const log = logs.find(l => l.epoch === epoch && l.fund_id === fid);
       if (log?.fitness_before !== null && log?.fitness_before !== undefined) {
         point[fid] = log.fitness_before;
-        vals.push(log.fitness_before);
+        vBefore.push(log.fitness_before);
+      }
+      if (log?.fitness_after !== null && log?.fitness_after !== undefined) {
+        point[`${fid}_after`] = log.fitness_after;
       }
     }
-    if (vals.length > 0) point._avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    if (vBefore.length > 0) point._avg = vBefore.reduce((a, b) => a + b, 0) / vBefore.length;
     return point;
   });
 
@@ -75,7 +79,11 @@ export function FitnessChart({ logs }: Props) {
             labelStyle={{ color: "#fafafa" }}
             formatter={(value: unknown, name: unknown) => {
               const fid = String(name);
-              return [Number(value).toFixed(4), fundDisplayName(fid, t)];
+              if (fid === "_avg") return [Number(value).toFixed(4), "avg"];
+              const isAfter = fid.endsWith("_after");
+              const baseFid = isAfter ? fid.slice(0, -6) : fid;
+              const label = `${fundDisplayName(baseFid, t)} ${isAfter ? `(${t("evoFitnessAfter")})` : `(${t("evoFitnessBefore")})`}`;
+              return [Number(value).toFixed(4), label];
             }}
           />
           <Legend
@@ -111,11 +119,28 @@ export function FitnessChart({ logs }: Props) {
               connectNulls
             />
           ))}
+          {fundIds.map(fid => (
+            <Line
+              key={`${fid}_after`}
+              type="monotone"
+              dataKey={`${fid}_after`}
+              stroke={FUND_COLORS[fid] || "#a1a1aa"}
+              strokeWidth={1.5}
+              strokeDasharray="5 3"
+              dot={{ r: 2, fill: FUND_COLORS[fid] || "#a1a1aa" }}
+              activeDot={{ r: 4 }}
+              connectNulls
+              legendType="none"
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
       <div className="flex justify-between text-[10px] text-[var(--r-text-muted)] mt-1 px-2">
         <span>--- {t("thresholdReset")}</span>
-        <span>--- {t("thresholdGood")}</span>
+        <div className="flex items-center gap-3">
+          <span>── {t("evoFitnessBefore")} &nbsp; - - {t("evoFitnessAfter")}</span>
+          <span>--- {t("thresholdGood")}</span>
+        </div>
       </div>
     </div>
   );

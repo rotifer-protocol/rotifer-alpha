@@ -139,6 +139,12 @@ const en = {
   evoFilterSkip: "Skipped",
   evoSortTime: "Time ↓",
   evoSortJump: "Best Jump ↓",
+  evoKpiAvg: "Avg F(g)",
+  evoKpiBest: "Best F(g)",
+  evoKpiLast: "Last Evolution",
+  evoAllEpochs: "All Epochs",
+  evoFitnessBefore: "Before",
+  evoFitnessAfter: "After",
 
   // Fitness Chart — shows fund parameter fitness F(g) in [0,1] range,
   // NOT the gene variant PBT Rank Score (0-100) shown in the Gene Evolution table.
@@ -615,6 +621,12 @@ const zh: Record<TranslationKey, string> = {
   evoFilterSkip: "跳过类",
   evoSortTime: "时间 ↓",
   evoSortJump: "跃升 ↓",
+  evoKpiAvg: "平均 F(g)",
+  evoKpiBest: "最优 F(g)",
+  evoKpiLast: "上次进化",
+  evoAllEpochs: "全部世代",
+  evoFitnessBefore: "进化前",
+  evoFitnessAfter: "进化后",
 
   // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 PBT 排名分 (0-100)
   fitnessTitle: "基金适应度 F(g) 历史曲线",

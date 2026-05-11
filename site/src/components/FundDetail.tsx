@@ -576,18 +576,16 @@ export function FundDetail() {
                   width={52}
                 />
                 <Tooltip
+                  cursor={{ fill: "rgba(255,255,255,0.04)", strokeWidth: 0 }}
                   contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
-                  formatter={(value: unknown, name: unknown) => {
-                    if (name === "deltaPct") {
-                      const n = Number(value);
-                      return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveViewDaily")];
-                    }
-                    return [String(value), String(name)];
+                  formatter={(value: unknown) => {
+                    const n = Number(value);
+                    return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveViewDaily")];
                   }}
                   labelFormatter={(label: unknown) => String(label)}
                 />
                 <ReferenceLine y={0} stroke="var(--r-border)" strokeWidth={1.5} />
-                <Bar dataKey="deltaPct" radius={[3, 3, 0, 0]}>
+                <Bar dataKey="deltaPct" radius={[3, 3, 0, 0]} maxBarSize={10}>
                   {dailyReturns.map((entry, idx) => (
                     <Cell key={idx} fill={entry.deltaPct >= 0 ? "var(--r-green)" : "var(--r-red)"} fillOpacity={0.85} />
                   ))}
