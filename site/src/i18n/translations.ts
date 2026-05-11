@@ -131,6 +131,9 @@ const en = {
   trailingStopLabel: "Trailing Stop",
   probReversalLabel: "Prob. Reversal",
   microEvolutionLabel: "Micro-Evolution",
+  evoLatest: "Latest",
+  evoBestJump: "Best Jump",
+  evoParamChanges: "changes",
 
   // Fitness Chart — shows fund parameter fitness F(g) in [0,1] range,
   // NOT the gene variant PBT Rank Score (0-100) shown in the Gene Evolution table.
@@ -599,6 +602,9 @@ const zh: Record<TranslationKey, string> = {
   trailingStopLabel: "追踪止损",
   probReversalLabel: "概率反转",
   microEvolutionLabel: "微进化",
+  evoLatest: "最新",
+  evoBestJump: "最大跃升",
+  evoParamChanges: "项变更",
 
   // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 PBT 排名分 (0-100)
   fitnessTitle: "基金适应度 F(g) 历史曲线",

@@ -3,8 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, TrendingUp, Activity, Target,
   Shield, ChevronDown, ChevronUp, Fingerprint, ExternalLink,
+  Zap, RefreshCw, GitBranch,
 } from "lucide-react";
-import { ComposedChart, Area, Line, BarChart, Bar, Cell, ReferenceLine, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { ComposedChart, Area, Line, LineChart, BarChart, Bar, Cell, ReferenceLine, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useApi";
 import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
@@ -713,34 +714,7 @@ export function FundDetail() {
       />
 
       {/* Evolution Log */}
-      {fundEvoLogs.length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
-            {t("evolutionLog")} ({fundEvoLogs.length})
-          </h3>
-          <div className="space-y-1.5">
-            {fundEvoLogs.slice(0, 10).map((log: EvolutionLog) => (
-              <div key={log.id} className="glass-card px-4 py-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <Fingerprint className="w-4 h-4 text-[var(--r-accent)]" />
-                  <span className="font-medium text-[var(--r-accent)]">{REASON_I18N[log.action] ? t(REASON_I18N[log.action]) : log.action}</span>
-                  <span className="text-xs text-[var(--r-text-muted)]">{t("epoch")} {log.epoch}</span>
-                  {log.fitness_before != null && log.fitness_after != null && (
-                    <span className="text-xs font-mono ml-auto">
-                      {t("fitnessLabel")} {log.fitness_before.toFixed(3)} → {log.fitness_after.toFixed(3)}
-                      <span className={log.fitness_after >= log.fitness_before ? " pnl-positive" : " pnl-negative"}>
-                        {" "}({log.fitness_after >= log.fitness_before ? "+" : ""}{(log.fitness_after - log.fitness_before).toFixed(3)})
-                      </span>
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-[var(--r-text-muted)] mt-1">{REASON_I18N[log.reason] ? t(REASON_I18N[log.reason]) : log.reason}</p>
-                <EvoParamDiff before={log.params_before} after={log.params_after} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {fundEvoLogs.length > 0 && <EvoLogSection logs={fundEvoLogs} />}
     </div>
   );
 }
@@ -1120,6 +1094,211 @@ function StatCard({ icon: IconComp, label, value, sub }: {
     </div>
   );
 }
+
+// ─── Evolution log helpers ───────────────────────────────────────────────────
+function relativeTime(dateStr: string, locale: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60_000);
+  const h = Math.floor(diff / 3_600_000);
+  const d = Math.floor(diff / 86_400_000);
+  if (locale === "zh") {
+    if (m < 2)  return "刚刚";
+    if (m < 60) return `${m} 分钟前`;
+    if (h < 24) return `${h} 小时前`;
+    if (d < 30) return `${d} 天前`;
+    return `${Math.floor(d / 30)} 月前`;
+  }
+  if (m < 2)  return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (h < 24) return `${h}h ago`;
+  if (d < 30) return `${d}d ago`;
+  return `${Math.floor(d / 30)}mo ago`;
+}
+
+type EvoTypeConfig = { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string };
+const EVO_TYPE_CONFIG: Record<string, EvoTypeConfig> = {
+  STANDARD_PBT:      { Icon: TrendingUp,  color: "text-[var(--r-accent)]", bg: "bg-[var(--r-accent)]/10" },
+  MICRO_EVOLUTION:   { Icon: Zap,         color: "text-yellow-400",        bg: "bg-yellow-400/10"        },
+  GLOBAL_RESET:      { Icon: RefreshCw,   color: "text-orange-400",        bg: "bg-orange-400/10"        },
+  PBT_INHERIT_MUTATE:{ Icon: GitBranch,   color: "text-purple-400",        bg: "bg-purple-400/10"        },
+};
+const EVO_TYPE_DEFAULT: EvoTypeConfig = { Icon: Fingerprint, color: "text-[var(--r-accent)]", bg: "bg-[var(--r-accent)]/10" };
+
+function EvoLogEntry({
+  log, isLatest, isBestJump,
+}: { log: EvolutionLog; isLatest: boolean; isBestJump: boolean }) {
+  const { t, locale } = useI18n();
+  const [paramExpanded, setParamExpanded] = useState(false);
+
+  const fd = log.fitness_before != null && log.fitness_after != null
+    ? log.fitness_after - log.fitness_before : null;
+  const improved = fd != null && fd >= 0;
+  const { Icon, color, bg } = EVO_TYPE_CONFIG[log.action] ?? EVO_TYPE_DEFAULT;
+
+  // P2: background heat proportional to |fitness_delta|
+  const heatAlpha = fd != null ? Math.min(0.12, Math.abs(fd) * 0.9) : 0;
+  const heatRgb   = improved ? "34,197,94" : "239,68,68";
+
+  // Count param changes for collapse toggle
+  let paramCount = 0;
+  try {
+    const b = JSON.parse(log.params_before); const a = JSON.parse(log.params_after);
+    paramCount = Object.keys({ ...b, ...a }).filter(k => b[k] !== a[k]).length;
+  } catch { /* ignore */ }
+
+  return (
+    <div
+      className="glass-card px-4 py-3 transition-colors"
+      style={heatAlpha > 0.01 ? { background: `rgba(${heatRgb},${heatAlpha})` } : undefined}
+    >
+      {/* ── Header row ── */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {/* Type icon + badge */}
+        <div className={`p-1 rounded-md shrink-0 ${bg}`}>
+          <Icon className={`w-3.5 h-3.5 ${color}`} />
+        </div>
+        <span className={`text-xs font-semibold ${color}`}>
+          {REASON_I18N[log.action] ? t(REASON_I18N[log.action]) : log.action}
+        </span>
+
+        {/* Semantic labels */}
+        {isLatest && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-[var(--r-accent)] text-[var(--r-accent)] leading-none">
+            {t("evoLatest")}
+          </span>
+        )}
+        {isBestJump && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-yellow-400/60 text-yellow-400 leading-none">
+            {t("evoBestJump")}
+          </span>
+        )}
+
+        {/* Epoch + relative time */}
+        <span className="text-xs text-[var(--r-text-faint)] ml-auto shrink-0">
+          {t("epoch")} {log.epoch} · {relativeTime(log.executed_at, locale)}
+        </span>
+      </div>
+
+      {/* ── Fitness progress bars (P0-①) ── */}
+      {log.fitness_before != null && log.fitness_after != null && (
+        <div className="mt-2.5 space-y-1">
+          {/* Before bar */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1 rounded-full bg-[var(--r-border)] overflow-hidden">
+              <div className="h-full rounded-full bg-[var(--r-text-faint)] opacity-40"
+                style={{ width: `${(log.fitness_before * 100).toFixed(1)}%` }} />
+            </div>
+            <span className="text-[10px] font-mono text-[var(--r-text-faint)] w-10 text-right shrink-0">
+              {log.fitness_before.toFixed(3)}
+            </span>
+          </div>
+          {/* After bar */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-[5px] rounded-full bg-[var(--r-border)] overflow-hidden">
+              <div className={`h-full rounded-full ${improved ? "bg-[var(--r-accent)]" : "bg-red-400"}`}
+                style={{ width: `${(log.fitness_after * 100).toFixed(1)}%` }} />
+            </div>
+            <span className={`text-[10px] font-mono w-10 text-right shrink-0 ${improved ? "pnl-positive" : "pnl-negative"}`}>
+              {log.fitness_after.toFixed(3)}
+            </span>
+          </div>
+          {/* Delta */}
+          <p className="text-[10px] font-mono text-right">
+            <span className={improved ? "pnl-positive" : "pnl-negative"}>
+              {improved ? "+" : ""}{fd!.toFixed(3)}
+            </span>
+          </p>
+        </div>
+      )}
+
+      {/* ── Reason text ── */}
+      {log.reason && (
+        <p className="text-xs text-[var(--r-text-muted)] mt-1.5">
+          {REASON_I18N[log.reason] ? t(REASON_I18N[log.reason]) : log.reason}
+        </p>
+      )}
+
+      {/* ── Param changes — collapsed by default (P0-③) ── */}
+      {paramCount > 0 && (
+        <>
+          <button
+            type="button"
+            className="mt-2 flex items-center gap-1 text-xs text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors"
+            onClick={() => setParamExpanded(e => !e)}
+          >
+            {paramExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {paramCount} {t("evoParamChanges")}
+          </button>
+          {paramExpanded && <EvoParamDiff before={log.params_before} after={log.params_after} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+const EVO_PAGE_SIZE = 5;
+
+function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+
+  const withFitness = logs.filter(l => l.fitness_before != null && l.fitness_after != null);
+  const latestId    = logs[0]?.id;
+  const bestJumpId  = withFitness.length > 0
+    ? withFitness.reduce((best, l) =>
+        (l.fitness_after! - l.fitness_before!) > (best.fitness_after! - best.fitness_before!) ? l : best
+      ).id
+    : null;
+
+  // Sparkline — chronological (oldest → newest)
+  const sparkData = [...withFitness].reverse().map((l, i) => ({ i, f: l.fitness_after! }));
+
+  const visible = expanded ? logs : logs.slice(0, EVO_PAGE_SIZE);
+  const hasMore = logs.length > EVO_PAGE_SIZE;
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
+        {t("evolutionLog")} ({logs.length})
+      </h3>
+
+      {/* ── P1-⑤: Fitness sparkline ── */}
+      {sparkData.length >= 3 && (
+        <div className="h-10 mb-4 -mx-0.5 opacity-70">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sparkData} margin={{ top: 3, bottom: 3, left: 0, right: 0 }}>
+              <Line type="monotone" dataKey="f" stroke="var(--r-accent)" strokeWidth={1.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── Log entries ── */}
+      <div className="space-y-1.5">
+        {visible.map(log => (
+          <EvoLogEntry
+            key={log.id}
+            log={log}
+            isLatest={log.id === latestId}
+            isBestJump={log.id === bestJumpId}
+          />
+        ))}
+      </div>
+
+      {/* ── P1-⑦: Show more ── */}
+      {hasMore && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-3 w-full py-2 rounded-lg text-xs text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05] transition-colors border border-[var(--r-border)]"
+        >
+          {t("showMore")} · {logs.length - EVO_PAGE_SIZE} {t("remainingCount")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 
 function EvoParamDiff({ before, after }: { before: string; after: string }) {
   const { t } = useI18n();
