@@ -115,7 +115,7 @@ function daysHeld(openedAt: string, closedAt: string | null): number {
   return Math.max(0, Math.floor((end.getTime() - new Date(openedAt).getTime()) / 86_400_000));
 }
 
-function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }) {
+function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays?: number; maxAbsPnl?: number }) {
   const [open, setOpen] = useState(false);
   const { t } = useI18n();
   const pnl = trade.pnl ?? 0;
@@ -140,6 +140,8 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
     : null;
   const days = daysHeld(trade.opened_at, trade.closed_at);
   const remaining = isOpen && maxHoldDays ? Math.max(0, maxHoldDays - days) : null;
+  const holdPct   = isOpen && maxHoldDays ? Math.min(1, days / maxHoldDays) : null;
+  const holdColor = holdPct == null ? "" : holdPct >= 0.8 ? "var(--r-red)" : holdPct >= 0.5 ? "#eab308" : "var(--r-green)";
 
   return (
     <div className="glass-card overflow-hidden">
@@ -186,6 +188,21 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
             {countsTowardPerformance ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}` : t("notApplicable")}
           </span>
         )}
+        {/* PnL mini-bar — proportional to maxAbsPnl in current view */}
+        {!isOpen && maxAbsPnl != null && maxAbsPnl > 0 && countsTowardPerformance && (
+          <div
+            className="hidden sm:flex w-10 h-2 bg-[var(--r-border)] rounded-full overflow-hidden shrink-0"
+            title={`${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}`}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.min(100, (Math.abs(pnl) / maxAbsPnl) * 100)}%`,
+                background: pnl >= 0 ? "var(--r-green)" : "var(--r-red)",
+              }}
+            />
+          </div>
+        )}
         <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
           isOpen ? "bg-yellow-500/20 text-yellow-400" :
           trade.status === "INVALIDATED" ? "bg-slate-500/20 text-slate-300" :
@@ -198,6 +215,16 @@ function TradeRow({ trade, maxHoldDays }: { trade: Trade; maxHoldDays?: number }
         </span>
         {open ? <ChevronUp className="w-3.5 h-3.5 text-[var(--r-text-muted)] shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--r-text-muted)] shrink-0" />}
       </button>
+
+      {/* Hold-duration progress strip — only for OPEN trades */}
+      {holdPct != null && (
+        <div className="h-0.5 bg-[var(--r-border)]">
+          <div
+            className="h-full transition-all duration-500"
+            style={{ width: `${holdPct * 100}%`, background: holdColor }}
+          />
+        </div>
+      )}
 
       {open && (
         <div className="px-4 pb-3 pt-1 border-t border-[var(--r-border)] text-xs animate-in">
@@ -628,8 +655,12 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
     }
   }, [trades, filter]);
 
-  const shown   = filtered.slice(0, visible);
-  const hasMore = filtered.length > visible;
+  const shown      = filtered.slice(0, visible);
+  const hasMore    = filtered.length > visible;
+  const maxAbsPnl  = useMemo(
+    () => Math.max(0, ...filtered.filter(tr => tr.pnl != null).map(tr => Math.abs(tr.pnl!))),
+    [filtered],
+  );
 
   const filterOpts: { key: HistoryFilter; label: string; count: number }[] = [
     { key: "all",  label: t("filterAll"),    count: trades.length },
@@ -699,7 +730,7 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
           {shown.length > 0 ? (
             <>
               <div className="space-y-1.5">
-                {shown.map(tr => <TradeRow key={tr.id} trade={tr} maxHoldDays={maxHoldDays} />)}
+                {shown.map(tr => <TradeRow key={tr.id} trade={tr} maxHoldDays={maxHoldDays} maxAbsPnl={maxAbsPnl} />)}
               </div>
               {hasMore && (
                 <button
@@ -712,7 +743,12 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
               )}
             </>
           ) : (
-            <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">{t("filterEmpty")}</p>
+            <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">
+              {filter === "win"  ? t("filterEmptyWins")
+               : filter === "loss" ? t("filterEmptyLosses")
+               : filter === "void" ? t("filterEmptyVoid")
+               : t("filterEmpty")}
+            </p>
           )}
         </>
       ) : (
