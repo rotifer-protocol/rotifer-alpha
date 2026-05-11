@@ -125,11 +125,16 @@ body {
 
 /* Recharts SVG elements receive browser focus after click interactions;
    suppress the default blue outline without affecting keyboard accessibility */
-.recharts-surface {
-  outline: none;
-}
-.recharts-wrapper:focus {
-  outline: none;
+.recharts-surface,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-wrapper svg,
+.recharts-wrapper svg:focus,
+.recharts-wrapper svg:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 @keyframes fade-in {

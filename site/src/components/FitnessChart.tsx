@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ComposedChart, Line, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea,
@@ -104,6 +104,14 @@ export function FitnessChart({ logs }: Props) {
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 640 : false,
   );
+
+  // Recharts v3 sets tabIndex="0" on the SVG, causing browser focus ring on click.
+  // Remove focusability from the SVG element after mount to prevent the blue outline.
+  const chartWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const svg = chartWrapRef.current?.querySelector("svg");
+    if (svg) svg.setAttribute("tabindex", "-1");
+  });
 
   useEffect(() => {
     const h = () => setIsMobile(window.innerWidth < 640);
@@ -276,6 +284,7 @@ export function FitnessChart({ logs }: Props) {
       </div>
 
       {/* ── Chart ── */}
+      <div ref={chartWrapRef}>
       <ResponsiveContainer width="100%" height={isMobile ? 200 : 260}>
         <ComposedChart
           data={data}
@@ -383,6 +392,7 @@ export function FitnessChart({ logs }: Props) {
           ))}
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
 
       {/* ── Interactive fund tags (hover to focus) ── */}
       <div
