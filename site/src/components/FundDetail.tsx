@@ -702,7 +702,14 @@ export function FundDetail() {
       )}
 
       {/* Trade History */}
-      <TradeHistorySection trades={closedTrades} maxHoldDays={cfg.maxHoldDays} />
+      <TradeHistorySection
+        trades={closedTrades}
+        maxHoldDays={cfg.maxHoldDays}
+        fundRealizedPnl={fund.realizedPnl}
+        fundWinCount={fund.winCount}
+        fundLossCount={fund.lossCount}
+        fundWinRate={fund.winRate}
+      />
 
       {/* Evolution Log */}
       {fundEvoLogs.length > 0 && (
@@ -738,7 +745,7 @@ export function FundDetail() {
 }
 
 // ─── Calendar heatmap ────────────────────────────────────────────────────────
-function CalendarHeatmap({ trades }: { trades: Trade[] }) {
+function CalendarHeatmap({ trades, fundRealizedPnl }: { trades: Trade[]; fundRealizedPnl?: number }) {
   const { t, locale } = useI18n();
   // Aggregate PnL by closed_at date
   const pnlByDate: Record<string, number> = {};
@@ -836,9 +843,11 @@ function CalendarHeatmap({ trades }: { trades: Trade[] }) {
       <div className="w-full sm:flex-1 grid grid-cols-2 gap-2">
         <div className="glass-card px-3 py-2.5">
           <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("calendarPeriodPnl")}</p>
-          <p className={`text-base font-bold font-mono ${periodPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
-            {periodPnl >= 0 ? "+" : "−"}${Math.abs(periodPnl).toFixed(2)}
-          </p>
+          {(() => { const v = fundRealizedPnl ?? periodPnl; return (
+            <p className={`text-base font-bold font-mono ${v >= 0 ? "pnl-positive" : "pnl-negative"}`}>
+              {v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}
+            </p>
+          ); })()}
           <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("calendarLast91Days")}</p>
         </div>
         <div className="glass-card px-3 py-2.5">
@@ -889,7 +898,16 @@ function normParam(v: number, min: number, max: number): number {
   return Math.min(1, Math.max(0, (v - min) / (max - min)));
 }
 
-function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHoldDays?: number }) {
+function TradeHistorySection({
+  trades, maxHoldDays,
+  fundRealizedPnl, fundWinCount, fundLossCount, fundWinRate,
+}: {
+  trades: Trade[]; maxHoldDays?: number;
+  fundRealizedPnl?: number;
+  fundWinCount?: number;
+  fundLossCount?: number;
+  fundWinRate?: number;
+}) {
   const { t } = useI18n();
   const [filter, setFilterRaw] = useState<HistoryFilter>(() => readLS<HistoryFilter>(HISTORY_FILTER_KEY, "all"));
   const [visible, setVisible]  = useState(HISTORY_PAGE_SIZE);
@@ -961,26 +979,34 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
       </div>
 
       {tradeView === "calendar" ? (
-        <CalendarHeatmap trades={trades} />
+        <CalendarHeatmap trades={trades} fundRealizedPnl={fundRealizedPnl} />
       ) : trades.length > 0 ? (
         <>
-          {/* Stats header — 4 metrics */}
+          {/* Stats header — totalPnl/winRate use authoritative backend fields when available */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
             <div className="glass-card px-3 py-2.5">
               <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("historyTotalPnl")}</p>
-              <p className={`text-base font-bold font-mono ${totalPnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
-                {totalPnl >= 0 ? "+" : "−"}${Math.abs(totalPnl).toFixed(2)}
+              {(() => { const v = fundRealizedPnl ?? totalPnl; return (
+                <p className={`text-base font-bold font-mono ${v >= 0 ? "pnl-positive" : "pnl-negative"}`}>
+                  {v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}
+                </p>
+              ); })()}
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">
+                {(fundWinCount ?? wins.length)}{t("wins")} / {(fundLossCount ?? losses.length)}{t("losses")}
               </p>
-              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{wins.length}{t("wins")} / {losses.length}{t("losses")}</p>
             </div>
             <div className="glass-card px-3 py-2.5">
               <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("winRate")}</p>
-              <p className="text-base font-bold font-mono">{winRate != null ? `${Math.round(winRate * 100)}%` : "—"}</p>
-              {winRate != null && (
-                <div className="h-1 rounded-full bg-[var(--r-border)] overflow-hidden mt-1">
-                  <div className="h-full rounded-full bg-[var(--r-accent)]" style={{ width: `${Math.round(winRate * 100)}%` }} />
-                </div>
-              )}
+              {(() => { const r = fundWinRate ?? winRate; return (
+                <>
+                  <p className="text-base font-bold font-mono">{r != null ? `${Math.round(r * 100)}%` : "—"}</p>
+                  {r != null && (
+                    <div className="h-1 rounded-full bg-[var(--r-border)] overflow-hidden mt-1">
+                      <div className="h-full rounded-full bg-[var(--r-accent)]" style={{ width: `${Math.round(r * 100)}%` }} />
+                    </div>
+                  )}
+                </>
+              ); })()}
             </div>
             <div className="glass-card px-3 py-2.5">
               <p className="text-[10px] text-[var(--r-text-muted)] mb-1">{t("historyAvgWin")}</p>
