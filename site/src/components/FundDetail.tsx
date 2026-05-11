@@ -4,7 +4,7 @@ import {
   ArrowLeft, TrendingUp, Activity, Target,
   Shield, ChevronDown, ChevronUp, Fingerprint, ExternalLink,
 } from "lucide-react";
-import { ComposedChart, Area, Line, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { ComposedChart, Area, Line, BarChart, Bar, Cell, ReferenceLine, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useApi";
 import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
@@ -374,6 +374,10 @@ export function FundDetail() {
   const [equityView, setEquityViewRaw] = useState<EquityView>(() => readLS<EquityView>(EQUITY_VIEW_KEY, "equity"));
   function setEquityView(v: EquityView) { setEquityViewRaw(v); writeLS(EQUITY_VIEW_KEY, v); }
 
+  // Strategy gene view toggle
+  const [geneView, setGeneViewRaw] = useState<GeneView>(() => readLS<GeneView>(GENE_VIEW_KEY, "params"));
+  function setGeneView(v: GeneView) { setGeneViewRaw(v); writeLS(GENE_VIEW_KEY, v); }
+
   if (fundLoading) {
     return (
       <div className="space-y-4">
@@ -433,6 +437,16 @@ export function FundDetail() {
   const sign = fund.returnPct >= 0 ? "+" : "";
 
   const cfg = fund.config;
+
+  // 6-axis radar — each parameter normalized to its expected [min, max] range
+  const radarData = [
+    { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0.01, 0.25) },
+    { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0.50, 0.92) },
+    { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30) },
+    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0.50, 3.00) },
+    { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.02, 0.18) },
+    { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    21  ) },
+  ];
 
   return (
     <div className="space-y-6 animate-in">
@@ -587,29 +601,76 @@ export function FundDetail() {
 
       {/* Strategy Gene */}
       <div className="glass-card p-5">
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">
-          <Fingerprint className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />{t("strategyGene")}
-        </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {GENE_GROUPS.map(group => (
-            <div key={group.titleKey}>
-              <h4 className="text-xs font-medium text-[var(--r-accent)] uppercase tracking-wider mb-2">{t(group.titleKey)}</h4>
-              <div className="space-y-0">
-                {group.params.map(({ key, labelKey }) => {
-                  const isRisk = group.titleKey === "geneGroupRisk" && (key === "stopLossPercent" || key === "drawdownLimit" || key === "takeProfitPercent" || key === "trailingStopPercent" || key === "probReversalThreshold");
-                  return (
-                    <div key={key} className="flex justify-between py-1.5 border-b border-[var(--r-border)]/50 text-sm">
-                      <span className="text-[var(--r-text-muted)]">{t(labelKey)}</span>
-                      <span className={`font-mono font-medium ${isRisk ? "text-[var(--r-red)]" : ""}`}>
-                        {formatConfigValue(key, cfg[key as keyof typeof cfg], t)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
+            <Fingerprint className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />{t("strategyGene")}
+          </h3>
+          <div className="flex items-center gap-1 ml-auto">
+            {(["params", "radar"] as const).map(v => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setGeneView(v)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  geneView === v
+                    ? "bg-[var(--r-accent)] text-white"
+                    : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05]"
+                }`}
+              >
+                {v === "params" ? t("geneViewParams") : t("geneViewRadar")}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {geneView === "params" ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {GENE_GROUPS.map(group => (
+              <div key={group.titleKey}>
+                <h4 className="text-xs font-medium text-[var(--r-accent)] uppercase tracking-wider mb-2">{t(group.titleKey)}</h4>
+                <div className="space-y-0">
+                  {group.params.map(({ key, labelKey }) => {
+                    const isRisk = group.titleKey === "geneGroupRisk" && (key === "stopLossPercent" || key === "drawdownLimit" || key === "takeProfitPercent" || key === "trailingStopPercent" || key === "probReversalThreshold");
+                    return (
+                      <div key={key} className="flex justify-between py-1.5 border-b border-[var(--r-border)]/50 text-sm">
+                        <span className="text-[var(--r-text-muted)]">{t(labelKey)}</span>
+                        <span className={`font-mono font-medium ${isRisk ? "text-[var(--r-red)]" : ""}`}>
+                          {formatConfigValue(key, cfg[key as keyof typeof cfg], t)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
+              <PolarGrid stroke="var(--r-border)" />
+              <PolarAngleAxis
+                dataKey="dim"
+                tick={{ fontSize: 10, fill: "var(--r-text-muted)" }}
+              />
+              <PolarRadiusAxis
+                domain={[0, 1]}
+                tick={false}
+                axisLine={false}
+              />
+              <Radar
+                dataKey="value"
+                stroke="var(--r-accent)"
+                fill="var(--r-accent)"
+                fillOpacity={0.25}
+                strokeWidth={1.5}
+              />
+              <Tooltip
+                contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
+                formatter={(value: unknown) => [(Number(value) * 100).toFixed(0) + "%", ""]}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Open Positions */}
@@ -676,6 +737,91 @@ export function FundDetail() {
   );
 }
 
+// ─── Calendar heatmap ────────────────────────────────────────────────────────
+function CalendarHeatmap({ trades }: { trades: Trade[] }) {
+  // Aggregate PnL by closed_at date
+  const pnlByDate: Record<string, number> = {};
+  for (const tr of trades) {
+    if (!tr.closed_at || tr.pnl == null || tr.counts_toward_performance === false) continue;
+    const d = tr.closed_at.slice(0, 10);
+    pnlByDate[d] = (pnlByDate[d] ?? 0) + tr.pnl;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 91 cells: day[0] = 90 days ago, day[90] = today
+  const cells = Array.from({ length: 91 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (90 - i));
+    const key = d.toISOString().slice(0, 10);
+    return { date: key, pnl: pnlByDate[key] ?? null, month: d.getMonth() };
+  });
+
+  // Split into weeks (columns of 7)
+  const weeks: (typeof cells)[] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  const vals    = Object.values(pnlByDate);
+  const maxAbs  = vals.length > 0 ? Math.max(...vals.map(Math.abs)) : 1;
+  const hasData = vals.length > 0;
+
+  function bg(pnl: number | null): string {
+    if (pnl == null) return "rgba(255,255,255,0.06)";
+    const a = (0.2 + 0.8 * (Math.abs(pnl) / maxAbs)).toFixed(2);
+    return pnl >= 0 ? `rgba(34,197,94,${a})` : `rgba(239,68,68,${a})`;
+  }
+
+  // Month label on the week that contains the 1st of a month
+  const monthLabels = weeks.map(week => {
+    const pivot = week.find(c => c.date.slice(8, 10) === "01");
+    if (pivot) return new Date(pivot.date + "T12:00:00").toLocaleString("en-US", { month: "short" });
+    return null;
+  });
+
+  if (!hasData) return <p className="text-xs text-[var(--r-text-faint)] py-4 text-center">No closed trades yet</p>;
+
+  return (
+    <div className="overflow-x-auto">
+      {/* Month axis */}
+      <div className="flex gap-0.5 mb-1 min-w-max">
+        {weeks.map((_, wi) => (
+          <div key={wi} className="w-3 text-[8px] text-[var(--r-text-faint)] leading-none">
+            {monthLabels[wi] ?? ""}
+          </div>
+        ))}
+      </div>
+      {/* Day grid */}
+      <div className="flex gap-0.5 min-w-max">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-0.5">
+            {week.map((cell, di) => (
+              <div
+                key={di}
+                className="w-3 h-3 rounded-[2px]"
+                style={{ background: bg(cell.pnl) }}
+                title={
+                  cell.pnl != null
+                    ? `${cell.date}: ${cell.pnl >= 0 ? "+" : ""}$${cell.pnl.toFixed(2)}`
+                    : cell.date
+                }
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-1.5 mt-3 text-[9px] text-[var(--r-text-faint)]">
+        <span>Loss</span>
+        {[1.0, 0.5, 0.2].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(239,68,68,${a})` }} />)}
+        <div className="w-3 h-3 rounded-[2px]" style={{ background: "rgba(255,255,255,0.06)" }} />
+        {[0.2, 0.5, 1.0].map(a => <div key={a} className="w-3 h-3 rounded-[2px]" style={{ background: `rgba(34,197,94,${a})` }} />)}
+        <span>Win</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 function readLS<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v !== null ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
@@ -686,19 +832,30 @@ function writeLS(key: string, value: unknown): void {
 
 const HISTORY_FILTER_KEY = "petri-fd-history-filter";
 const EQUITY_VIEW_KEY    = "petri-fd-equity-view";
+const GENE_VIEW_KEY      = "petri-fd-gene-view";
+const TRADE_VIEW_KEY     = "petri-fd-trade-view";
 const HISTORY_PAGE_SIZE  = 20;
 type HistoryFilter = "all" | "win" | "loss" | "void";
+type GeneView  = "params" | "radar";
+type TradeView = "list"   | "calendar";
+
+/** Normalize a config value to [0, 1] for radar display */
+function normParam(v: number, min: number, max: number): number {
+  return Math.min(1, Math.max(0, (v - min) / (max - min)));
+}
 
 function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHoldDays?: number }) {
   const { t } = useI18n();
   const [filter, setFilterRaw] = useState<HistoryFilter>(() => readLS<HistoryFilter>(HISTORY_FILTER_KEY, "all"));
   const [visible, setVisible]  = useState(HISTORY_PAGE_SIZE);
+  const [tradeView, setTradeViewRaw] = useState<TradeView>(() => readLS<TradeView>(TRADE_VIEW_KEY, "list"));
 
   function setFilter(f: HistoryFilter) {
     setFilterRaw(f);
     setVisible(HISTORY_PAGE_SIZE);
     writeLS(HISTORY_FILTER_KEY, f);
   }
+  function setTradeView(v: TradeView) { setTradeViewRaw(v); writeLS(TRADE_VIEW_KEY, v); }
 
   const countable = useMemo(() => trades.filter(tr => tr.counts_toward_performance !== false && tr.status !== "INVALIDATED"), [trades]);
   const wins       = useMemo(() => countable.filter(tr => (tr.pnl ?? 0) >= 0), [countable]);
@@ -735,11 +892,32 @@ function TradeHistorySection({ trades, maxHoldDays }: { trades: Trade[]; maxHold
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
-        {t("tradeHistory")} ({trades.length})
-      </h3>
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
+          {t("tradeHistory")} ({trades.length})
+        </h3>
+        {/* List / Calendar toggle */}
+        <div className="flex items-center gap-1 ml-auto">
+          {(["list", "calendar"] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setTradeView(v)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                tradeView === v
+                  ? "bg-[var(--r-accent)] text-white"
+                  : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05]"
+              }`}
+            >
+              {v === "list" ? t("tradeViewList") : t("tradeViewCalendar")}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {trades.length > 0 ? (
+      {tradeView === "calendar" ? (
+        <CalendarHeatmap trades={trades} />
+      ) : trades.length > 0 ? (
         <>
           {/* Stats header — 4 metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
