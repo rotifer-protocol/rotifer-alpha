@@ -4,7 +4,7 @@ import {
   ArrowLeft, TrendingUp, Activity, Target,
   Shield, ChevronDown, ChevronUp, Fingerprint, ExternalLink,
 } from "lucide-react";
-import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { ComposedChart, Area, Line, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useApi";
 import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
@@ -369,6 +369,11 @@ export function FundDetail() {
   const { data: snapshotsResp } = useFetch<{ snapshots: Snapshot[] }>(`/api/snapshots?fund=${fundId}&limit=30`);
   const { data: evoResp } = useFetch<{ logs: EvolutionLog[] }>("/api/evolution");
 
+  // Equity curve view toggle — persisted across reloads
+  type EquityView = "equity" | "daily";
+  const [equityView, setEquityViewRaw] = useState<EquityView>(() => readLS<EquityView>(EQUITY_VIEW_KEY, "equity"));
+  function setEquityView(v: EquityView) { setEquityViewRaw(v); writeLS(EQUITY_VIEW_KEY, v); }
+
   if (fundLoading) {
     return (
       <div className="space-y-4">
@@ -410,6 +415,14 @@ export function FundDetail() {
     ...p,
     pct: initialBalance > 0 ? ((p.value - initialBalance) / initialBalance) * 100 : 0,
   }));
+
+  // Daily returns — consecutive snapshot deltas (% change day-over-day)
+  const dailyReturns = rawPoints.slice(1).map((p, i) => {
+    const prev = rawPoints[i];
+    const delta    = p.value - prev.value;
+    const deltaPct = prev.value > 0 ? (delta / prev.value) * 100 : 0;
+    return { date: p.date, delta, deltaPct };
+  });
 
   const openTrades = openTradesResp?.trades ?? [];
   const closedTrades = closedTradesResp?.trades ?? [];
@@ -472,53 +485,103 @@ export function FundDetail() {
 
       {/* Equity Curve */}
       <div className="glass-card p-5">
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">{t("equityCurve")}</h3>
-        {chartData.length > 1 ? (
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={chartData}>
-              <defs>
-                <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--r-accent)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="var(--r-accent)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--r-border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 10, fill: "var(--r-text-muted)" }}
-                tickLine={false}
-                axisLine={false}
-                domain={["dataMin - 100", "dataMax + 100"]}
-                tickFormatter={(v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                width={70}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 10, fill: "#60a5fa" }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
-                width={52}
-              />
-              <Tooltip
-                contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
-                formatter={(value: unknown, name: unknown) => {
-                  if (name === "value") return [fmtUSD(Number(value)), t("totalValue")];
-                  if (name === "pct") {
-                    const n = Number(value);
-                    return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveReturn")];
-                  }
-                  return [String(value), String(name)];
-                }}
-              />
-              <Area yAxisId="left" type="monotone" dataKey="value" stroke="var(--r-accent)" fill="url(#equityGrad)" strokeWidth={2} dot={false} />
-              <Line yAxisId="right" type="monotone" dataKey="pct" stroke="#60a5fa" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
-            </ComposedChart>
-          </ResponsiveContainer>
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">{t("equityCurve")}</h3>
+          {/* View toggle */}
+          <div className="flex items-center gap-1 ml-auto">
+            {(["equity", "daily"] as const).map(v => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setEquityView(v)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  equityView === v
+                    ? "bg-[var(--r-accent)] text-white"
+                    : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.05]"
+                }`}
+              >
+                {v === "equity" ? t("equityCurveViewEquity") : t("equityCurveViewDaily")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {equityView === "equity" ? (
+          chartData.length > 1 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={chartData}>
+                <defs>
+                  <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--r-accent)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--r-accent)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--r-border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 10, fill: "var(--r-text-muted)" }}
+                  tickLine={false} axisLine={false}
+                  domain={["dataMin - 100", "dataMax + 100"]}
+                  tickFormatter={(v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  width={70}
+                />
+                <YAxis
+                  yAxisId="right" orientation="right"
+                  tick={{ fontSize: 10, fill: "#60a5fa" }}
+                  tickLine={false} axisLine={false}
+                  tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+                  width={52}
+                />
+                <Tooltip
+                  contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: unknown, name: unknown) => {
+                    if (name === "value") return [fmtUSD(Number(value)), t("totalValue")];
+                    if (name === "pct") { const n = Number(value); return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveReturn")]; }
+                    return [String(value), String(name)];
+                  }}
+                />
+                <Area yAxisId="left" type="monotone" dataKey="value" stroke="var(--r-accent)" fill="url(#equityGrad)" strokeWidth={2} dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="pct" stroke="#60a5fa" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-center text-[var(--r-text-muted)] text-sm py-8">{t("equityCurveEmpty")}</p>
+          )
         ) : (
-          <p className="text-center text-[var(--r-text-muted)] text-sm py-8">{t("equityCurveEmpty")}</p>
+          dailyReturns.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={dailyReturns} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--r-border)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} />
+                <YAxis
+                  tick={{ fontSize: 10, fill: "var(--r-text-muted)" }}
+                  tickLine={false} axisLine={false}
+                  tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+                  width={52}
+                />
+                <Tooltip
+                  contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(value: unknown, name: unknown) => {
+                    if (name === "deltaPct") {
+                      const n = Number(value);
+                      return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveViewDaily")];
+                    }
+                    return [String(value), String(name)];
+                  }}
+                  labelFormatter={(label: unknown) => String(label)}
+                />
+                <ReferenceLine y={0} stroke="var(--r-border)" strokeWidth={1.5} />
+                <Bar dataKey="deltaPct" radius={[3, 3, 0, 0]}>
+                  {dailyReturns.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.deltaPct >= 0 ? "var(--r-green)" : "var(--r-red)"} fillOpacity={0.85} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-center text-[var(--r-text-muted)] text-sm py-8">{t("equityCurveEmpty")}</p>
+          )
         )}
       </div>
 
@@ -622,6 +685,7 @@ function writeLS(key: string, value: unknown): void {
 }
 
 const HISTORY_FILTER_KEY = "petri-fd-history-filter";
+const EQUITY_VIEW_KEY    = "petri-fd-equity-view";
 const HISTORY_PAGE_SIZE  = 20;
 type HistoryFilter = "all" | "win" | "loss" | "void";
 
