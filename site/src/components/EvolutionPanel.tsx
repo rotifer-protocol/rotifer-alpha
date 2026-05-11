@@ -447,16 +447,16 @@ export function EvolutionPanel() {
           const isActive = activeEpoch === ep.epoch;
           // P2-②: convergence/divergence top color bar
           const barColor = delta != null && delta > 0.005
-            ? "bg-green-400/50"
+            ? "bg-green-400/20"
             : delta != null && delta < -0.005
-              ? "bg-red-400/50"
+              ? "bg-red-400/20"
               : "bg-transparent";
           return (
             <button
               key={ep.epoch}
               type="button"
               onClick={() => setActiveEpoch(isActive ? null : ep.epoch)}
-              className={`glass-card px-4 py-3 shrink-0 min-w-[120px] text-center transition-colors relative overflow-hidden
+              className={`glass-card px-4 py-3 shrink-0 min-w-[120px] text-center transition-colors relative
                 ${isActive ? "ring-1 ring-[var(--r-accent)]" : "opacity-70 hover:opacity-100"}`}
             >
               {/* Convergence/divergence top bar */}

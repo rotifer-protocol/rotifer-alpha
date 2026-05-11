@@ -578,6 +578,8 @@ export function FundDetail() {
                 <Tooltip
                   cursor={{ fill: "rgba(255,255,255,0.04)", strokeWidth: 0 }}
                   contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
+                  itemStyle={{ color: "var(--r-text)" }}
+                  labelStyle={{ color: "var(--r-text-muted)", marginBottom: 4 }}
                   formatter={(value: unknown) => {
                     const n = Number(value);
                     return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveViewDaily")];
