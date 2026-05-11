@@ -327,3 +327,32 @@ test("checkAndRunCodeEvolution: DOES eliminate when ≥2 variants exist (post 20
   assert.equal(scannerElim.length, 1, "Should eliminate the worst when ≥2 variants exist");
   assert.equal(scannerElim[0].variantId, "polymarket-scanner:v2-alt", "v2-alt has worse score, should be eliminated");
 });
+
+test("checkAndRunCodeEvolution: does NOT promote variants with zero Petri Score", async () => {
+  const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
+  const { createVariant, getActiveVariantId } = await import("../src/gene-variants");
+  const db = new FakeDb();
+
+  await createVariant(db as unknown as D1Database, "polymarket-risk", "v1-baseline", "baseline", "Baseline", null, 0);
+  db.setTrades("polymarket-risk:v1-baseline", 1, 1.0, 10.0);
+
+  await createVariant(db as unknown as D1Database, "polymarket-risk", "conservative g1", "conservative", "Conservative", "polymarket-risk:v1-baseline", 1);
+  db.setTrades("polymarket-risk:conservative g1", 8, 0.25, -900.0);
+
+  const result = await checkAndRunCodeEvolution(db as unknown as D1Database, {
+    epochTradeThreshold: 5,
+    minTradesForEval: 3,
+  });
+
+  assert.equal(result.triggered, true);
+  assert.equal(
+    result.promotions.some(p => p.geneId === "polymarket-risk"),
+    false,
+    "Zero-score risk challenger should not be promoted",
+  );
+  assert.equal(
+    await getActiveVariantId(db as unknown as D1Database, "polymarket-risk"),
+    "polymarket-risk:v1-baseline",
+    "Configured baseline should remain active until a positive-score variant exists",
+  );
+});

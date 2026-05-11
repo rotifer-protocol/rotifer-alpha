@@ -102,8 +102,9 @@ export async function checkAndRunCodeEvolution(
     const evaluated = activeRefreshed.filter(v => v.tradesEvaluated >= MIN_TRADES_FOR_EVAL);
 
     const sorted = [...evaluated].sort((a, b) => b.petriScore - a.petriScore);
-    const best = sorted[0];
-    const worst = sorted.length >= 2 ? sorted[sorted.length - 1] : null;
+    const promotable = sorted.filter(v => v.petriScore > 0);
+    const best = promotable[0] ?? null;
+    const worst = best && sorted.length >= 2 ? sorted[sorted.length - 1] : null;
 
     const eval_: GeneEvaluation = {
       geneId: gene.id,

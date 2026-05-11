@@ -251,6 +251,23 @@ test("computePetriScore calculates weighted score", async () => {
   assert.ok(score > 0, `Score should be positive, got ${score}`);
 });
 
+test("computePetriScore clamps losing variants to 0-100 range", async () => {
+  const {
+    createVariant,
+    recordTradeResult,
+    computePetriScore,
+  } = await import("../src/gene-variants");
+  const db = new FakeDb() as unknown as D1Database;
+
+  await createVariant(db, "polymarket-risk", "conservative g1", "conservative", "Conservative", null, 1);
+  await recordTradeResult(db, "polymarket-risk:conservative g1", -1000, false);
+  await recordTradeResult(db, "polymarket-risk:conservative g1", -900, false);
+  await recordTradeResult(db, "polymarket-risk:conservative g1", -800, false);
+
+  const score = await computePetriScore(db, "polymarket-risk:conservative g1");
+  assert.equal(score, 0);
+});
+
 test("eliminateVariant sets status and logs event", async () => {
   const {
     createVariant,

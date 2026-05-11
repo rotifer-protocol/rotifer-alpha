@@ -184,7 +184,8 @@ export async function computePetriScore(db: D1Database, variantId: string): Prom
 
   const winRate = v.tradesEvaluated > 0 ? v.winCount / v.tradesEvaluated : 0;
   const avgPnl = v.totalPnl / v.tradesEvaluated;
-  const score = (winRate * 0.4 + Math.tanh(avgPnl / 100) * 0.6) * 100;
+  const rawScore = (winRate * 0.4 + Math.tanh(avgPnl / 100) * 0.6) * 100;
+  const score = Math.max(0, Math.min(100, rawScore));
 
   await db.prepare("UPDATE gene_variants SET petri_score = ? WHERE id = ?").bind(score, variantId).run();
   return score;
