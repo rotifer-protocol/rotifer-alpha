@@ -4,7 +4,7 @@ import {
   ArrowLeft, TrendingUp, Activity, Target,
   Shield, ChevronDown, ChevronUp, Fingerprint, ExternalLink,
 } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useApi";
 import { FUND_ICONS } from "./icons/FundIcons";
 import { FUND_COLORS } from "./FundRanking";
@@ -370,14 +370,19 @@ export function FundDetail() {
   const tierBadge = fundTierLabel(fund.id);
 
   const today = new Date().toISOString().slice(0, 10);
+  const initialBalance = fund.initialBalance;
   const snapshotPoints = (snapshotsResp?.snapshots ?? [])
     .slice()
     .reverse()
     .map(s => ({ date: s.date, value: s.total_value }));
   const lastDate = snapshotPoints[snapshotPoints.length - 1]?.date;
-  const chartData = lastDate === today
+  const rawPoints = lastDate === today
     ? snapshotPoints.map(p => p.date === today ? { ...p, value: fund.totalValue } : p)
     : [...snapshotPoints, { date: today, value: fund.totalValue }];
+  const chartData = rawPoints.map(p => ({
+    ...p,
+    pct: initialBalance > 0 ? ((p.value - initialBalance) / initialBalance) * 100 : 0,
+  }));
 
   const openTrades = openTradesResp?.trades ?? [];
   const closedTrades = closedTradesResp?.trades ?? [];
@@ -443,7 +448,7 @@ export function FundDetail() {
         <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">{t("equityCurve")}</h3>
         {chartData.length > 1 ? (
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={chartData}>
+            <ComposedChart data={chartData}>
               <defs>
                 <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--r-accent)" stopOpacity={0.3} />
@@ -452,13 +457,38 @@ export function FundDetail() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--r-border)" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "var(--r-text-muted)" }} tickLine={false} axisLine={false} domain={["dataMin - 100", "dataMax + 100"]} tickFormatter={(v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })} />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 10, fill: "var(--r-text-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                domain={["dataMin - 100", "dataMax + 100"]}
+                tickFormatter={(v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                width={70}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 10, fill: "#60a5fa" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+                width={52}
+              />
               <Tooltip
                 contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
-                formatter={(value: unknown) => [fmtUSD(Number(value)), t("totalValue")]}
+                formatter={(value: unknown, name: unknown) => {
+                  if (name === "value") return [fmtUSD(Number(value)), t("totalValue")];
+                  if (name === "pct") {
+                    const n = Number(value);
+                    return [`${n >= 0 ? "+" : ""}${n.toFixed(2)}%`, t("equityCurveReturn")];
+                  }
+                  return [String(value), String(name)];
+                }}
               />
-              <Area type="monotone" dataKey="value" stroke="var(--r-accent)" fill="url(#equityGrad)" strokeWidth={2} />
-            </AreaChart>
+              <Area yAxisId="left" type="monotone" dataKey="value" stroke="var(--r-accent)" fill="url(#equityGrad)" strokeWidth={2} dot={false} />
+              <Line yAxisId="right" type="monotone" dataKey="pct" stroke="#60a5fa" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+            </ComposedChart>
           </ResponsiveContainer>
         ) : (
           <p className="text-center text-[var(--r-text-muted)] text-sm py-8">{t("equityCurveEmpty")}</p>
