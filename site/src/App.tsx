@@ -492,7 +492,20 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
               <span className={`whitespace-nowrap ${realizedColor}`}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
               <span className="text-[var(--r-text-faint)] mx-1 hidden sm:inline">·</span>
               <span className="block sm:hidden" />
-              <span className={`whitespace-nowrap ${unrealizedColor}`}>{t("heroUnrealized")} {fmtPct(unrealizedPct)}</span>
+              {/* P1-A (2026-05-11): demote full-width amber banner → inline badge next to the
+                  unrealized number. Same information, zero extra vertical space, semantically
+                  tied to the number it describes. Trigger threshold stays at 70%. */}
+              <span className={`whitespace-nowrap ${unrealizedColor}`}>
+                {t("heroUnrealized")} {fmtPct(unrealizedPct)}
+                {showUnrealizedWarning && (
+                  <span
+                    className="ml-1 text-amber-500/70 font-normal not-italic"
+                    title={t("heroUnrealizedWarning")}
+                  >
+                    ({Math.round(unrealizedShare * 100)}%{t("heroUnrealizedPaperLabel")})
+                  </span>
+                )}
+              </span>
             </p>
           </div>
           <div className="text-center min-w-0">
@@ -500,14 +513,6 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
             <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">{totalOpen}</p>
           </div>
         </div>
-
-        {/* P1: unrealized share warning — industry standard B4 (Coinbase) */}
-        {showUnrealizedWarning && (
-          <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-[11px]">
-            <span className="text-amber-500 font-bold tabular-nums shrink-0">{Math.round(unrealizedShare * 100)}%</span>
-            <span className="text-amber-200/90">{t("heroUnrealizedWarning")}</span>
-          </div>
-        )}
         {/* D-Lite stale-price banner — surfaces positions excluded from unrealized due to CLOB mid being NULL or >10min old. */}
         {showStaleWarning && (
           <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-md bg-amber-500/5 border border-amber-500/20 text-[11px]">

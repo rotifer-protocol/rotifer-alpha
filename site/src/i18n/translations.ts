@@ -386,6 +386,7 @@ const en = {
   heroRealized: "Realized",
   heroUnrealized: "Unrealized",
   heroUnrealizedWarning: "of profit is unrealized — settle to lock in",
+  heroUnrealizedPaperLabel: " paper",
   heroStaleWarning: "positions awaiting price refresh — excluded from unrealized PnL",
   heroToday: "Today",
 
@@ -797,6 +798,7 @@ const zh: Record<TranslationKey, string> = {
   heroRealized: "已实现",
   heroUnrealized: "未实现",
   heroUnrealizedWarning: "的盈利尚未结算——平仓后才能落袋",
+  heroUnrealizedPaperLabel: "纸面",
   heroStaleWarning: "个仓位的价格暂未刷新——已从未实现盈亏中剔除",
   heroToday: "今日",
 
