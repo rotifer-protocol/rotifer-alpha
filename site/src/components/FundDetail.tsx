@@ -366,7 +366,7 @@ export function FundDetail() {
   const { data: fundResp, loading: fundLoading, error: fundError } = useFetch<{ fund: FundDetailData }>(`/api/funds/${fundId}`, 30_000);
   const { data: closedTradesResp } = useFetch<{ trades: Trade[] }>(`/api/trades?fund=${fundId}&status=CLOSED&limit=50`, 30_000);
   const { data: openTradesResp } = useFetch<{ trades: Trade[] }>(`/api/trades?fund=${fundId}&status=OPEN&limit=20`, 30_000);
-  const { data: snapshotsResp } = useFetch<{ snapshots: Snapshot[] }>(`/api/snapshots?fund=${fundId}&limit=30`);
+  const { data: snapshotsResp } = useFetch<{ snapshots: Snapshot[] }>(`/api/snapshots?fund=${fundId}&limit=92`);
   const { data: evoResp } = useFetch<{ logs: EvolutionLog[] }>("/api/evolution");
 
   // Equity curve view toggle — persisted across reloads
@@ -709,6 +709,7 @@ export function FundDetail() {
         fundWinCount={fund.winCount}
         fundLossCount={fund.lossCount}
         fundWinRate={fund.winRate}
+        snapshots={snapshotsResp?.snapshots}
       />
 
       {/* Evolution Log */}
@@ -745,14 +746,34 @@ export function FundDetail() {
 }
 
 // ─── Calendar heatmap ────────────────────────────────────────────────────────
-function CalendarHeatmap({ trades, fundRealizedPnl }: { trades: Trade[]; fundRealizedPnl?: number }) {
+function CalendarHeatmap({
+  trades, fundRealizedPnl, snapshots,
+}: {
+  trades: Trade[];
+  fundRealizedPnl?: number;
+  snapshots?: Snapshot[];
+}) {
   const { t, locale } = useI18n();
-  // Aggregate PnL by closed_at date
+
+  // Build pnlByDate: prefer snapshot-delta path (complete history, no LIMIT),
+  // fall back to trades aggregation only when snapshots are unavailable.
   const pnlByDate: Record<string, number> = {};
-  for (const tr of trades) {
-    if (!tr.closed_at || tr.pnl == null || tr.counts_toward_performance === false) continue;
-    const d = tr.closed_at.slice(0, 10);
-    pnlByDate[d] = (pnlByDate[d] ?? 0) + tr.pnl;
+  if (snapshots && snapshots.length > 0) {
+    // API returns DESC; sort ASC for delta computation
+    const sorted = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    // First snapshot: its realized_pnl is the delta from fund inception (base = 0)
+    pnlByDate[sorted[0].date] = sorted[0].realized_pnl;
+    // Subsequent snapshots: delta over the previous day
+    for (let i = 1; i < sorted.length; i++) {
+      const delta = sorted[i].realized_pnl - sorted[i - 1].realized_pnl;
+      if (delta !== 0) pnlByDate[sorted[i].date] = delta;
+    }
+  } else {
+    for (const tr of trades) {
+      if (!tr.closed_at || tr.pnl == null || tr.counts_toward_performance === false) continue;
+      const d = tr.closed_at.slice(0, 10);
+      pnlByDate[d] = (pnlByDate[d] ?? 0) + tr.pnl;
+    }
   }
 
   const today = new Date();
@@ -901,12 +922,14 @@ function normParam(v: number, min: number, max: number): number {
 function TradeHistorySection({
   trades, maxHoldDays,
   fundRealizedPnl, fundWinCount, fundLossCount, fundWinRate,
+  snapshots,
 }: {
   trades: Trade[]; maxHoldDays?: number;
   fundRealizedPnl?: number;
   fundWinCount?: number;
   fundLossCount?: number;
   fundWinRate?: number;
+  snapshots?: Snapshot[];
 }) {
   const { t } = useI18n();
   const [filter, setFilterRaw] = useState<HistoryFilter>(() => readLS<HistoryFilter>(HISTORY_FILTER_KEY, "all"));
@@ -979,7 +1002,7 @@ function TradeHistorySection({
       </div>
 
       {tradeView === "calendar" ? (
-        <CalendarHeatmap trades={trades} fundRealizedPnl={fundRealizedPnl} />
+        <CalendarHeatmap trades={trades} fundRealizedPnl={fundRealizedPnl} snapshots={snapshots} />
       ) : trades.length > 0 ? (
         <>
           {/* Stats header — totalPnl/winRate use authoritative backend fields when available */}

@@ -579,7 +579,7 @@ async function apiSnapshots(
 ): Promise<Response> {
   const url = new URL(req.url);
   const fundId = url.searchParams.get("fund");
-  const limit = Math.min(parseInt(url.searchParams.get("limit") || "30"), 90);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "30"), 92);
 
   if (fundId) {
     const result = await db.prepare(
