@@ -599,7 +599,7 @@ function OrderCard({ order, t, locale }: {
       {/* Row 2: Paper vs Shadow PnL */}
       <div className="flex items-center justify-between text-xs mb-1.5">
         <div className="flex items-center gap-2">
-          <span className="text-[var(--r-text-faint)]">Paper</span>
+          <span className="text-[var(--r-text-faint)]">{t("shadowPaperShort")}</span>
           {order.paper_pnl !== null ? (
             <span className={`font-mono font-medium ${order.paper_pnl >= 0 ? "text-[var(--r-green)]" : "text-[var(--r-red)]"}`}>
               {order.paper_pnl >= 0 ? "+" : ""}{order.paper_pnl.toFixed(2)}
@@ -607,7 +607,7 @@ function OrderCard({ order, t, locale }: {
           ) : <span className="text-[var(--r-text-faint)]">—</span>}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[var(--r-text-faint)]">Shadow</span>
+          <span className="text-[var(--r-text-faint)]">{t("shadowShadowShort")}</span>
           {order.shadow_pnl !== null ? (
             <span className={`font-mono font-medium ${order.shadow_pnl >= 0 ? "text-[var(--r-green)]" : "text-[var(--r-red)]"}`}>
               {order.shadow_pnl >= 0 ? "+" : ""}{order.shadow_pnl.toFixed(2)}
@@ -661,7 +661,19 @@ export function ShadowPanel() {
   }, []);
 
   // All hooks before conditional returns
-  const orders = shadowData?.orders ?? [];
+  const rawOrders = shadowData?.orders ?? [];
+  // Deduplicate by paper_trade_id: each paper trade may have multiple shadow
+  // evaluations (one per cron tick); keep only the most-recent per trade.
+  const orders = useMemo(() => {
+    const seen = new Map<string, ShadowOrder>();
+    for (const o of rawOrders) {
+      const existing = seen.get(o.paper_trade_id);
+      if (!existing || new Date(o.created_at) > new Date(existing.created_at)) {
+        seen.set(o.paper_trade_id, o);
+      }
+    }
+    return [...seen.values()];
+  }, [rawOrders]);
   const fundStats = useMemo(() => computeFundStats(orders), [orders]);
   const allFundIds = useMemo(
     () => [...new Set(orders.map(o => o.fund_id))].sort(),
