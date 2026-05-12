@@ -712,6 +712,29 @@ export function ShadowPanel() {
     }
     return [...seen.values()];
   }, [rawOrders]);
+
+  // Recompute summary from deduped orders so KPI header is consistent with
+  // Fund Matrix (which also operates on deduped orders).
+  const summary = useMemo<ShadowSummary | null>(() => {
+    if (orders.length === 0) return null;
+    const wouldFill   = orders.filter(o => o.status === "WOULD_FILL").length;
+    const wouldReject = orders.filter(o => o.status === "WOULD_REJECT").length;
+    const totalPaperPnl  = orders.reduce((s, o) => s + (o.paper_pnl  ?? 0), 0);
+    const totalShadowPnl = orders.reduce((s, o) => s + (o.shadow_pnl ?? 0), 0);
+    const filled = orders.filter(o => o.paper_pnl !== null && o.shadow_pnl !== null);
+    const avgSlippageImpact = filled.length > 0
+      ? filled.reduce((s, o) => s + ((o.paper_pnl ?? 0) - (o.shadow_pnl ?? 0)), 0) / filled.length
+      : 0;
+    return {
+      wouldFill,
+      wouldReject,
+      fillRate: Math.round((wouldFill / orders.length) * 100),
+      avgSlippageImpact: Math.round(avgSlippageImpact * 100) / 100,
+      totalPaperPnl:  Math.round(totalPaperPnl  * 100) / 100,
+      totalShadowPnl: Math.round(totalShadowPnl * 100) / 100,
+      pnlDivergence:  Math.round((totalPaperPnl - totalShadowPnl) * 100) / 100,
+    };
+  }, [orders]);
   const fundStats = useMemo(() => computeFundStats(orders), [orders]);
   const allFundIds = useMemo(
     () => [...new Set(orders.map(o => o.fund_id))].sort(),
@@ -742,14 +765,12 @@ export function ShadowPanel() {
   }
 
   const system = systemData ?? { killSwitch: false, executionMode: "paper" };
-  const shadow = shadowData ?? { orders: [], total: 0, summary: null };
-  const summary = shadow.summary;
 
   return (
     <div>
       <SystemStatusBanner system={system} />
 
-      {summary && shadow.total > 0 ? (
+      {summary && orders.length > 0 ? (
         <>
           {/* ── KPI summary cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
