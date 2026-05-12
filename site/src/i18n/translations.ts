@@ -157,6 +157,9 @@ const en = {
   evoNextEvo: "Next Evo",
   evoCurrentFilter: "Active filter",
   evoAllEpochs: "All Epochs",
+  evoEventCount: "events",
+  reasonAllFundsBelow: "All funds below {threshold} fitness",
+  reasonMicroAdjustment: "Data-driven micro-adjustment from {count} trades",
   evoFitnessBefore: "Before",
   evoFitnessAfter: "After",
 
@@ -707,6 +710,9 @@ const zh: Record<TranslationKey, string> = {
   evoAllEpochs: "全部世代",
   evoFitnessBefore: "进化前",
   evoFitnessAfter: "进化后",
+  evoEventCount: "条",
+  reasonAllFundsBelow: "全部基金适应度低于 {threshold}",
+  reasonMicroAdjustment: "基于 {count} 笔交易的数据驱动微调",
 
   // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 PBT 排名分 (0-100)
   fitnessTitle: "基金适应度 F(g) 历史曲线",

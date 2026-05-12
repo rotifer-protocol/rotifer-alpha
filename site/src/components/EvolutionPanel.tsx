@@ -63,6 +63,12 @@ const ACTION_CONFIG: Record<string, ActionCfg> = {
 function translateReason(t: (k: TranslationKey) => string, reason: string): string {
   const cfg = ACTION_CONFIG[reason];
   if (cfg) return t(cfg.labelKey);
+  // "All funds below X fitness"
+  const resetMatch = reason.match(/All funds below ([\d.]+) fitness/i);
+  if (resetMatch) return t("reasonAllFundsBelow").replace("{threshold}", resetMatch[1]);
+  // "Data-driven micro-adjustment from N trades"
+  const microMatch = reason.match(/Data-driven micro-adjustment from (\d+) trades/i);
+  if (microMatch) return t("reasonMicroAdjustment").replace("{count}", microMatch[1]);
   return reason;
 }
 
@@ -750,18 +756,59 @@ export function EvolutionPanel() {
 
       {/* ── Mutations section ─────────────────────────────────────────── */}
       <div>
-        {/* Header + toolbar */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
-          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0 inline-flex items-center gap-1">
-            <span>{t("recentMutations")}</span>
-            <InfoPopover text={t("tipMutationType")} />
-            {activeEpoch != null && (
-              <span className="ml-2 normal-case font-normal text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
-            )}
-          </h3>
+        {/* Header + toolbar — two rows for clean responsive layout */}
+        <div className="flex flex-col gap-1.5 mb-3">
 
-          {/* Type filter pills */}
-          <div className="flex items-center gap-1 flex-1 min-w-0">
+          {/* Row 1: title (left) + sort / fund / clear (right) */}
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0 inline-flex items-center gap-1">
+              <span>{t("recentMutations")}</span>
+              <InfoPopover text={t("tipMutationType")} />
+              {activeEpoch != null && (
+                <span className="ml-2 normal-case font-normal text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
+              )}
+            </h3>
+
+            <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+              {/* Sort dropdown */}
+              <DropdownSelect
+                value={mutSortKey}
+                options={[
+                  { value: "time",  label: t("evoSortTime") },
+                  { value: "best",  label: t("evoSortJump") },
+                  { value: "worst", label: t("evoSortWorst") },
+                ]}
+                onChange={v => { setMutSortKey(v); setMutShowAll(false); }}
+              />
+
+              {/* Fund dropdown */}
+              {availableFunds.length > 1 && (
+                <DropdownSelect
+                  value={mutFundId}
+                  options={[
+                    { value: "all", label: t("evoAllFunds") },
+                    ...availableFunds.map(fid => ({ value: fid, label: fundDisplayName(fid, t) })),
+                  ]}
+                  onChange={v => { setMutFundId(v); setMutShowAll(false); }}
+                />
+              )}
+
+              {/* Clear filter button */}
+              {isFilterActive && (
+                <button
+                  type="button"
+                  onClick={() => { setMutTypeGroup("all"); setMutFundId("all"); setMutShowAll(false); }}
+                  className="flex items-center gap-0.5 text-[11px] text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  {t("evoClearFilters")}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: type filter chips (horizontally scrollable on mobile) */}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
             {([
               { key: "all",       label: t("evoFilterAll")   },
               { key: "evolution", label: t("evoFilterEvo")   },
@@ -772,7 +819,7 @@ export function EvolutionPanel() {
                 key={opt.key}
                 type="button"
                 onClick={() => { setMutTypeGroup(opt.key); setMutShowAll(false); }}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap shrink-0
                   ${mutTypeGroup === opt.key
                     ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] ring-1 ring-[var(--r-accent)]/40"
                     : "text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] hover:bg-white/5"
@@ -784,40 +831,6 @@ export function EvolutionPanel() {
             ))}
           </div>
 
-          {/* Sort dropdown */}
-          <DropdownSelect
-            value={mutSortKey}
-            options={[
-              { value: "time",  label: t("evoSortTime") },
-              { value: "best",  label: t("evoSortJump") },
-              { value: "worst", label: t("evoSortWorst") },
-            ]}
-            onChange={v => { setMutSortKey(v); setMutShowAll(false); }}
-          />
-
-          {/* Fund dropdown */}
-          {availableFunds.length > 1 && (
-            <DropdownSelect
-              value={mutFundId}
-              options={[
-                { value: "all", label: t("evoAllFunds") },
-                ...availableFunds.map(fid => ({ value: fid, label: fundDisplayName(fid, t) })),
-              ]}
-              onChange={v => { setMutFundId(v); setMutShowAll(false); }}
-            />
-          )}
-
-          {/* Clear filter button */}
-          {isFilterActive && (
-            <button
-              type="button"
-              onClick={() => { setMutTypeGroup("all"); setMutFundId("all"); setMutShowAll(false); }}
-              className="flex items-center gap-0.5 text-[11px] text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors ml-auto"
-            >
-              <X className="w-3 h-3" />
-              {t("evoClearFilters")}
-            </button>
-          )}
         </div>
 
         {/* P2: Epoch stats bar */}
@@ -825,7 +838,7 @@ export function EvolutionPanel() {
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono
             text-[var(--r-text-faint)] bg-white/[0.03] border border-[var(--r-border)]
             rounded-lg px-3 py-2 mb-3">
-            <span>{t("epoch")} {activeEpoch} · {epochStats.total} {locale === "zh" ? "条" : "events"}</span>
+            <span>{t("epoch")} {activeEpoch} · {epochStats.total} {t("evoEventCount")}</span>
             <span className="pnl-positive">{epochStats.evolved} {t("evoEvolvedCount")}</span>
             <span>{epochStats.skipped} {t("evoSkippedCount")}</span>
             {epochStats.avgDelta != null && (

@@ -264,7 +264,7 @@ function VariantCard({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
       )}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-[var(--r-text-faint)]">PBT</span>
+          <span className="text-[10px] text-[var(--r-text-faint)]">{t("geneScoreLabel")}</span>
           <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} />
         </div>
         <div className="flex items-center gap-1.5 justify-end">
@@ -276,7 +276,7 @@ function VariantCard({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
           <WinRateBar wins={v.winCount} total={v.tradesEvaluated} />
         </div>
         <div className="flex items-center gap-1.5 justify-end">
-          <span className="text-[10px] text-[var(--r-text-faint)]">P&L</span>
+          <span className="text-[10px] text-[var(--r-text-faint)]">{t("pnl")}</span>
           <span className={`font-mono text-xs font-medium ${pnlColor}`}>{pnlStr(v.totalPnl)}</span>
         </div>
       </div>
