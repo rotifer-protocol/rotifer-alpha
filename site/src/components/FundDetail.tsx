@@ -382,9 +382,41 @@ export function FundDetail() {
 
   if (fundLoading) {
     return (
-      <div className="space-y-4">
-        <div className="glass-card p-8 h-24 animate-pulse" />
-        <div className="glass-card p-8 h-48 animate-pulse" />
+      <div className="space-y-6">
+        {/* Back link placeholder */}
+        <div className="h-4 bg-[var(--r-border)] rounded opacity-50 animate-pulse" style={{ width: "80px" }} />
+        {/* Header card */}
+        <div className="glass-card p-6 animate-pulse">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-[var(--r-border)] opacity-60 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-6 bg-[var(--r-border)] rounded opacity-60" style={{ width: "42%" }} />
+              <div className="h-3 bg-[var(--r-border)] rounded opacity-40" style={{ width: "62%" }} />
+            </div>
+            <div className="shrink-0 space-y-1.5" style={{ width: "104px" }}>
+              <div className="h-8 bg-[var(--r-border)] rounded opacity-60" />
+              <div className="h-4 bg-[var(--r-border)] rounded opacity-40" style={{ width: "72px" }} />
+            </div>
+          </div>
+        </div>
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="glass-card p-4 animate-pulse space-y-2">
+              <div className="h-2.5 bg-[var(--r-border)] rounded opacity-50" style={{ width: "50%" }} />
+              <div className="h-6 bg-[var(--r-border)] rounded opacity-60" style={{ width: "68%" }} />
+              <div className="h-2 bg-[var(--r-border)] rounded opacity-40" style={{ width: "58%" }} />
+            </div>
+          ))}
+        </div>
+        {/* Equity curve */}
+        <div className="glass-card p-5 animate-pulse space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="h-3 bg-[var(--r-border)] rounded opacity-50" style={{ width: "96px" }} />
+            <div className="h-7 bg-[var(--r-border)] rounded opacity-40" style={{ width: "120px" }} />
+          </div>
+          <div className="bg-[var(--r-border)] rounded opacity-35" style={{ height: "180px" }} />
+        </div>
       </div>
     );
   }

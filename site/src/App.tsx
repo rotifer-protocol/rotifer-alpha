@@ -137,6 +137,44 @@ function PageSkeleton() {
   );
 }
 
+/** Suspense fallback for /fund/:id — mirrors real page shape so the jump feels smooth. */
+function FundPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="h-4 bg-[var(--r-border)] rounded opacity-50 animate-pulse" style={{ width: "80px" }} />
+      <div className="glass-card p-6 animate-pulse">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-lg bg-[var(--r-border)] opacity-60 shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <SkeletonBlock widthPct={42} heightPx={24} />
+            <SkeletonBlock widthPct={62} heightPx={12} />
+          </div>
+          <div className="shrink-0 space-y-1.5" style={{ width: "104px" }}>
+            <SkeletonBlock widthPct={100} heightPx={32} />
+            <SkeletonBlock widthPct={70} heightPx={16} />
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="glass-card p-4 animate-pulse space-y-2">
+            <SkeletonBlock widthPct={50} heightPx={10} />
+            <SkeletonBlock widthPct={68} heightPx={24} />
+            <SkeletonBlock widthPct={58} heightPx={8} />
+          </div>
+        ))}
+      </div>
+      <div className="glass-card p-5 animate-pulse space-y-3">
+        <div className="flex items-center justify-between">
+          <SkeletonBlock widthPct={20} heightPx={12} />
+          <div style={{ width: "120px" }}><SkeletonBlock widthPct={100} heightPx={28} /></div>
+        </div>
+        <div className="bg-[var(--r-border)] rounded opacity-35" style={{ height: "180px" }} />
+      </div>
+    </div>
+  );
+}
+
 function RotiferLogo({ className = "w-6 h-6" }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" fill="none" className={className}>
@@ -815,7 +853,7 @@ export default function App() {
           <Suspense fallback={<PageSkeleton />}><LazyDiagnosticsPage /></Suspense>
         } />
         <Route path="fund/:fundId" element={
-          <Suspense fallback={<PageSkeleton />}><FundDetail /></Suspense>
+          <Suspense fallback={<FundPageSkeleton />}><FundDetail /></Suspense>
         } />
       </Route>
     </Routes>
