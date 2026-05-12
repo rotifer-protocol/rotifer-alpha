@@ -176,7 +176,23 @@ export async function getSkipByFund(
     const r = await db.prepare(
       "SELECT value FROM system_config WHERE key = 'SKIP_BY_FUND_LATEST'",
     ).first<{ value: string }>();
-    return r ? JSON.parse(r.value) : {};
+    if (r) return JSON.parse(r.value);
+    // Backward-compat: first deploy after migration — new key doesn't exist yet.
+    // Fall back to the old heartbeat blob's skipByFund field so data isn't blank
+    // until the next pipeline cycle completes.
+    const hb = await getHeartbeat(db);
+    const legacy = (hb as any)?.skipByFund;
+    if (legacy && typeof legacy === "object") {
+      // Filter out old sentinel keys that were used as status indicators
+      const real: Record<string, Record<string, number>> = {};
+      for (const [k, v] of Object.entries(legacy)) {
+        if (!k.startsWith("_pipeline_") && !k.startsWith("_scanner_")) {
+          real[k] = v as Record<string, number>;
+        }
+      }
+      return real;
+    }
+    return {};
   } catch {
     return {};
   }
