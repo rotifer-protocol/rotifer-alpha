@@ -127,6 +127,21 @@ const LOG_FILTER_KEYS: Record<string, TranslationKey> = {
   epoch:        "geneFilterEpoch",
 };
 
+/** Display names for strategy keys: raw identifier → human-readable label. */
+const STRATEGY_DISPLAY: Record<string, { en: string; zh: string }> = {
+  "baseline":        { en: "baseline",       zh: "基线" },
+  "aggressive":      { en: "aggressive",     zh: "激进" },
+  "conservative":    { en: "conservative",   zh: "保守" },
+  "high-edge":       { en: "high-edge",      zh: "高边缘" },
+  "trend-following": { en: "trend-following",zh: "趋势跟踪" },
+  "adaptive":        { en: "adaptive",       zh: "自适应" },
+  "llm-config":      { en: "llm-config",     zh: "LLM 配置" },
+};
+
+function strategyLabel(key: string, locale: string): string {
+  return STRATEGY_DISPLAY[key]?.[locale === "zh" ? "zh" : "en"] ?? key;
+}
+
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
 function pnlStr(v: number): string {
@@ -198,18 +213,19 @@ function ScoreSparkline({ points, colorHex }: { points: number[]; colorHex: stri
 interface VariantRowProps {
   v: GeneVariant;
   t: (key: TranslationKey) => string;
+  locale: string;
   expandedDesc: Set<string>;
   onToggleDesc: (id: string) => void;
 }
 
 /** Desktop table row for a non-champion variant. */
-function VariantRow({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
+function VariantRow({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowProps) {
   const pnlColor = v.totalPnl > 0 ? "text-[var(--r-green)]" : v.totalPnl < 0 ? "text-[var(--r-red)]" : "";
   return (
     <tr className="border-b border-[var(--r-border)]/50">
       <td className="py-1.5 pr-3">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs">{v.strategyKey}</span>
+          <span className="font-mono text-xs">{strategyLabel(v.strategyKey, locale)}</span>
           <span className="text-[var(--r-text-faint)] text-[11px]">{t("geneGenPrefix")}{v.generation}</span>
         </div>
         {v.description && (
@@ -241,13 +257,13 @@ function VariantRow({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
 }
 
 /** Mobile card for a non-champion variant. */
-function VariantCard({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
+function VariantCard({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowProps) {
   const pnlColor = v.totalPnl > 0 ? "text-[var(--r-green)]" : v.totalPnl < 0 ? "text-[var(--r-red)]" : "";
   return (
     <div className="rounded-lg border border-[var(--r-border)] bg-[var(--r-surface)] px-3 py-2.5">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs font-medium">{v.strategyKey}</span>
+          <span className="font-mono text-xs font-medium">{strategyLabel(v.strategyKey, locale)}</span>
           <span className="text-[var(--r-text-faint)] text-[10px]">{t("geneGenPrefix")}{v.generation}</span>
         </div>
         <span className={`text-[10px] ${STATUS_COLORS[v.status] ?? ""}`}>
@@ -288,12 +304,14 @@ function VariantCard({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
 function VariantSection({
   variants,
   t,
+  locale,
   expandedDesc,
   onToggleDesc,
   showHeader = false,
 }: {
   variants: GeneVariant[];
   t: (key: TranslationKey) => string;
+  locale: string;
   expandedDesc: Set<string>;
   onToggleDesc: (id: string) => void;
   showHeader?: boolean;
@@ -325,6 +343,7 @@ function VariantSection({
                 key={v.id}
                 v={v}
                 t={t}
+                locale={locale}
                 expandedDesc={expandedDesc}
                 onToggleDesc={onToggleDesc}
               />
@@ -338,6 +357,7 @@ function VariantSection({
             key={v.id}
             v={v}
             t={t}
+            locale={locale}
             expandedDesc={expandedDesc}
             onToggleDesc={onToggleDesc}
           />
@@ -515,7 +535,7 @@ export function GeneEvolutionPanel() {
                         <span className="w-1.5 h-1.5 rounded-full bg-[var(--r-green)] animate-pulse shrink-0" />
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-sm font-bold">{champion.strategyKey}</span>
+                        <span className="font-mono text-sm font-bold">{strategyLabel(champion.strategyKey, locale)}</span>
                         <span className="text-xs text-[var(--r-text-faint)]">{t("geneGenPrefix")}{champion.generation}</span>
                       </div>
                       {champion.description && (
@@ -577,6 +597,7 @@ export function GeneEvolutionPanel() {
                   <VariantSection
                     variants={otherActive}
                     t={t}
+                    locale={locale}
                     expandedDesc={expandedDesc}
                     onToggleDesc={handleToggleDesc}
                     showHeader={true}
@@ -590,6 +611,7 @@ export function GeneEvolutionPanel() {
                   <VariantSection
                     variants={gv.filter(v => v.status === "active")}
                     t={t}
+                    locale={locale}
                     expandedDesc={expandedDesc}
                     onToggleDesc={handleToggleDesc}
                     showHeader
@@ -615,6 +637,7 @@ export function GeneEvolutionPanel() {
                       <VariantSection
                         variants={eliminated}
                         t={t}
+                        locale={locale}
                         expandedDesc={expandedDesc}
                         onToggleDesc={handleToggleDesc}
                       />
