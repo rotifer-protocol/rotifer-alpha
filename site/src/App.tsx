@@ -40,32 +40,99 @@ import { fundDisplayName, fmtUSD } from "./lib/fundMeta";
 const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? "wss://api.rotifer.xyz/ws" : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`);
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
-// Used as Suspense fallback while lazy chunks load, and by components while data arrives.
+// Rules: never use dynamic Tailwind class interpolation (e.g. h-${n}, w-${n}).
+// Tailwind v4 static scanner won't detect them; use inline styles for dynamic values.
 
-export function SkeletonBar({ w = "full", h = 3 }: { w?: string; h?: number }) {
-  return <div className={`h-${h} bg-[var(--r-border)] rounded w-${w} opacity-60`} />;
+/** A single muted bar with explicit pixel/percent dimensions. Safe with Tailwind scanner. */
+function SkeletonBlock({ widthPct = 100, heightPx = 10, className = "" }: { widthPct?: number; heightPx?: number; className?: string }) {
+  return (
+    <div
+      className={`bg-[var(--r-border)] rounded opacity-60 ${className}`}
+      style={{ width: `${widthPct}%`, height: `${heightPx}px` }}
+    />
+  );
 }
 
-export function SkeletonCard({ rows = 5, chart = false }: { rows?: number; chart?: boolean }) {
+/** Mimics an actual fund ranking card so users understand what's loading. */
+function FundCardSkeleton({ delay = 0 }: { delay?: number }) {
   return (
-    <div className="glass-card p-5 space-y-3 animate-pulse">
-      <SkeletonBar w="1/3" h={3} />
-      {chart && <div className="h-40 bg-[var(--r-border)] rounded opacity-60 mt-2" />}
-      <div className="space-y-2 pt-1">
-        {Array.from({ length: rows }).map((_, i) => (
-          <SkeletonBar key={i} w={i % 3 === 0 ? "full" : i % 3 === 1 ? "4/5" : "3/4"} h={2} />
+    <div className="glass-card p-4 animate-pulse" style={{ animationDelay: `${delay}s` }}>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-[var(--r-border)] opacity-60 shrink-0" />
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <SkeletonBlock widthPct={38} heightPx={12} />
+          <SkeletonBlock widthPct={55} heightPx={9} />
+        </div>
+        <div className="w-20 shrink-0 space-y-1.5">
+          <SkeletonBlock widthPct={100} heightPx={14} />
+          <SkeletonBlock widthPct={70} heightPx={9} />
+        </div>
+        <div className="w-14 shrink-0 space-y-1.5">
+          <SkeletonBlock widthPct={100} heightPx={12} />
+          <SkeletonBlock widthPct={80} heightPx={9} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Suspense fallback for the Evolution page — mirrors KPI strip + chart + epoch cards layout. */
+function EvolutionSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="h-3 bg-[var(--r-border)] rounded opacity-60 w-40" />
+      {/* KPI chips */}
+      <div className="flex gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="glass-card px-4 py-3 animate-pulse flex-1 space-y-1.5">
+            <SkeletonBlock widthPct={55} heightPx={9} />
+            <SkeletonBlock widthPct={80} heightPx={20} />
+          </div>
+        ))}
+      </div>
+      {/* Fitness chart */}
+      <div className="glass-card p-5 animate-pulse space-y-3">
+        <SkeletonBlock widthPct={22} heightPx={12} />
+        <div className="bg-[var(--r-border)] rounded opacity-40" style={{ height: "196px" }} />
+      </div>
+      {/* Epoch cards */}
+      <div className="flex gap-2.5">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="glass-card p-3 animate-pulse space-y-1.5" style={{ minWidth: "96px" }}>
+            <SkeletonBlock widthPct={60} heightPx={9} />
+            <SkeletonBlock widthPct={80} heightPx={16} />
+          </div>
+        ))}
+      </div>
+      {/* Lower panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {[0, 1].map(i => (
+          <div key={i} className="glass-card p-5 animate-pulse space-y-2.5">
+            <SkeletonBlock widthPct={28} heightPx={12} />
+            <div className="bg-[var(--r-border)] rounded opacity-40" style={{ height: "148px" }} />
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
+/** Generic Suspense fallback for Shadow, Gene Evolution, Diagnostics pages. */
 function PageSkeleton() {
   return (
-    <div className="space-y-5 animate-pulse">
-      <SkeletonBar w="36" h={3} />
-      <SkeletonCard chart rows={4} />
-      <SkeletonCard rows={6} />
+    <div className="space-y-5">
+      <div className="h-3 bg-[var(--r-border)] rounded opacity-60 w-36" />
+      <div className="glass-card p-5 animate-pulse space-y-3">
+        <SkeletonBlock widthPct={22} heightPx={12} />
+        <div className="bg-[var(--r-border)] rounded opacity-40" style={{ height: "196px" }} />
+        <div className="flex gap-3 pt-1">
+          {[...Array(4)].map((_, i) => <SkeletonBlock key={i} widthPct={25} heightPx={30} />)}
+        </div>
+      </div>
+      <div className="glass-card p-5 animate-pulse space-y-2.5">
+        <SkeletonBlock widthPct={18} heightPx={12} />
+        {[...Array(5)].map((_, i) => <SkeletonBlock key={i} widthPct={100} heightPx={38} />)}
+      </div>
     </div>
   );
 }
@@ -667,9 +734,9 @@ function ArenaPage() {
             </span>
           </div>
           {fundsLoading ? (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="glass-card p-5 h-20 animate-pulse" />
+                <FundCardSkeleton key={i} delay={i * 0.07} />
               ))}
             </div>
           ) : funds.length > 0 ? (
@@ -736,7 +803,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<ArenaPage />} />
         <Route path="evolution" element={
-          <Suspense fallback={<PageSkeleton />}><EvolutionPage /></Suspense>
+          <Suspense fallback={<EvolutionSkeleton />}><EvolutionPage /></Suspense>
         } />
         <Route path="shadow" element={
           <Suspense fallback={<PageSkeleton />}><ShadowPage /></Suspense>

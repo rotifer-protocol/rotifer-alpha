@@ -63,6 +63,23 @@ function writeLs(path: string, data: unknown): void {
   }
 })();
 
+// For first-time visitors (empty LS), kick off the most critical fetch immediately —
+// before React mounts any component. By the time ArenaPage calls useFetch('/api/funds'),
+// the in-flight promise is already running (or done), cutting ~100-200ms from perceived load.
+(function earlyPrefetch() {
+  if (typeof window === "undefined") return;
+  const CRITICAL = ["/api/funds"];
+  for (const path of CRITICAL) {
+    if (memCache.has(path)) continue; // already seeded from LS — no network needed
+    const p = fetch(`${API_BASE}${path}`)
+      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
+      .then(json => { memCache.set(path, { data: json, ts: Date.now() }); writeLs(path, json); return json; })
+      .catch(() => null)
+      .finally(() => inFlight.delete(path));
+    inFlight.set(path, p);
+  }
+})();
+
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 
 interface UseFetchReturn<T> {
