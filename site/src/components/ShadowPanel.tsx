@@ -172,18 +172,20 @@ function SystemStatusBanner({ system }: { system: SystemResponse }) {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${isHalted ? "bg-[var(--r-red)]" : "bg-[var(--r-green)] animate-pulse"}`} />
-          <span className="text-sm font-medium">
+          <span className="text-sm font-medium flex items-center gap-1">
             {t("killSwitch")}: {isHalted ? t("killSwitchActive") : t("killSwitchInactive")}
+            <InfoPopover text={t("tipKillSwitch")} />
           </span>
         </div>
         <div className="h-4 w-px bg-[var(--r-border)]" />
         <div className="flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-[var(--r-text-muted)]" />
-          <span className="text-sm">
+          <span className="text-sm flex items-center gap-1">
             {t("executionMode")}:{" "}
             <span className={`font-medium ${isShadow ? "text-[var(--r-accent)]" : "text-[var(--r-text-muted)]"}`}>
               {isShadow ? t("executionModeShadow") : t("executionModePaper")}
             </span>
+            <InfoPopover text={t("tipExecutionMode")} />
           </span>
         </div>
       </div>

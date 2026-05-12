@@ -12,6 +12,7 @@ import { FUND_COLORS } from "./FundRanking";
 import { useI18n } from "../i18n/context";
 import { formatFundGeneration, type TranslationKey } from "../i18n/translations";
 import { FUND_NAME_KEYS, FUND_MOTTO_KEYS, fundDisplayName, fundTierLabel, fmtUSD } from "../lib/fundMeta";
+import { InfoPopover } from "./InfoPopover";
 
 const REASON_I18N: Record<string, TranslationKey> = {
   STANDARD_PBT: "actionPbt", PBT_INHERIT_MUTATE: "actionInherit",
@@ -963,8 +964,9 @@ function TradeHistorySection({
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
+        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest flex items-center gap-1.5">
           {t("tradeHistory")} ({trades.length})
+          {tradeView === "calendar" && <InfoPopover text={t("tipCalendarHeatmap")} />}
         </h3>
         {/* List / Calendar toggle */}
         <div className="flex items-center gap-1 ml-auto">
@@ -1310,8 +1312,9 @@ function EvoLogSection({ logs }: { logs: EvolutionLog[] }) {
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3 flex items-center gap-1.5">
         {t("evolutionLog")} ({logs.length})
+        <InfoPopover text={t("tipEvoLogFitness")} />
       </h3>
 
       {/* ── Fitness sparkline ── */}
