@@ -161,7 +161,7 @@ function Layout() {
               <NavLink to="/" className={navClass} end>{t("arena")}</NavLink>
               <NavLink to="/evolution" className={navClass}>{t("evolution")}</NavLink>
               <NavLink to="/shadow" className={navClass}>{t("shadow")}</NavLink>
-              <NavLink to="/gene-evolution" className={navClass}>{t("geneEvolution")}</NavLink>
+              <NavLink to="/gene-evolution" className={navClass}>{t("navGeneEvolution")}</NavLink>
               <NavLink to="/diagnostics" className={navClass}>{t("diagnostics")}</NavLink>
         </div>
 
@@ -221,7 +221,7 @@ function Layout() {
               }`
             }
             >
-            {t("geneEvolution")}
+            {t("navGeneEvolution")}
           </NavLink>
           <NavLink
             to="/diagnostics"

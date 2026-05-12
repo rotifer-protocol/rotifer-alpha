@@ -338,8 +338,7 @@ const en = {
   sizingEdgeConfidence: "Edge × Confidence",
 
   // Shadow Trading
-  shadow: "Shadow",
-  shadowTitle: "Shadow vs Paper Comparison",
+  shadow: "Shadow",  shadowTitle: "Shadow vs Paper Comparison",
   shadowDesc: "Comparing paper trade execution with simulated real CLOB orders",
   shadowNoData: "No shadow orders yet. Enable shadow mode to start recording.",
   shadowFillRate: "Fill Rate",
@@ -484,6 +483,7 @@ const en = {
 
   // Gene Evolution
   geneEvolution: "Gene Evolution",
+  navGeneEvolution: "Gene",
   geneEvolutionDesc: "Code-level evolution: alternative Gene implementations competing in the pipeline",
   geneVariants: "Gene Variants",
   geneLineage: "Lineage",
@@ -953,7 +953,7 @@ const zh: Record<TranslationKey, string> = {
   sizingEdge: "按边际",
   sizingEdgeConfidence: "边际 × 置信度",
 
-  shadow: "影子交易",
+  shadow: "影子",
   shadowTitle: "影子交易 vs 模拟交易 对比",
   shadowDesc: "对比模拟交易执行与真实 CLOB 订单模拟结果",
   shadowNoData: "暂无影子订单数据。启用影子模式后将开始记录。",
@@ -1097,6 +1097,7 @@ const zh: Record<TranslationKey, string> = {
   diagKillCancelBtn: "取消",
 
   geneEvolution: "基因进化",
+  navGeneEvolution: "基因",
   geneEvolutionDesc: "代码级进化：替代 Gene 实现在管线中竞争",
   geneVariants: "基因变体",
   geneLineage: "血统图谱",
