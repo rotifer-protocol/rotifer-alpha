@@ -263,7 +263,8 @@ function EvoMutCard({ log }: { log: EvolutionLog }) {
   );
 }
 
-/** Bidirectional bar diff: blue bar = before value, indigo bar = after value, both normalised to max. */
+/** Bidirectional bar diff: sky bar = before, indigo bar = after.
+ *  Each row is independently normalised so the larger side always fills BAR_MAX_PX. */
 function EvoInlineParamDiff({ before, after }: { before: string; after: string }) {
   const { t } = useI18n();
   let b: Record<string, number> = {}; let a: Record<string, number> = {};
@@ -272,48 +273,33 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
   const changes = Object.keys({ ...b, ...a }).filter(k => b[k] !== a[k]);
   if (changes.length === 0) return null;
 
-  const BAR_MAX_PX = 40;
-  const maxVal = Math.max(
-    ...changes.map(k => Math.max(Math.abs(b[k] ?? 0), Math.abs(a[k] ?? 0))),
-    1e-10,
-  );
+  const BAR_MAX_PX = 32;
 
   return (
-    <div className="mt-2 space-y-1.5">
-      {/* Column headers */}
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className="w-[72px] shrink-0" />
-        <div className="flex items-center justify-end text-[9px] text-[var(--r-text-faint)]" style={{ width: BAR_MAX_PX }}>before</div>
-        <div className="w-px shrink-0" />
-        <div className="flex items-center text-[9px] text-[var(--r-text-faint)]" style={{ width: BAR_MAX_PX }}>after</div>
-        <span className="w-10 shrink-0" />
-      </div>
-
+    <div className="mt-2 space-y-1">
       {changes.slice(0, 6).map(k => {
-        const bv = b[k] ?? 0;
-        const av = a[k] ?? 0;
-        const diff = av - bv;
-        const pct = bv !== 0
-          ? `${diff >= 0 ? "+" : ""}${((diff / Math.abs(bv)) * 100).toFixed(1)}%`
+        const bv   = Math.abs(b[k] ?? 0);
+        const av   = Math.abs(a[k] ?? 0);
+        const diff = (a[k] ?? 0) - (b[k] ?? 0);
+        const pct  = (b[k] ?? 0) !== 0
+          ? `${diff >= 0 ? "+" : ""}${((diff / Math.abs(b[k])) * 100).toFixed(1)}%`
           : t("paramChangeNew");
-        const beforeW = Math.round((Math.abs(bv) / maxVal) * BAR_MAX_PX);
-        const afterW  = Math.round((Math.abs(av) / maxVal) * BAR_MAX_PX);
+        // Per-row normalisation: longer bar always fills BAR_MAX_PX
+        const rowMax   = Math.max(bv, av, 1e-10);
+        const beforeW  = Math.round((bv / rowMax) * BAR_MAX_PX);
+        const afterW   = Math.round((av / rowMax) * BAR_MAX_PX);
         return (
           <div key={k} className="flex items-center gap-1.5">
-            <span className="text-[var(--r-text-muted)] text-[10px] font-mono shrink-0 text-right truncate" style={{ width: 72 }}>
+            <span className="text-[var(--r-text-muted)] text-[10px] font-mono shrink-0 text-right truncate" style={{ width: 60 }}>
               {PANEL_PARAM_I18N[k] ? t(PANEL_PARAM_I18N[k]) : k}
             </span>
-            {/* before bar (sky/blue, right-aligned) */}
             <div className="flex items-center justify-end" style={{ width: BAR_MAX_PX }}>
               <div className="h-1.5 rounded-full bg-sky-500/70" style={{ width: beforeW }} />
             </div>
-            {/* center axis */}
             <div className="w-px h-3 bg-[var(--r-border)]/70 shrink-0" />
-            {/* after bar (indigo/accent, left-aligned) */}
             <div className="flex items-center" style={{ width: BAR_MAX_PX }}>
               <div className="h-1.5 rounded-full bg-indigo-400/80" style={{ width: afterW }} />
             </div>
-            {/* delta label */}
             <span className={`text-[10px] font-mono shrink-0 min-w-[38px] ${diff >= 0 ? "pnl-positive" : "pnl-negative"}`}>
               {pct}
             </span>
@@ -323,15 +309,12 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
       {changes.length > 6 && (
         <div className="text-[var(--r-text-muted)] text-[10px]">+{changes.length - 6} {t("nMore")}</div>
       )}
-      {/* Legend */}
       <div className="flex items-center gap-3 pt-0.5 text-[9px] text-[var(--r-text-faint)]">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-1 bg-sky-500/70 rounded-full inline-block" />
-          before
+          <span className="w-3 h-1 bg-sky-500/70 rounded-full inline-block" />before
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-1 bg-indigo-400/80 rounded-full inline-block" />
-          after
+          <span className="w-3 h-1 bg-indigo-400/80 rounded-full inline-block" />after
         </span>
       </div>
     </div>
