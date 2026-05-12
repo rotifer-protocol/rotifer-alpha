@@ -274,6 +274,49 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
     }
   }
 
+  // ── End-of-line label stagger (prevents overlap when values are close) ────────
+  // Sort displayIds by their last fitness_after value (descending = top→bottom)
+  const STAGGER_THRESHOLD = 0.03; // F(g) units — below this gap, labels will overlap
+  const STAGGER_STEP_PX   = 12;   // pixels to push each overlapping label downward
+  const sortedByEndVal = [...displayIds]
+    .filter(did => typeof lastPt?.[`${did}_after`] === "number")
+    .sort((a, b) => (lastPt[`${b}_after`] as number) - (lastPt[`${a}_after`] as number));
+  const endYOffsets = new Map<string, number>();
+  let prevEndVal: number | null = null;
+  let cumOffset = 0;
+  for (const did of sortedByEndVal) {
+    const val = lastPt[`${did}_after`] as number;
+    if (prevEndVal === null || prevEndVal - val > STAGGER_THRESHOLD) {
+      cumOffset = 0;
+    } else {
+      cumOffset += STAGGER_STEP_PX;
+    }
+    endYOffsets.set(did, cumOffset);
+    prevEndVal = val;
+  }
+
+  // ── Latest epoch health summary ──────────────────────────────────────────────
+  const latestEpoch = epochs[epochs.length - 1];
+  const latestLogs  = logs.filter(l => l.epoch === latestEpoch && l.fitness_after != null);
+  const prevLogs    = epochs.length > 1
+    ? logs.filter(l => l.epoch === epochs[epochs.length - 2] && l.fitness_after != null)
+    : [];
+  const latestParticipants = new Set(latestLogs.map(l => l.fund_id)).size;
+  const bestLatestLog = latestLogs.reduce<EvolutionLog | null>((best, l) => {
+    if (l.fitness_after == null) return best;
+    return !best || l.fitness_after > best.fitness_after! ? l : best;
+  }, null);
+  const avgLatest = latestLogs.length > 0
+    ? latestLogs.reduce((s, l) => s + l.fitness_after!, 0) / latestLogs.length : null;
+  const avgPrev = prevLogs.length > 0
+    ? prevLogs.reduce((s, l) => s + l.fitness_after!, 0) / prevLogs.length : null;
+  const trend: "up" | "down" | "stable" | null =
+    avgLatest != null && avgPrev != null
+      ? avgLatest > avgPrev + 0.005 ? "up"
+      : avgLatest < avgPrev - 0.005 ? "down"
+      : "stable"
+    : null;
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const getColor = (did: string) => FUND_HEX_COLORS[did] ?? "#a1a1aa";
   const getLabel = (did: string) => fundDisplayName(did, t);
@@ -301,13 +344,23 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
     const color = getColor(did);
     const isBest = did === bestId;
     const label = getLabel(did);
+    const yOffset = endYOffsets.get(did) ?? 0;
     return (
       <g key={`dot-${did}-end`}>
         {isBest && <circle cx={cx} cy={cy} r={7} fill={color} opacity={0.15} />}
         <circle cx={cx} cy={cy} r={isBest ? 4 : 3} fill={color} />
+        {yOffset > 0 && (
+          <line
+            x1={cx + 5} y1={cy}
+            x2={cx + 7} y2={cy + yOffset + 2}
+            stroke={color}
+            strokeWidth={0.6}
+            strokeOpacity={0.4}
+          />
+        )}
         <text
           x={cx + 8}
-          y={cy + 4}
+          y={cy + 4 + yOffset}
           fontSize={9.5}
           fill={color}
           fontWeight={isBest ? 700 : 500}
@@ -353,6 +406,36 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
           )}
         </div>
       </div>
+
+      {/* ── Health summary banner ── */}
+      {latestParticipants > 0 && bestLatestLog && (
+        <div className="flex items-center gap-2 text-[11px] mb-3 px-2.5 py-1.5 rounded-lg bg-[var(--r-accent)]/5 border border-[var(--r-accent)]/15 flex-wrap">
+          <span className="font-mono font-semibold text-[var(--r-accent)] shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-[var(--r-accent)]/10">
+            E{latestEpoch}
+          </span>
+          <span className="text-[var(--r-text-muted)]">
+            {latestParticipants} {t("fitnessSummaryFunds")}
+          </span>
+          <span className="text-[var(--r-text-faint)]">·</span>
+          <span className="text-[var(--r-text-muted)]">
+            {fundDisplayName(bestLatestLog.fund_id, t)}{" "}
+            <span className="text-[var(--r-text-faint)]">{t("fitnessSummaryBest")}</span>{" "}
+            <span className="font-mono">({bestLatestLog.fitness_after!.toFixed(3)})</span>
+          </span>
+          {trend && (
+            <>
+              <span className="text-[var(--r-text-faint)]">·</span>
+              <span className="text-[var(--r-text-muted)]">
+                {t("fitnessSummaryTrend")}{" "}
+                <span className={trend === "up" ? "pnl-positive" : trend === "down" ? "pnl-negative" : "text-[var(--r-text-faint)]"}>
+                  {trend === "up" ? "↑" : trend === "down" ? "↓" : "→"}{" "}
+                  {t(`fitnessTrend${trend.charAt(0).toUpperCase() + trend.slice(1)}` as "fitnessTrendUp" | "fitnessTrendDown" | "fitnessTrendStable")}
+                </span>
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Chart ── */}
       <div ref={chartWrapRef}>
