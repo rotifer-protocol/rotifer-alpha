@@ -158,7 +158,7 @@ function InfoPopover({ text }: { text: string }) {
         <Info className="w-3 h-3" />
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 mb-1.5 z-30 w-64 glass-card p-3 shadow-xl text-[11px] leading-relaxed text-[var(--r-text-muted)]">
+        <div className="absolute top-full left-0 mt-1.5 z-30 w-64 glass-card p-3 shadow-xl text-[11px] leading-relaxed text-[var(--r-text-muted)]">
           {text}
         </div>
       )}
@@ -242,10 +242,11 @@ function FundReadinessMatrix({ fundStats, t }: {
   if (fundStats.length === 0) return null;
   return (
     <div className="glass-card mb-4">
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-4 pt-3 pb-1 flex items-center gap-1.5">
         <h3 className="text-xs font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
           {t("shadowFundMatrix")}
         </h3>
+        <InfoPopover text={t("shadowReadinessTip")} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -256,12 +257,7 @@ function FundReadinessMatrix({ fundStats, t }: {
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowPaperPnl")}</th>
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowRealPnl")}</th>
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowDivergence")}</th>
-              <th className="text-center px-4 py-2 text-[var(--r-text-muted)] font-medium">
-                <span className="inline-flex items-center gap-0.5">
-                  {t("shadowReadiness")}
-                  <InfoPopover text={t("shadowReadinessTip")} />
-                </span>
-              </th>
+              <th className="text-center px-4 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowReadiness")}</th>
             </tr>
           </thead>
           <tbody>

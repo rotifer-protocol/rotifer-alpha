@@ -843,7 +843,7 @@ const zh: Record<TranslationKey, string> = {
   shadowShares: "份额",
   shadowReadiness: "就绪度",
   shadowFundMatrix: "基金就绪度",
-  shadowPaperVsShadow: "Paper vs Shadow 对比",
+  shadowPaperVsShadow: "模拟 vs 影子 对比",
   shadowReadinessTip: "就绪度评分 (0–5●)：满分 5 分基准，成交率 <80% 扣 1 分、<60% 再扣 1 分；盈亏偏差 >20% 扣 1 分、>40% 再扣 1 分。分数越高，基金进入影子模式的准备程度越好。",
   shadowOpCost: "机会成本",
   shadowAllFunds: "全部基金",
