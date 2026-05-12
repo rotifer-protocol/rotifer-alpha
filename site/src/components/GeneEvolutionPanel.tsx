@@ -3,7 +3,7 @@ import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
 import { useFetch } from "../hooks/useApi";
 import {
-  GitBranch, Zap, Trophy, XCircle, Activity, ChevronDown, ChevronUp,
+  GitBranch, Zap, Trophy, XCircle, Activity, ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { fmtCompact } from "../lib/fundMeta";
 import { InfoPopover } from "./InfoPopover";
@@ -105,6 +105,7 @@ const STATUS_KEYS: Record<string, TranslationKey> = {
 const ACTION_ICONS: Record<string, typeof Zap> = {
   variant_promoted:   Trophy,
   variant_eliminated: XCircle,
+  variant_respawned:  RefreshCw,
   variant_added:      GitBranch,
   epoch_started:      Zap,
   epoch_completed:    Activity,
@@ -113,6 +114,7 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
 const ACTION_KEYS: Record<string, TranslationKey> = {
   variant_promoted:   "genePromoted",
   variant_eliminated: "geneEliminated",
+  variant_respawned:  "geneRespawned",
   variant_added:      "geneVariantAdded",
   epoch_started:      "geneEpochStarted",
   epoch_completed:    "geneEpochCompleted",
