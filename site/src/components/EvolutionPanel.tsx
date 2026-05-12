@@ -273,7 +273,7 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
   const changes = Object.keys({ ...b, ...a }).filter(k => b[k] !== a[k]);
   if (changes.length === 0) return null;
 
-  const BAR_MAX_PX = 32;
+  const BAR_MAX_PX = 36;
 
   return (
     <div className="mt-2 space-y-1">
@@ -284,23 +284,23 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
         const pct  = (b[k] ?? 0) !== 0
           ? `${diff >= 0 ? "+" : ""}${((diff / Math.abs(b[k])) * 100).toFixed(1)}%`
           : t("paramChangeNew");
-        // Per-row normalisation: longer bar always fills BAR_MAX_PX
-        const rowMax   = Math.max(bv, av, 1e-10);
-        const beforeW  = Math.round((bv / rowMax) * BAR_MAX_PX);
-        const afterW   = Math.round((av / rowMax) * BAR_MAX_PX);
+        const rowMax  = Math.max(bv, av, 1e-10);
+        const beforeW = Math.round((bv / rowMax) * BAR_MAX_PX);
+        const afterW  = Math.round((av / rowMax) * BAR_MAX_PX);
         return (
           <div key={k} className="flex items-center gap-1.5">
-            <span className="text-[var(--r-text-muted)] text-[10px] font-mono shrink-0 text-right truncate" style={{ width: 60 }}>
+            {/* param name: flex-1 fills available width, pushing bars to the right */}
+            <span className="text-[var(--r-text-muted)] text-[10px] font-mono flex-1 min-w-0 truncate">
               {PANEL_PARAM_I18N[k] ? t(PANEL_PARAM_I18N[k]) : k}
             </span>
-            <div className="flex items-center justify-end" style={{ width: BAR_MAX_PX }}>
+            <div className="flex items-center justify-end shrink-0" style={{ width: BAR_MAX_PX }}>
               <div className="h-1.5 rounded-full bg-sky-500/70" style={{ width: beforeW }} />
             </div>
             <div className="w-px h-3 bg-[var(--r-border)]/70 shrink-0" />
-            <div className="flex items-center" style={{ width: BAR_MAX_PX }}>
+            <div className="flex items-center shrink-0" style={{ width: BAR_MAX_PX }}>
               <div className="h-1.5 rounded-full bg-indigo-400/80" style={{ width: afterW }} />
             </div>
-            <span className={`text-[10px] font-mono shrink-0 min-w-[38px] ${diff >= 0 ? "pnl-positive" : "pnl-negative"}`}>
+            <span className={`text-[10px] font-mono shrink-0 w-[42px] text-right ${diff >= 0 ? "pnl-positive" : "pnl-negative"}`}>
               {pct}
             </span>
           </div>
@@ -311,10 +311,12 @@ function EvoInlineParamDiff({ before, after }: { before: string; after: string }
       )}
       <div className="flex items-center gap-3 pt-0.5 text-[9px] text-[var(--r-text-faint)]">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-1 bg-sky-500/70 rounded-full inline-block" />before
+          <span className="w-3 h-1 bg-sky-500/70 rounded-full inline-block" />
+          {t("evoFitnessBefore")}
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-1 bg-indigo-400/80 rounded-full inline-block" />after
+          <span className="w-3 h-1 bg-indigo-400/80 rounded-full inline-block" />
+          {t("evoFitnessAfter")}
         </span>
       </div>
     </div>
