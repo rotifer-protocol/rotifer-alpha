@@ -14,7 +14,7 @@ interface UseWebSocketReturn {
 
 const MAX_EVENTS = 200;
 // Versioned key — bump suffix to wipe stale data on schema changes
-const STORAGE_KEY = "petri_events_v1";
+const STORAGE_KEY = "petri_events_v2";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://api.rotifer.xyz" : "");
