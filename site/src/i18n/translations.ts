@@ -377,6 +377,7 @@ const en = {
   executionMode: "Execution Mode",
   executionModePaper: "Paper",
   executionModeShadow: "Shadow",
+  executionModeLive: "Live",
   killSwitch: "Kill Switch",
   killSwitchActive: "HALTED",
   killSwitchInactive: "ACTIVE",
@@ -402,6 +403,82 @@ const en = {
   diagAdminSave: "Apply",
   diagAdminSaved: "Saved",
   diagAdminError: "Wrong token or server error",
+
+  // Diagnostics — health banner
+  diagHealthOk: "System Operating Normally",
+  diagHealthDegraded: "System Degraded",
+  diagHealthHalted: "Kill Switch Active",
+  diagHealthHaltedDesc: "All trading pipelines are halted",
+  diagHealthModeLabel: "Mode",
+  diagHealthErrors: "recent errors",
+
+  // Diagnostics — skip labels (i18n)
+  skipTypeNotAllowed: "Type",
+  skipDuplicateMarket: "Duplicate",
+  skipMaxPositions: "Max Pos",
+  skipMaxEventExposure: "Max Event",
+  skipOtmCap: "OTM Cap",
+  skipLowPriceReject: "Low Price",
+  skipPriceBoundary: "Price Boundary",
+  skipVolumeTooLow: "Low Volume",
+  skipLiquidityTooLow: "Low Liquidity",
+  skipEdgeTooLow: "Low Edge",
+  skipConfidenceTooLow: "Low Confidence",
+  skipCompositeTooLow: "Low Composite",
+  skipFundFrozen: "Frozen",
+
+  // Diagnostics — skip tooltips
+  tipSkipTypeNotAllowed: "Signal type is not allowed for this fund (e.g. SPREAD vs MISPRICING)",
+  tipSkipDuplicateMarket: "The fund already has an open position or pending order for this market",
+  tipSkipMaxPositions: "Fund has reached its maximum allowed open positions",
+  tipSkipMaxEventExposure: "Too many positions in the same event/category — diversification guard",
+  tipSkipOtmCap: "Deep out-of-the-money position: price too low for acceptable risk/reward",
+  tipSkipLowPriceReject: "Current offer price is below the minimum acceptable threshold",
+  tipSkipPriceBoundary: "Price is outside the allowed boundary range",
+  tipSkipVolumeTooLow: "24h market volume is insufficient — liquidity risk",
+  tipSkipLiquidityTooLow: "Market liquidity (spread or depth) is insufficient",
+  tipSkipEdgeTooLow: "Expected edge (advantage) does not meet the fund's minimum requirement",
+  tipSkipConfidenceTooLow: "Signal confidence score is below the threshold",
+  tipSkipCompositeTooLow: "Composite score (edge × confidence × volume) is below threshold",
+  tipSkipFundFrozen: "Fund is frozen by Kill Switch or risk rules — no new positions allowed",
+
+  // Diagnostics — stage names
+  stageScannerName: "Scanner",
+  stageTraderName: "Trader",
+  stageMonitorName: "Monitor",
+  stageSettlerName: "Settler",
+  stageRiskName: "Risk",
+  stageMicroEvolverName: "Micro-Evolver",
+  stageGenomeName: "Genome",
+
+  // Diagnostics — pipeline KPI strip
+  diagPipelineActivity: "Pipeline Activity",
+  diagMarketsFetched: "Fetched",
+  diagSignalsFound: "Signals",
+  diagTradesOpenedDiag: "Opened",
+  diagSettled: "Settled",
+  diagRiskStopsDiag: "Risk Stops",
+
+  // Diagnostics — error section
+  diagErrorDetails: "Details",
+  diagErrorAllStages: "All",
+  diagErrorAgo: "ago",
+  diagErrorCount: "errors",
+
+  // Diagnostics — skip section
+  diagSkipCount: "skips",
+  diagSortBySkips: "By Count",
+  diagSortByFund: "By Fund",
+
+  // Diagnostics — admin
+  diagAdminUnlock: "Unlock",
+  diagAdminRelock: "Lock",
+  diagKillEnableTitle: "Enable Kill Switch?",
+  diagKillEnableDesc: "All trading pipelines will be immediately halted.",
+  diagKillDisableTitle: "Disable Kill Switch?",
+  diagKillDisableDesc: "Trading pipelines will resume immediately.",
+  diagKillConfirmBtn: "Confirm",
+  diagKillCancelBtn: "Cancel",
 
   // Gene Evolution
   geneEvolution: "Gene Evolution",
@@ -913,6 +990,7 @@ const zh: Record<TranslationKey, string> = {
   executionMode: "执行模式",
   executionModePaper: "模拟",
   executionModeShadow: "影子",
+  executionModeLive: "实盘",
   killSwitch: "紧急开关",
   killSwitchActive: "已暂停",
   killSwitchInactive: "运行中",
@@ -937,6 +1015,82 @@ const zh: Record<TranslationKey, string> = {
   diagAdminSave: "应用",
   diagAdminSaved: "已保存",
   diagAdminError: "Token 错误或服务器故障",
+
+  // Diagnostics — health banner
+  diagHealthOk: "系统运行正常",
+  diagHealthDegraded: "系统存在异常",
+  diagHealthHalted: "紧急开关已触发",
+  diagHealthHaltedDesc: "所有交易管线已暂停",
+  diagHealthModeLabel: "模式",
+  diagHealthErrors: "条近期错误",
+
+  // Diagnostics — skip labels
+  skipTypeNotAllowed: "类型限制",
+  skipDuplicateMarket: "市场重复",
+  skipMaxPositions: "已满仓",
+  skipMaxEventExposure: "事件敞口上限",
+  skipOtmCap: "虚值上限",
+  skipLowPriceReject: "低价拒绝",
+  skipPriceBoundary: "价格边界",
+  skipVolumeTooLow: "成交量不足",
+  skipLiquidityTooLow: "流动性不足",
+  skipEdgeTooLow: "边缘值不足",
+  skipConfidenceTooLow: "置信度不足",
+  skipCompositeTooLow: "综合得分不足",
+  skipFundFrozen: "基金冻结",
+
+  // Diagnostics — skip tooltips
+  tipSkipTypeNotAllowed: "信号类型不在基金允许范围内（如 SPREAD 与 MISPRICING）",
+  tipSkipDuplicateMarket: "该基金已有此市场的持仓或待执行订单",
+  tipSkipMaxPositions: "基金已达最大持仓数上限，暂停开新仓",
+  tipSkipMaxEventExposure: "同一赛事/类别持仓过多，触发风险分散保护",
+  tipSkipOtmCap: "标的深度虚值：价格过低，风险收益比不达要求",
+  tipSkipLowPriceReject: "当前报价低于最低可接受价格阈值",
+  tipSkipPriceBoundary: "价格超出允许的边界范围",
+  tipSkipVolumeTooLow: "市场 24 小时成交量不足，流动性风险过高",
+  tipSkipLiquidityTooLow: "市场流动性（价差或深度）不足",
+  tipSkipEdgeTooLow: "预期边缘值（优势）不达基金最低要求",
+  tipSkipConfidenceTooLow: "AI 信号置信度评分低于阈值",
+  tipSkipCompositeTooLow: "综合评分（边缘 × 置信度 × 量）低于阈值",
+  tipSkipFundFrozen: "基金被紧急开关或风控规则冻结，暂停所有新开仓",
+
+  // Diagnostics — stage names
+  stageScannerName: "扫描器",
+  stageTraderName: "交易器",
+  stageMonitorName: "监控器",
+  stageSettlerName: "结算器",
+  stageRiskName: "风控",
+  stageMicroEvolverName: "微进化器",
+  stageGenomeName: "基因组",
+
+  // Diagnostics — pipeline KPI strip
+  diagPipelineActivity: "管线活动",
+  diagMarketsFetched: "抓取市场",
+  diagSignalsFound: "发现信号",
+  diagTradesOpenedDiag: "新开仓",
+  diagSettled: "已结算",
+  diagRiskStopsDiag: "风控止损",
+
+  // Diagnostics — error section
+  diagErrorDetails: "详情",
+  diagErrorAllStages: "全部",
+  diagErrorAgo: "前",
+  diagErrorCount: "条错误",
+
+  // Diagnostics — skip section
+  diagSkipCount: "次过滤",
+  diagSortBySkips: "按数量",
+  diagSortByFund: "按基金",
+
+  // Diagnostics — admin
+  diagAdminUnlock: "解锁",
+  diagAdminRelock: "锁定",
+  diagKillEnableTitle: "确认开启紧急开关？",
+  diagKillEnableDesc: "所有交易管线将立即暂停。",
+  diagKillDisableTitle: "确认关闭紧急开关？",
+  diagKillDisableDesc: "交易管线将立即恢复运行。",
+  diagKillConfirmBtn: "确认",
+  diagKillCancelBtn: "取消",
 
   geneEvolution: "基因进化",
   geneEvolutionDesc: "代码级进化：替代 Gene 实现在管线中竞争",
