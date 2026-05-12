@@ -346,7 +346,7 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds, activeEpoch }: Pr
           <span>{t("increase")}</span>
         </div>
         {epochCount > 12 && (
-          <span className="italic opacity-60">(颜色仅)</span>
+          <span className="italic opacity-60">{t("heatmapColorOnly")}</span>
         )}
       </div>
     </div>

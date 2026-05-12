@@ -3,6 +3,8 @@ import { useI18n } from "../i18n/context";
 import { formatFundGeneration } from "../i18n/translations";
 import { FUND_COLORS, fundDisplayName } from "../lib/fundMeta";
 import { InfoPopover } from "./InfoPopover";
+import { Link } from "react-router-dom";
+import { ExternalLink } from "lucide-react";
 
 interface FundLineage {
   id: string;
@@ -216,7 +218,7 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
 
                 {/* ── Node card ── */}
                 <div
-                  className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors min-w-0 ${
+                  className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors min-w-0 group ${
                     isInteractive ? "cursor-pointer" : "cursor-default"
                   } ${
                     isSelected
@@ -269,6 +271,15 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
                         </span>
                       </div>
                     )}
+                    {/* Deep-link to fund detail page (P1-②) */}
+                    <Link
+                      to={`/fund/${fund.id}`}
+                      onClick={e => e.stopPropagation()}
+                      title={locale === "zh" ? "查看基金详情" : "View fund detail"}
+                      className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-[var(--r-text-faint)]"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
                   </div>
                 </div>
               </div>

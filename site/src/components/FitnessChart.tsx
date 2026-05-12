@@ -21,6 +21,8 @@ interface Props {
   logs: EvolutionLog[];
   /** All fund IDs from lineage — includes funds with no fitness data yet */
   allFundIds?: string[];
+  /** Epoch selected in the timeline — highlights that column in the chart */
+  activeEpoch?: number | null;
 }
 
 // ─── Custom Tooltip (excludes _min/_bandSize from display) ──────────────────
@@ -124,7 +126,7 @@ function ThresholdLabel({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
-export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
+export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: Props) {
   const { t, locale } = useI18n();
   const [showBefore, setShowBefore] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -388,6 +390,18 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
           {/* Threshold zones */}
           <ReferenceArea y1={0} y2={0.2} fill="#ef4444" fillOpacity={0.04} />
           <ReferenceArea y1={0.6} y2={1.2} fill="#22c55e" fillOpacity={0.04} />
+
+          {/* Active epoch column highlight */}
+          {activeEpoch != null && (
+            <ReferenceArea
+              x1={`E${activeEpoch}`}
+              x2={`E${activeEpoch}`}
+              fill="rgba(99,102,241,0.10)"
+              stroke="rgba(99,102,241,0.30)"
+              strokeWidth={1}
+              ifOverflow="hidden"
+            />
+          )}
           <ReferenceLine
             y={0.6}
             stroke="#22c55e"

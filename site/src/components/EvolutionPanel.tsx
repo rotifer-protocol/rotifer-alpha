@@ -364,6 +364,7 @@ function DropdownSelect({
 
 function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSummary[] }) {
   const { t } = useI18n();
+  const { days, hours, minutes } = useCountdown();
   const latestEpochNum = useMemo(() =>
     epochs.length > 0 ? Math.max(...epochs.map(e => e.epoch)) : null, [epochs]
   );
@@ -381,17 +382,20 @@ function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSumm
     [logs]
   );
 
+  const countdownValue = days > 0 ? `${days}D ${hours}H` : hours > 0 ? `${hours}H ${minutes}M` : `${minutes}M`;
+
   const items = [
-    { label: t("epoch"), value: String(epochs.length), mono: true, dim: false, tooltip: t("tipEpoch") },
-    { label: t("evoKpiAvg"), value: avgFitness != null ? avgFitness.toFixed(3) : "—", mono: true, dim: false },
-    { label: t("evoKpiBest"), value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true, tooltip: t("tipBestFitness") },
-    { label: t("evoKpiLast"), value: lastEvo ? relativeTime(lastEvo, "") : "—", mono: false, dim: true },
+    { label: t("epoch"),       value: String(epochs.length), mono: true,  dim: false, tooltip: t("tipEpoch") },
+    { label: t("evoKpiAvg"),   value: avgFitness != null ? avgFitness.toFixed(3) : "—", mono: true, dim: false },
+    { label: t("evoKpiBest"),  value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true, tooltip: t("tipBestFitness") },
+    { label: t("evoKpiLast"),  value: lastEvo ? relativeTime(lastEvo, "") : "—", mono: false, dim: true },
+    { label: t("evoNextEvo"),  value: countdownValue, mono: true, dim: true },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {items.map(({ label, value, mono, green, dim, tooltip }) => (
-        <div key={label} className="glass-card px-4 py-3 text-center">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {items.map(({ label, value, mono, green, dim, tooltip }, idx) => (
+        <div key={label} className={`glass-card px-4 py-3 text-center ${idx === 4 ? "col-span-2 sm:col-span-1" : ""}`}>
           <div className="flex items-center justify-center gap-0.5 mb-1">
             <span className="text-[10px] text-[var(--r-text-muted)] uppercase tracking-wider">{label}</span>
             {tooltip && <InfoPopover text={tooltip} />}
@@ -520,7 +524,7 @@ export function EvolutionPanel() {
   const [selectedFund, setSelectedFund] = useState<string | null>(null);
 
   // ── Mutation filter/sort state ────────────────────────────────────────────
-  const [mutTypeGroup, setMutTypeGroup] = useState<string>("all");
+  const [mutTypeGroup, setMutTypeGroup] = useState<string>("evolution");
   const [mutSortKey,   setMutSortKey]   = useState<string>("time");
   const [mutFundId,    setMutFundId]    = useState<string>("all");
   const [mutShowAll,   setMutShowAll]   = useState(false);
@@ -579,6 +583,13 @@ export function EvolutionPanel() {
   const baseMutLogs = data.logs.filter(l =>
     l.action !== "UNCHANGED" && (activeEpoch == null || l.epoch === activeEpoch)
   );
+  // Count per type for filter chip badges
+  const filterCounts: Record<string, number> = {
+    all:       baseMutLogs.length,
+    evolution: baseMutLogs.filter(l => [...EVO_ACTIONS, ...RESET_ACTIONS].includes(l.action)).length,
+    skip:      baseMutLogs.filter(l => NOISE_ACTIONS.has(l.action)).length,
+    reset:     baseMutLogs.filter(l => RESET_ACTIONS.includes(l.action)).length,
+  };
   // Active: epoch + type + fund
   const activeMutLogs = baseMutLogs.filter(l =>
     (mutTypeActions.length === 0 || mutTypeActions.includes(l.action)) &&
@@ -612,6 +623,16 @@ export function EvolutionPanel() {
     return avg(vAfter) - avg(vBefore);
   };
 
+  // Epoch action breakdown for compact card labels (P0-③)
+  const getEpochBreakdown = (ep: number) => {
+    const epLogs = data.logs.filter(l => l.epoch === ep && l.action !== "UNCHANGED");
+    return {
+      evolved:  epLogs.filter(l => EVO_ACTIONS.includes(l.action)).length,
+      reset:    epLogs.filter(l => RESET_ACTIONS.includes(l.action)).length,
+      skipped:  epLogs.filter(l => NOISE_ACTIONS.has(l.action)).length,
+    };
+  };
+
   return (
     <div className="space-y-6">
       {/* KPI strip */}
@@ -630,12 +651,13 @@ export function EvolutionPanel() {
           <div className="text-[11px] text-[var(--r-text-faint)]">{locale === "zh" ? "全部" : "All"}</div>
         </button>
 
-        {sortedEpochs.map(ep => {
+          {sortedEpochs.map(ep => {
           const mainAction = ep.action_types.split(",")[0];
           const config = ACTION_CONFIG[mainAction] || ACTION_CONFIG.UNCHANGED;
           const Icon = config.icon;
           const delta = epochDelta(ep.epoch);
           const isActive = activeEpoch === ep.epoch;
+          const { evolved, reset, skipped } = getEpochBreakdown(ep.epoch);
           // P2-②: convergence/divergence top color bar
           const barColor = delta != null && delta > 0.005
             ? "bg-green-400/20"
@@ -662,12 +684,20 @@ export function EvolutionPanel() {
               ) : (
                 <div className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{formatDate(ep.started_at)}</div>
               )}
+              {/* P0-③ Action breakdown */}
+              {(evolved + reset + skipped) > 0 && (
+                <div className="flex items-center justify-center gap-1.5 mt-1">
+                  {evolved > 0 && <span className="text-[9px] pnl-positive">{evolved}↑</span>}
+                  {reset  > 0 && <span className="text-[9px] text-orange-400">{reset}↩</span>}
+                  {skipped > 0 && <span className="text-[9px] text-[var(--r-text-faint)]">{skipped}—</span>}
+                </div>
+              )}
             </button>
           );
         })}
       </div>
 
-      <FitnessChart logs={data.logs} allFundIds={data.lineage.map(l => l.id)} />
+      <FitnessChart logs={data.logs} allFundIds={data.lineage.map(l => l.id)} activeEpoch={activeEpoch} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <LineageTree
@@ -697,11 +727,11 @@ export function EvolutionPanel() {
           </h3>
 
           {/* Type filter pills */}
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
             {([
-              { key: "all",       label: t("evoFilterAll") },
-              { key: "evolution", label: t("evoFilterEvo") },
-              { key: "skip",      label: t("evoFilterSkip") },
+              { key: "all",       label: t("evoFilterAll")   },
+              { key: "evolution", label: t("evoFilterEvo")   },
+              { key: "skip",      label: t("evoFilterSkip")  },
               { key: "reset",     label: t("evoFilterReset") },
             ] as const).map(opt => (
               <button
@@ -715,6 +745,7 @@ export function EvolutionPanel() {
                   }`}
               >
                 {opt.label}
+                <span className="ml-0.5 text-[10px] opacity-50">({filterCounts[opt.key] ?? 0})</span>
               </button>
             ))}
           </div>
@@ -780,6 +811,15 @@ export function EvolutionPanel() {
                 {" "}({fundDisplayName(epochStats.bestLog.fund_id, t)})
               </span>
             )}
+          </div>
+        )}
+
+        {/* P1-③: Mobile active-epoch sticky indicator */}
+        {activeEpoch != null && (
+          <div className="sm:hidden flex items-center gap-1.5 text-[10px] text-[var(--r-accent)]
+            bg-[var(--r-surface)] border border-[var(--r-accent)]/20 rounded-lg px-2.5 py-1.5 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--r-accent)] shrink-0" />
+            <span>{t("epoch")} {activeEpoch} · {t("evoCurrentFilter")}</span>
           </div>
         )}
 
