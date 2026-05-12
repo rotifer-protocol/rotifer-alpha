@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
 import { Languages, ExternalLink, Info } from "lucide-react";
 import { useWebSocket, type AgentEvent } from "./hooks/useWebSocket";
@@ -6,17 +6,69 @@ import { useFetch } from "./hooks/useApi";
 import { FundRanking } from "./components/FundRanking";
 import { EventFeed } from "./components/EventFeed";
 import { StatusBar } from "./components/StatusBar";
-import { EvolutionPanel } from "./components/EvolutionPanel";
-import { FundDetail } from "./components/FundDetail";
-import { ShadowPanel } from "./components/ShadowPanel";
-import { GeneEvolutionPanel } from "./components/GeneEvolutionPanel";
-import { DiagnosticsPage } from "./components/DiagnosticsPage";
 import { MarketDriversCard } from "./components/MarketDriversCard";
+
+// Heavy page panels — lazy-loaded per route so the initial bundle stays lean.
+// Each import() creates a separate chunk; React.Suspense shows a skeleton while it loads.
+const EvolutionPanel = lazy(() =>
+  import("./components/EvolutionPanel").then(m => ({ default: m.EvolutionPanel }))
+);
+const FundDetail = lazy(() =>
+  import("./components/FundDetail").then(m => ({ default: m.FundDetail }))
+);
+const ShadowPanel = lazy(() =>
+  import("./components/ShadowPanel").then(m => ({ default: m.ShadowPanel }))
+);
+const GeneEvolutionPanel = lazy(() =>
+  import("./components/GeneEvolutionPanel").then(m => ({ default: m.GeneEvolutionPanel }))
+);
+const LazyDiagnosticsPage = lazy(() =>
+  import("./components/DiagnosticsPage").then(m => ({ default: m.DiagnosticsPage }))
+);
+
+// Prefetch on hover — kick off the chunk download before the user clicks the nav link
+const prefetch = {
+  evolution:   () => import("./components/EvolutionPanel"),
+  shadow:      () => import("./components/ShadowPanel"),
+  gene:        () => import("./components/GeneEvolutionPanel"),
+  diagnostics: () => import("./components/DiagnosticsPage"),
+};
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
 import { fundDisplayName, fmtUSD } from "./lib/fundMeta";
 
 const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? "wss://api.rotifer.xyz/ws" : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`);
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+// Used as Suspense fallback while lazy chunks load, and by components while data arrives.
+
+export function SkeletonBar({ w = "full", h = 3 }: { w?: string; h?: number }) {
+  return <div className={`h-${h} bg-[var(--r-border)] rounded w-${w} opacity-60`} />;
+}
+
+export function SkeletonCard({ rows = 5, chart = false }: { rows?: number; chart?: boolean }) {
+  return (
+    <div className="glass-card p-5 space-y-3 animate-pulse">
+      <SkeletonBar w="1/3" h={3} />
+      {chart && <div className="h-40 bg-[var(--r-border)] rounded opacity-60 mt-2" />}
+      <div className="space-y-2 pt-1">
+        {Array.from({ length: rows }).map((_, i) => (
+          <SkeletonBar key={i} w={i % 3 === 0 ? "full" : i % 3 === 1 ? "4/5" : "3/4"} h={2} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="space-y-5 animate-pulse">
+      <SkeletonBar w="36" h={3} />
+      <SkeletonCard chart rows={4} />
+      <SkeletonCard rows={6} />
+    </div>
+  );
+}
 
 function RotiferLogo({ className = "w-6 h-6" }: { className?: string }) {
   return (
@@ -159,10 +211,10 @@ function Layout() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1">
               <NavLink to="/" className={navClass} end>{t("arena")}</NavLink>
-              <NavLink to="/evolution" className={navClass}>{t("evolution")}</NavLink>
-              <NavLink to="/shadow" className={navClass}>{t("shadow")}</NavLink>
-              <NavLink to="/gene-evolution" className={navClass}>{t("navGeneEvolution")}</NavLink>
-              <NavLink to="/diagnostics" className={navClass}>{t("diagnostics")}</NavLink>
+              <NavLink to="/evolution" className={navClass} onMouseEnter={prefetch.evolution}>{t("evolution")}</NavLink>
+              <NavLink to="/shadow" className={navClass} onMouseEnter={prefetch.shadow}>{t("shadow")}</NavLink>
+              <NavLink to="/gene-evolution" className={navClass} onMouseEnter={prefetch.gene}>{t("navGeneEvolution")}</NavLink>
+              <NavLink to="/diagnostics" className={navClass} onMouseEnter={prefetch.diagnostics}>{t("diagnostics")}</NavLink>
         </div>
 
         <button
@@ -683,11 +735,21 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<ArenaPage />} />
-        <Route path="evolution" element={<EvolutionPage />} />
-        <Route path="shadow" element={<ShadowPage />} />
-        <Route path="gene-evolution" element={<GeneEvolutionPage />} />
-        <Route path="diagnostics" element={<DiagnosticsPage />} />
-        <Route path="fund/:fundId" element={<FundDetail />} />
+        <Route path="evolution" element={
+          <Suspense fallback={<PageSkeleton />}><EvolutionPage /></Suspense>
+        } />
+        <Route path="shadow" element={
+          <Suspense fallback={<PageSkeleton />}><ShadowPage /></Suspense>
+        } />
+        <Route path="gene-evolution" element={
+          <Suspense fallback={<PageSkeleton />}><GeneEvolutionPage /></Suspense>
+        } />
+        <Route path="diagnostics" element={
+          <Suspense fallback={<PageSkeleton />}><LazyDiagnosticsPage /></Suspense>
+        } />
+        <Route path="fund/:fundId" element={
+          <Suspense fallback={<PageSkeleton />}><FundDetail /></Suspense>
+        } />
       </Route>
     </Routes>
   );
