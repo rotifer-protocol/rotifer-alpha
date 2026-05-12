@@ -426,6 +426,7 @@ const en = {
   skipConfidenceTooLow: "Low Confidence",
   skipCompositeTooLow: "Low Composite",
   skipFundFrozen: "Frozen",
+  skipInsufficientCash: "Low Cash",
 
   // Diagnostics — skip tooltips
   tipSkipTypeNotAllowed: "Signal type is not allowed for this fund (e.g. SPREAD vs MISPRICING)",
@@ -441,6 +442,7 @@ const en = {
   tipSkipConfidenceTooLow: "Signal confidence score is below the threshold",
   tipSkipCompositeTooLow: "Composite score (edge × confidence × volume) is below threshold",
   tipSkipFundFrozen: "Fund is frozen by Kill Switch or risk rules — no new positions allowed",
+  tipSkipInsufficientCash: "Fund has insufficient cash available to open a new position",
 
   // Diagnostics — stage names
   stageScannerName: "Scanner",
@@ -1038,6 +1040,7 @@ const zh: Record<TranslationKey, string> = {
   skipConfidenceTooLow: "置信度不足",
   skipCompositeTooLow: "综合得分不足",
   skipFundFrozen: "基金冻结",
+  skipInsufficientCash: "现金不足",
 
   // Diagnostics — skip tooltips
   tipSkipTypeNotAllowed: "信号类型不在基金允许范围内（如 SPREAD 与 MISPRICING）",
@@ -1053,6 +1056,7 @@ const zh: Record<TranslationKey, string> = {
   tipSkipConfidenceTooLow: "AI 信号置信度评分低于阈值",
   tipSkipCompositeTooLow: "综合评分（边缘 × 置信度 × 量）低于阈值",
   tipSkipFundFrozen: "基金被紧急开关或风控规则冻结，暂停所有新开仓",
+  tipSkipInsufficientCash: "基金可用现金不足，无法开新仓",
 
   // Diagnostics — stage names
   stageScannerName: "扫描器",

@@ -53,6 +53,7 @@ const SKIP_LABEL_KEYS: Record<string, TranslationKey> = {
   CONFIDENCE_TOO_LOW: "skipConfidenceTooLow",
   COMPOSITE_TOO_LOW:  "skipCompositeTooLow",
   FUND_FROZEN:        "skipFundFrozen",
+  INSUFFICIENT_CASH:  "skipInsufficientCash",
 };
 
 const SKIP_TIP_KEYS: Record<string, TranslationKey> = {
@@ -69,6 +70,7 @@ const SKIP_TIP_KEYS: Record<string, TranslationKey> = {
   CONFIDENCE_TOO_LOW: "tipSkipConfidenceTooLow",
   COMPOSITE_TOO_LOW:  "tipSkipCompositeTooLow",
   FUND_FROZEN:        "tipSkipFundFrozen",
+  INSUFFICIENT_CASH:  "tipSkipInsufficientCash",
 };
 
 const SKIP_COLORS: Record<string, string> = {
@@ -85,6 +87,7 @@ const SKIP_COLORS: Record<string, string> = {
   CONFIDENCE_TOO_LOW: "bg-yellow-900/40 text-yellow-400",
   COMPOSITE_TOO_LOW:  "bg-yellow-900/40 text-yellow-400",
   FUND_FROZEN:        "bg-red-900/40 text-red-400",
+  INSUFFICIENT_CASH:  "bg-orange-900/40 text-orange-400",
 };
 
 const STAGE_COLORS: Record<string, string> = {
@@ -230,7 +233,7 @@ function HealthBanner({
 
 function PipelineKpiStrip({ hb }: { hb: HeartbeatData["heartbeat"] }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   if (!hb) return null;
 
