@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 
+// v2 — force chunk hash rotation (cache-poisoning hotfix 2026-05-12)
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
 const defaults = (size = 24): SVGProps<SVGSVGElement> => ({
@@ -11,6 +12,7 @@ const defaults = (size = 24): SVGProps<SVGSVGElement> => ({
   strokeWidth: 1.5,
   strokeLinecap: "round" as const,
   strokeLinejoin: "round" as const,
+  xmlns: "http://www.w3.org/2000/svg",
 });
 
 export function CheetahIcon({ size, ...props }: IconProps) {
@@ -96,3 +98,5 @@ export const FUND_ICONS: Record<string, typeof CheetahIcon> = {
   shark:   SharkIcon,     shark_m:   SharkIcon,      shark_l:   SharkIcon,
   gambler: HoneyBadgerIcon, gambler_m: HoneyBadgerIcon, gambler_l: HoneyBadgerIcon,
 };
+// cache-bust: 2
+export const FUND_ICONS_VERSION = 2;

@@ -8,7 +8,7 @@ const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https:
 const memCache = new Map<string, { data: unknown; ts: number }>();
 const inFlight = new Map<string, Promise<unknown>>();
 
-const DEFAULT_TTL_MS = 20_000; // Cache considered fresh for 20s; after that, silently revalidate
+const DEFAULT_TTL_MS = 20_000; // Cache considered fresh for 20s; after that, silently revalidate [v2]
 
 interface UseFetchReturn<T> {
   data: T | null;
