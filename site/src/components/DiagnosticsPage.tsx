@@ -353,32 +353,32 @@ function SkipByFundSection({ skipByFund, pipelineRunning }: { skipByFund: Record
           </div>
 
           {sorted.length === 0 ? (
-            <p className="text-xs text-[var(--r-text-faint)]">{t("diagSkipEmpty")}</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <p className="text-xs text-[var(--r-text-faint)]">{t("diagSkipEmpty")}</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {sorted.map(([fundId, reasons]) => {
-                const color = FUND_COLORS[fundId] ?? "text-[var(--r-text-muted)]";
-                const total = Object.values(reasons).reduce((s, n) => s + n, 0);
-                return (
-                  <div
-                    key={fundId}
-                    className="flex flex-col gap-1.5 p-3 rounded-lg bg-[var(--r-surface)] border border-[var(--r-border)]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-medium ${color}`}>{fundDisplayName(fundId, t)}</span>
+            const color = FUND_COLORS[fundId] ?? "text-[var(--r-text-muted)]";
+            const total = Object.values(reasons).reduce((s, n) => s + n, 0);
+            return (
+              <div
+                key={fundId}
+                className="flex flex-col gap-1.5 p-3 rounded-lg bg-[var(--r-surface)] border border-[var(--r-border)]"
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-medium ${color}`}>{fundDisplayName(fundId, t)}</span>
                       <span className="text-[10px] text-[var(--r-text-faint)] font-mono">{total} {t("diagSkipCount")}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
+                </div>
+                <div className="flex flex-wrap gap-1">
                       {Object.entries(reasons)
                         .sort(([, a], [, b]) => b - a)
                         .map(([code, count]) => (
                           <SkipBadge key={code} code={code} count={count} t={t} />
-                        ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
           )}
         </>
       )}
@@ -410,23 +410,23 @@ function ErrorLogSection({ errors }: { errors: PipelineError[] }) {
     <div className="glass-card p-5">
       {/* Header + stage filters */}
       <div className="mb-3">
-        <button
+      <button
           type="button"
           className="w-full flex items-center justify-between mb-2"
           aria-expanded={expanded}
-          onClick={() => setExpanded(e => !e)}
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className={`w-4 h-4 ${errors.length > 0 ? "text-amber-400" : "text-[var(--r-text-muted)]"}`} />
-            <h3 className="font-semibold text-sm">{t("diagErrorTitle")}</h3>
-            {errors.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 font-mono">
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className="flex items-center gap-2">
+          <AlertTriangle className={`w-4 h-4 ${errors.length > 0 ? "text-amber-400" : "text-[var(--r-text-muted)]"}`} />
+          <h3 className="font-semibold text-sm">{t("diagErrorTitle")}</h3>
+          {errors.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-400 font-mono">
                 {errors.length} {t("diagErrorCount")}
-              </span>
-            )}
-          </div>
-          {expanded ? <ChevronUp className="w-4 h-4 text-[var(--r-text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--r-text-muted)]" />}
-        </button>
+            </span>
+          )}
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-[var(--r-text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--r-text-muted)]" />}
+      </button>
 
         {/* Stage filter chips (P1-③) */}
         {expanded && errors.length > 0 && stages.length > 2 && (
@@ -469,9 +469,9 @@ function ErrorLogSection({ errors }: { errors: PipelineError[] }) {
                   {/* Stage pill */}
                   <span className={`shrink-0 font-mono font-medium text-[10px] mt-0.5 ${STAGE_COLORS[err.stage] ?? "text-[var(--r-text-muted)]"}`}>
                     {STAGE_NAME_KEYS[err.stage] ? t(STAGE_NAME_KEYS[err.stage]) : err.stage}
-                  </span>
+                </span>
                   {/* Message + time */}
-                  <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0">
                     <p className="text-[var(--r-text)] leading-snug">{err.message}</p>
                     <p className="text-[var(--r-text-faint)] text-[10px] mt-0.5">
                       {relativeTime(err.occurred_at, t("diagErrorAgo"))}
@@ -544,8 +544,8 @@ function AdminSection({ initial }: { initial: { killSwitch: boolean; executionMo
     <div className="glass-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Lock className={`w-4 h-4 ${unlocked ? "text-[var(--r-accent)]" : "text-[var(--r-text-muted)]"}`} />
-          <h3 className="font-semibold text-sm">{t("diagAdminTitle")}</h3>
+        <Lock className={`w-4 h-4 ${unlocked ? "text-[var(--r-accent)]" : "text-[var(--r-text-muted)]"}`} />
+        <h3 className="font-semibold text-sm">{t("diagAdminTitle")}</h3>
         </div>
         {/* Re-lock button (P1-④) */}
         {unlocked && (

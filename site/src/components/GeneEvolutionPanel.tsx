@@ -477,7 +477,7 @@ export function GeneEvolutionPanel() {
             <p className={`text-2xl font-bold font-mono tabular-nums ${green ? "text-[var(--r-green)]" : dim ? "text-[var(--r-text-muted)]" : ""}`}>
               {value}
             </p>
-          </div>
+        </div>
         ))}
       </div>
 
@@ -497,7 +497,7 @@ export function GeneEvolutionPanel() {
           const showingElim = showEliminated[geneId] ?? false;
           const sparkPts    = sparklineData[geneId] ?? [];
 
-          return (
+            return (
             <div key={geneId} className={`glass-card overflow-hidden border-l-2 ${color.border}`}>
 
               {/* ── Group header ──────────────────────────────────────────── */}
@@ -557,7 +557,7 @@ export function GeneEvolutionPanel() {
                         </div>
                       )}
                       {champion.tradesEvaluated >= 3 ? (
-                        <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5">
                           <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${champion.petriScore >= 70 ? "bg-emerald-500" : champion.petriScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
@@ -641,21 +641,21 @@ export function GeneEvolutionPanel() {
                         expandedDesc={expandedDesc}
                         onToggleDesc={handleToggleDesc}
                       />
-                    </div>
+                            </div>
                   )}
-                </div>
+              </div>
               )}
             </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* ── Evolution Log ─────────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
-            {t("geneEvolutionLog")}
-          </h3>
+          {t("geneEvolutionLog")}
+        </h3>
           {/* Filter chips */}
           <div className="flex gap-1 flex-wrap justify-end">
             {(["all", "promotions", "eliminations", "epoch"] as const).map(key => (
@@ -720,8 +720,8 @@ export function GeneEvolutionPanel() {
                     )}
                   </div>
                   <span className="text-[10px] text-[var(--r-text-faint)] shrink-0">
-                    {t("geneEpoch")} {entry.epoch}
-                  </span>
+                      {t("geneEpoch")} {entry.epoch}
+                    </span>
                 </div>
               );
             })}

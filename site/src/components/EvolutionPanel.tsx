@@ -720,7 +720,7 @@ export function EvolutionPanel() {
               {delta != null ? (
                 <div className={`text-[10px] font-mono mt-0.5 ${delta >= 0 ? "pnl-positive" : "pnl-negative"}`}>
                   {delta >= 0 ? "+" : ""}{delta.toFixed(3)}
-                </div>
+              </div>
               ) : (
                 <div className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{formatDate(ep.started_at)}</div>
               )}
@@ -730,7 +730,7 @@ export function EvolutionPanel() {
                   {evolved > 0 && <span className="text-[9px] pnl-positive">{evolved}↑</span>}
                   {reset  > 0 && <span className="text-[9px] text-orange-400">{reset}↩</span>}
                   {skipped > 0 && <span className="text-[9px] text-[var(--r-text-faint)]">{skipped}—</span>}
-                </div>
+            </div>
               )}
             </button>
           );
@@ -767,7 +767,7 @@ export function EvolutionPanel() {
               {activeEpoch != null && (
                 <span className="ml-2 normal-case font-normal text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
               )}
-            </h3>
+        </h3>
 
             <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
               {/* Sort dropdown */}
@@ -847,18 +847,18 @@ export function EvolutionPanel() {
                 <span className={epochStats.avgDelta >= 0 ? "pnl-positive" : "pnl-negative"}>
                   {epochStats.avgDelta >= 0 ? "+" : ""}{epochStats.avgDelta.toFixed(3)}
                 </span>
-              </span>
+                    </span>
             )}
             {epochStats.bestLog?.fitness_before != null && (
               <span>
                 {t("evoBestDelta")}{" "}
                 <span className="pnl-positive">
                   +{(epochStats.bestLog.fitness_after! - epochStats.bestLog.fitness_before!).toFixed(3)}
-                </span>
+                    </span>
                 {" "}({fundDisplayName(epochStats.bestLog.fund_id, t)})
-              </span>
-            )}
-          </div>
+                      </span>
+                    )}
+                  </div>
         )}
 
         {/* P1-③: Mobile active-epoch sticky indicator */}
@@ -867,7 +867,7 @@ export function EvolutionPanel() {
             bg-[var(--r-surface)] border border-[var(--r-accent)]/20 rounded-lg px-2.5 py-1.5 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--r-accent)] shrink-0" />
             <span>{t("epoch")} {activeEpoch} · {t("evoCurrentFilter")}</span>
-          </div>
+                </div>
         )}
 
         {/* Card list */}
