@@ -459,6 +459,18 @@ const en = {
   // Gene misc
   geneActiveCount: "active",
   geneScoreLabel: "score",
+  geneChampion: "Champion",
+  geneActiveVariants: "Active",
+  geneEliminatedTotal: "Eliminated",
+  geneShowEliminated: "Show eliminated",
+  geneHideEliminated: "Hide eliminated",
+  geneAwaitingEval: "Awaiting eval.",
+  geneExpandDesc: "Click to expand",
+  geneFilterAll: "All",
+  geneFilterPromotions: "Promoted",
+  geneFilterEliminations: "Elim.",
+  geneFilterEpoch: "Epoch",
+  tipGenePetriScore: "PBT Rank Score (0–100) measures this variant's competitive fitness in the Petri evaluation pipeline. Updated after each epoch cycle. Scores require ≥ 3 evaluated trades to appear.",
 
   // Micro-evolution
   microEvoParams: "params",
@@ -965,6 +977,18 @@ const zh: Record<TranslationKey, string> = {
 
   geneActiveCount: "个活跃",
   geneScoreLabel: "评分",
+  geneChampion: "当前冠军",
+  geneActiveVariants: "活跃",
+  geneEliminatedTotal: "已淘汰",
+  geneShowEliminated: "展开已淘汰",
+  geneHideEliminated: "收起已淘汰",
+  geneAwaitingEval: "等待评估",
+  geneExpandDesc: "点击展开",
+  geneFilterAll: "全部",
+  geneFilterPromotions: "晋升",
+  geneFilterEliminations: "淘汰",
+  geneFilterEpoch: "世代",
+  tipGenePetriScore: "PBT 排名分（0–100）衡量变体在 Petri 评估管线中的竞争适应度。每个世代周期后更新，需至少 3 笔已评估交易。",
 
   microEvoParams: "个参数",
 
