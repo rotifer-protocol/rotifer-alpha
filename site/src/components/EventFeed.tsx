@@ -134,7 +134,14 @@ function tDirection(t: (k: TranslationKey) => string, raw: unknown): string {
 
 function tFundName(t: (k: TranslationKey) => string, raw: unknown): string {
   if (raw == null || raw === "") return "—";
-  return fundDisplayName(String(raw).toLowerCase(), t);
+  const str = String(raw);
+  // Fund IDs are ASCII-only (e.g. "octopus", "shark_m").
+  // DB names already contain non-ASCII (e.g. "章鱼·S") — return them as-is
+  // to avoid producing double-suffix artefacts like "章鱼·s·S".
+  if (/^[a-zA-Z_]+$/.test(str)) {
+    return fundDisplayName(str.toLowerCase(), t);
+  }
+  return str;
 }
 
 function tAction(t: (k: TranslationKey) => string, raw: unknown): string {
