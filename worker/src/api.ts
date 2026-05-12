@@ -564,6 +564,90 @@ async function apiEvents(
     });
   }
 
+  // ── Evolution events from evolution_log ───────────────────────────────────
+  // Reconstructs MICRO_EVOLUTION (individual rows) and EVOLUTION_COMPLETED
+  // (one synthetic event per epoch, grouping all per-fund mutation rows).
+  // Note: SKIP-only epochs have no DB rows and are intentionally omitted.
+  const evoRows = await db.prepare(
+    `SELECT el.epoch, el.executed_at, el.action, el.fund_id,
+            el.params_before, el.params_after, el.fitness_before, el.reason,
+            fc.name AS fund_name
+     FROM evolution_log el
+     LEFT JOIN fund_configs fc ON el.fund_id = fc.id
+     ORDER BY el.executed_at DESC
+     LIMIT ?`,
+  ).bind(Math.ceil(limit / 2)).all();
+
+  type EpochBucket = {
+    latestAt: string;
+    actions: string[];
+    mutations: Array<Record<string, unknown>>;
+  };
+  const epochMap = new Map<number, EpochBucket>();
+
+  for (const r of evoRows.results || []) {
+    const row = r as Record<string, unknown>;
+    const action = String(row.action);
+    const executedAt = String(row.executed_at);
+    const fundId = String(row.fund_id);
+    const fundName = String(row.fund_name ?? fundId);
+    const epoch = Number(row.epoch);
+
+    // Diff params_before vs params_after to recover the changed parameter list
+    let changedParams: string[] = [];
+    let adjustments: Array<{ param: string; before: unknown; after: unknown }> = [];
+    try {
+      const before = JSON.parse(String(row.params_before)) as Record<string, unknown>;
+      const after = JSON.parse(String(row.params_after)) as Record<string, unknown>;
+      changedParams = Object.keys({ ...before, ...after })
+        .filter(k => String(before[k]) !== String(after[k]));
+      adjustments = changedParams.map(k => ({ param: k, before: before[k], after: after[k] }));
+    } catch { /* malformed JSON — skip diff */ }
+
+    if (action === "MICRO_EVOLUTION") {
+      events.push({
+        type: "MICRO_EVOLUTION",
+        timestamp: executedAt,
+        payload: {
+          fundId,
+          fundName,
+          adjustedParams: adjustments.length,
+          adjustments,
+          trigger: String(row.reason ?? ""),
+        },
+      });
+    } else {
+      // Non-micro rows → group by epoch for EVOLUTION_COMPLETED synthesis
+      const bucket = epochMap.get(epoch) ?? { latestAt: executedAt, actions: [], mutations: [] };
+      if (executedAt > bucket.latestAt) bucket.latestAt = executedAt;
+      bucket.actions.push(action);
+      bucket.mutations.push({
+        fundId,
+        fundName,
+        action,
+        fitnessBefore: row.fitness_before != null ? Number(row.fitness_before) : null,
+        changedParams,
+      });
+      epochMap.set(epoch, bucket);
+    }
+  }
+
+  // Emit one EVOLUTION_COMPLETED per epoch that had mutations
+  for (const [epoch, bucket] of epochMap.entries()) {
+    // Map per-fund actions back to epoch-level action (mirrors evolve.ts logic)
+    const dominantAction = bucket.actions.some(a => a === "PBT_INHERIT_MUTATE")
+      ? "STANDARD_PBT"
+      : bucket.actions.some(a => a === "GLOBAL_RESET")
+        ? "GLOBAL_RESET"
+        : "SKIP_ALL_GOOD";
+    events.push({
+      type: "EVOLUTION_COMPLETED",
+      timestamp: bucket.latestAt,
+      payload: { epoch, action: dominantAction, mutations: bucket.mutations },
+    });
+  }
+  // ── End evolution events ──────────────────────────────────────────────────
+
   events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return Response.json(

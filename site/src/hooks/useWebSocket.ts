@@ -32,13 +32,26 @@ function loadFromStorage(): AgentEvent[] {
   }
 }
 
+/**
+ * Compute a stable deduplication key for an event.
+ * - Evolution events are epoch-scoped: WS and REST reconstruct the same logical
+ *   event but at slightly different wall-clock timestamps, so we key on epoch
+ *   number instead of timestamp to avoid ghost duplicates.
+ * - All other events use type + timestamp.
+ */
+function dedupeKey(e: AgentEvent): string {
+  if (e.type === "EVOLUTION_COMPLETED" || e.type === "EVOLUTION_STARTED") {
+    return `${e.type}\x00epoch:${e.payload?.epoch ?? e.timestamp}`;
+  }
+  return `${e.type}\x00${e.timestamp}`;
+}
+
 /** Deduplicate + sort newest-first + cap at MAX_EVENTS. */
 function mergeEvents(a: AgentEvent[], b: AgentEvent[]): AgentEvent[] {
   const seen = new Set<string>();
   const result: AgentEvent[] = [];
   for (const e of [...a, ...b]) {
-    // composite key — type + exact timestamp is unique enough for our event types
-    const key = `${e.type}\x00${e.timestamp}`;
+    const key = dedupeKey(e);
     if (!seen.has(key)) {
       seen.add(key);
       result.push(e);
