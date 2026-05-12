@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, CheckCircle, XCircle, Activity,
-  TrendingUp, TrendingDown, ChevronDown,
+  TrendingUp, TrendingDown, ChevronDown, Info,
 } from "lucide-react";
 import { useI18n } from "../i18n/context";
 import { useFetch } from "../hooks/useApi";
@@ -129,6 +129,43 @@ function computeFundStats(orders: ShadowOrder[]): FundStat[] {
   }).sort((a, b) => b.readiness - a.readiness || b.fillRate - a.fillRate);
 }
 
+// ─── InfoPopover ──────────────────────────────────────────────────────────────
+
+function InfoPopover({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", k);
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center">
+      <button
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
+        className="ml-1 text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] transition-colors leading-none"
+        aria-label="Info"
+      >
+        <Info className="w-3 h-3" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 mb-1.5 z-30 w-64 glass-card p-3 shadow-xl text-[11px] leading-relaxed text-[var(--r-text-muted)]">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ReadinessDots ────────────────────────────────────────────────────────────
 
 function ReadinessDots({ score }: { score: number }) {
@@ -219,7 +256,12 @@ function FundReadinessMatrix({ fundStats, t }: {
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowPaperPnl")}</th>
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowRealPnl")}</th>
               <th className="text-right px-3 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowDivergence")}</th>
-              <th className="text-center px-4 py-2 text-[var(--r-text-muted)] font-medium">{t("shadowReadiness")}</th>
+              <th className="text-center px-4 py-2 text-[var(--r-text-muted)] font-medium">
+                <span className="inline-flex items-center gap-0.5">
+                  {t("shadowReadiness")}
+                  <InfoPopover text={t("shadowReadinessTip")} />
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
