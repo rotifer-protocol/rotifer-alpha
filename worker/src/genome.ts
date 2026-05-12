@@ -37,7 +37,7 @@ import {
 } from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
 import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
-import { isKillSwitchActive, storeHeartbeat, storeError } from "./execution";
+import { isKillSwitchActive, storeHeartbeat, storeError, storeSkipByFund } from "./execution";
 import { refreshOpenPrices } from "./price-refresh";
 
 // ─── GENE_REGISTRY ↔ Phenotype consistency check ────────
@@ -179,7 +179,7 @@ export async function runGenomePipeline(
       riskStops: 0,
       riskExpired: 0,
       skipSummary: { KILL_SWITCH: 1 },
-      skipByFund: { _pipeline_halted: { KILL_SWITCH: 1 } },
+      pipelineRunning: false,
       priceRefresh: {
         totalOpen: 0,
         refreshed: 0,
@@ -215,7 +215,7 @@ export async function runGenomePipeline(
     riskStops: 0,
     riskExpired: 0,
     skipSummary: {},
-    skipByFund: { _pipeline_started: { PENDING: 1 } },
+    pipelineRunning: true,
   });
 
   function emit(type: AgentEventType, payload: Record<string, unknown>): void {
@@ -331,7 +331,7 @@ export async function runGenomePipeline(
       lastScanAt: ts, totalFetched: 0, marketsFiltered: 0, signalsFound: 0,
       tradesOpened: 0, settlementsProcessed: 0, monitorActions: 0,
       riskStops: risk.stopped.length, riskExpired: risk.expired.length,
-      skipSummary: {}, skipByFund: { _scanner_failed: { ERROR: 1 } },
+      skipSummary: {}, skipByFund: undefined, pipelineRunning: false,
       priceRefresh,
     });
     return {
@@ -500,9 +500,12 @@ export async function runGenomePipeline(
     riskStops: risk.stopped.length,
     riskExpired: risk.expired.length,
     skipSummary: aggregateSkipReasonsLocal(traderSkipReasons),
-    skipByFund: aggregateSkipReasonsByFundLocal(traderSkipReasons),
+    pipelineRunning: false,
     priceRefresh,
   });
+  // Store per-fund skip breakdown in its own DB key so it is never overwritten
+  // by the start-of-pipeline sentinel write (which used to cause stale/garbage data).
+  await storeSkipByFund(env.DB, aggregateSkipReasonsByFundLocal(traderSkipReasons));
 
   // Broadcast all collected events (non-critical — slow DO calls must not block above)
   for (const event of events) {

@@ -113,9 +113,9 @@ export interface PipelineHeartbeat {
   riskExpired: number;
   // Flat aggregation by skip code (kept for backward-compat with App.tsx HeartbeatBar)
   skipSummary: Record<string, number>;
-  // 2026-05-04: Per-fund skip breakdown for diagnostics (e.g. "why turtle never trades?")
-  // Format: { fundId: { skipCode: count } }
-  skipByFund?: Record<string, Record<string, number>>;
+  // 2026-05-12: pipelineRunning flag — true between pipeline start and end so the
+  // frontend can show "data from previous cycle" instead of a loading failure message.
+  pipelineRunning?: boolean;
   // 2026-05-10 D-Lite: per-cycle price refresh telemetry (CLOB mark-to-market path).
   // Surfaces token_id backfill progress + CLOB fetch success rate for /api/heartbeat.
   priceRefresh?: {
@@ -145,6 +145,40 @@ export async function getHeartbeat(db: D1Database): Promise<PipelineHeartbeat | 
     return r ? JSON.parse(r.value) : null;
   } catch {
     return null;
+  }
+}
+
+// ─── Per-fund Skip Breakdown (separate key — never overwritten at pipeline start) ─
+//
+// skipByFund was previously stored inside the heartbeat blob, but the eager start-of-
+// pipeline heartbeat write would overwrite it with a sentinel value (_pipeline_started),
+// making the diagnostics module show garbage while the pipeline ran.
+// Now it lives in SKIP_BY_FUND_LATEST, written only at pipeline END, so the frontend
+// always shows the last *completed* cycle's data regardless of pipeline state.
+
+export async function storeSkipByFund(
+  db: D1Database,
+  data: Record<string, Record<string, number>>,
+): Promise<void> {
+  try {
+    await db.prepare(
+      "INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('SKIP_BY_FUND_LATEST', ?, ?)",
+    ).bind(JSON.stringify(data), new Date().toISOString()).run();
+  } catch {
+    // non-critical
+  }
+}
+
+export async function getSkipByFund(
+  db: D1Database,
+): Promise<Record<string, Record<string, number>>> {
+  try {
+    const r = await db.prepare(
+      "SELECT value FROM system_config WHERE key = 'SKIP_BY_FUND_LATEST'",
+    ).first<{ value: string }>();
+    return r ? JSON.parse(r.value) : {};
+  } catch {
+    return {};
   }
 }
 

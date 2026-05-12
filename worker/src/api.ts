@@ -20,7 +20,7 @@ import {
   SYSTEM_INVALIDATION_MONITOR_REASON_SQL,
   toDisplayTradeStatus,
 } from "./trade-semantics";
-import { getSystemConfig, getHeartbeat, getPipelineErrors } from "./execution";
+import { getSystemConfig, getHeartbeat, getPipelineErrors, getSkipByFund } from "./execution";
 import { piggybackRiskCheck } from "./risk";
 
 /**
@@ -93,16 +93,18 @@ export async function handleApi(
 
   // ─── Diagnostics (read-only) ────────────────────────────
   if (path === "/api/diagnostics") {
-    const [errors, config, heartbeat] = await Promise.all([
+    const [errors, config, heartbeat, skipByFund] = await Promise.all([
       getPipelineErrors(env.DB, 50),
       getSystemConfig(env.DB),
       getHeartbeat(env.DB),
+      getSkipByFund(env.DB),
     ]);
     return Response.json({
       errors,
       killSwitch: config.KILL_SWITCH === "true",
       executionMode: config.EXECUTION_MODE || "paper",
-      skipByFund: (heartbeat as any)?.skipByFund ?? {},
+      skipByFund,
+      pipelineRunning: (heartbeat as any)?.pipelineRunning ?? false,
     }, { headers });
   }
 

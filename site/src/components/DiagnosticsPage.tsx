@@ -24,6 +24,7 @@ interface DiagnosticsData {
   killSwitch: boolean;
   executionMode: string;
   skipByFund: Record<string, Record<string, number>>;
+  pipelineRunning: boolean;
 }
 
 interface HeartbeatData {
@@ -292,7 +293,7 @@ function SkipBadge({ code, count, t }: { code: string; count: number; t: (k: Tra
 
 // ─── Skip by Fund section (P1-② + P2-②) ─────────────────
 
-function SkipByFundSection({ skipByFund }: { skipByFund: Record<string, Record<string, number>> }) {
+function SkipByFundSection({ skipByFund, pipelineRunning }: { skipByFund: Record<string, Record<string, number>>; pipelineRunning: boolean }) {
   const { t } = useI18n();
   const [expanded, setExpanded]   = useState(true);
   const [sortBy, setSortBy]       = useState<"skips" | "fund">("skips");
@@ -319,6 +320,11 @@ function SkipByFundSection({ skipByFund }: { skipByFund: Record<string, Record<s
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-[var(--r-accent)]" />
           <h3 className="font-semibold text-sm">{t("diagSkipTitle")}</h3>
+          {pipelineRunning && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 animate-pulse">
+              {t("diagSkipPipelineRunning")}
+            </span>
+          )}
         </div>
         {expanded ? <ChevronUp className="w-4 h-4 text-[var(--r-text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--r-text-muted)]" />}
       </button>
@@ -701,7 +707,7 @@ export function DiagnosticsPage() {
           <ErrorLogSection errors={data.errors ?? []} />
 
           {/* P1-②, P2-②: Skip analysis */}
-          <SkipByFundSection skipByFund={data.skipByFund ?? {}} />
+          <SkipByFundSection skipByFund={data.skipByFund ?? {}} pipelineRunning={data.pipelineRunning ?? false} />
 
           {/* P0-②, P1-④: Admin */}
           <AdminSection initial={{ killSwitch: data.killSwitch, executionMode: data.executionMode }} />
