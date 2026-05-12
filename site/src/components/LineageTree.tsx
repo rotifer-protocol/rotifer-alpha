@@ -2,6 +2,7 @@ import { FUND_ICONS } from "./icons/FundIcons";
 import { useI18n } from "../i18n/context";
 import { formatFundGeneration } from "../i18n/translations";
 import { FUND_COLORS, fundDisplayName } from "../lib/fundMeta";
+import { InfoPopover } from "./InfoPopover";
 
 interface FundLineage {
   id: string;
@@ -129,8 +130,9 @@ export function LineageTree({ lineage, logs, selectedFund, onSelectFund }: Props
 
   return (
     <div className="glass-card p-4">
-      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4 flex items-center gap-1.5">
         {t("lineageTitle")}
+        <InfoPopover text={t("tipLineage")} />
       </h3>
 
       {!hasLineage ? (

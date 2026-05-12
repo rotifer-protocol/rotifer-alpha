@@ -6,6 +6,7 @@ import {
 import type { TranslationKey } from "../i18n/translations";
 import { useI18n } from "../i18n/context";
 import { FUND_HEX_COLORS, fundDisplayName, fundPersonality } from "../lib/fundMeta";
+import { InfoPopover } from "./InfoPopover";
 
 interface EvolutionLog {
   epoch: number;
@@ -321,8 +322,9 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp }: Props) {
     <div className="glass-card p-4">
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest">
+        <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest flex items-center gap-1.5">
           {t("fitnessTitle")}
+          <InfoPopover text={t("tipFitness")} />
         </h3>
         <div className="flex items-center gap-1.5">
           <button

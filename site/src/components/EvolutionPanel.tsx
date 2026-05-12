@@ -8,6 +8,7 @@ import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
 import type { LucideIcon } from "lucide-react";
 import { fundDisplayName } from "../lib/fundMeta";
+import { InfoPopover } from "./InfoPopover";
 
 interface EvolutionLog {
   id: string;
@@ -381,17 +382,20 @@ function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSumm
   );
 
   const items = [
-    { label: t("epoch"), value: String(epochs.length), mono: true, dim: false },
+    { label: t("epoch"), value: String(epochs.length), mono: true, dim: false, tooltip: t("tipEpoch") },
     { label: t("evoKpiAvg"), value: avgFitness != null ? avgFitness.toFixed(3) : "—", mono: true, dim: false },
-    { label: t("evoKpiBest"), value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true },
+    { label: t("evoKpiBest"), value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true, tooltip: t("tipBestFitness") },
     { label: t("evoKpiLast"), value: lastEvo ? relativeTime(lastEvo, "") : "—", mono: false, dim: true },
   ];
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {items.map(({ label, value, mono, green, dim }) => (
+      {items.map(({ label, value, mono, green, dim, tooltip }) => (
         <div key={label} className="glass-card px-4 py-3 text-center">
-          <div className="text-[10px] text-[var(--r-text-muted)] uppercase tracking-wider mb-1">{label}</div>
+          <div className="flex items-center justify-center gap-0.5 mb-1">
+            <span className="text-[10px] text-[var(--r-text-muted)] uppercase tracking-wider">{label}</span>
+            {tooltip && <InfoPopover text={tooltip} />}
+          </div>
           <div className={`text-xl font-bold ${mono ? "font-mono" : ""} ${green ? "pnl-positive" : ""} ${dim ? "text-base text-[var(--r-text-muted)]" : ""}`}>
             {value}
           </div>
@@ -684,10 +688,11 @@ export function EvolutionPanel() {
       <div>
         {/* Header + toolbar */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
-          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0">
-            {t("recentMutations")}
+          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0 inline-flex items-center gap-1">
+            <span>{t("recentMutations")}</span>
+            <InfoPopover text={t("tipMutationType")} />
             {activeEpoch != null && (
-              <span className="ml-2 normal-case text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
+              <span className="ml-2 normal-case font-normal text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
             )}
           </h3>
 

@@ -5,12 +5,13 @@ import {
 } from "recharts";
 import {
   AlertTriangle, CheckCircle, XCircle, Activity,
-  TrendingUp, TrendingDown, ChevronDown, Info,
+  TrendingUp, TrendingDown, ChevronDown,
 } from "lucide-react";
 import { useI18n } from "../i18n/context";
 import { useFetch } from "../hooks/useApi";
 import { fundDisplayName, FUND_HEX_COLORS } from "../lib/fundMeta";
 import type { TranslationKey } from "../i18n/translations";
+import { InfoPopover } from "./InfoPopover";
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -127,43 +128,6 @@ function computeFundStats(orders: ShadowOrder[]): FundStat[] {
       divergence, readiness: Math.max(0, readiness),
     };
   }).sort((a, b) => b.readiness - a.readiness || b.fillRate - a.fillRate);
-}
-
-// ─── InfoPopover ──────────────────────────────────────────────────────────────
-
-function InfoPopover({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", h);
-    document.addEventListener("keydown", k);
-    return () => {
-      document.removeEventListener("mousedown", h);
-      document.removeEventListener("keydown", k);
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className="relative inline-flex items-center">
-      <button
-        onMouseDown={e => { e.preventDefault(); setOpen(o => !o); }}
-        className="ml-1 text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] transition-colors leading-none"
-        aria-label="Info"
-      >
-        <Info className="w-3 h-3" />
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-30 w-64 glass-card p-3 shadow-xl text-[11px] leading-relaxed text-[var(--r-text-muted)]">
-          {text}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── ReadinessDots ────────────────────────────────────────────────────────────

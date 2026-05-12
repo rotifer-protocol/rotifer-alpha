@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useI18n } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
 import { fundDisplayName, fundPersonality, FUND_HEX_COLORS } from "../lib/fundMeta";
+import { InfoPopover } from "./InfoPopover";
 
 interface EvolutionLog {
   epoch: number;
@@ -137,8 +138,9 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds, activeEpoch }: Pr
   return (
     <div className="glass-card p-4">
       {/* Title */}
-      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-2">
+      <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-2 flex items-center gap-1.5">
         {t("heatmapTitle")}
+        <InfoPopover text={t("tipParamHeatmap")} />
       </h3>
 
       {/* Fund selector — grouped by personality */}
