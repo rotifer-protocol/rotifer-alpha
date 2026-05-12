@@ -836,6 +836,32 @@ function localizeRegistry(registry: GeneMeta[], lang: string) {
   }));
 }
 
+/**
+ * Static fallback map for Chinese descriptions.
+ * Applied when `description_zh` is NULL in the DB (variants seeded after migration 008
+ * and PBT-generated generations that inherit the same English description).
+ * This is the worker-side equivalent of schema/020-description-zh-backfill.sql.
+ */
+const ZH_DESCRIPTION_FALLBACKS: Array<{ prefix: string; zh: string }> = [
+  { prefix: "Gradient-based micro-evolution",    zh: "基于梯度的微进化，±2% 参数边界" },
+  { prefix: "Aggressive micro-evolver",          zh: "激进微进化器：4% 参数调整率，15 笔交易触发阈值，适应速度更快" },
+  { prefix: "Conservative risk",                 zh: "保守风控：止损和最大持仓阈值收紧至 0.8×，更快止损" },
+  { prefix: "High-edge trader",                  zh: "高边缘交易器：要求边缘值 ≥ 2× 基金最小边缘，减少交易次数，提升确信度" },
+  { prefix: "Edge-ranked signal allocation",     zh: "基于边缘排序的信号分配与仓位管理" },
+  { prefix: "Trend-following scanner",           zh: "趋势跟踪扫描器：过滤 SPREAD 信号，结合成交量对齐提升 MISPRICING，置信度下限 0.35，成交量要求 1.5×" },
+  { prefix: "Adaptive monitor",                  zh: "自适应监控器：对年轻持仓（< 3 天）放宽止损，随收益增加收紧追踪止损" },
+  { prefix: "More cautious with new positions",  zh: "对新持仓更加保守，允许盈利持续奔跑，采用 LLM 驱动的参数配置" },
+];
+
+function resolveZhDescription(descriptionZh: string | null, description: string | null): string | null {
+  if (descriptionZh) return descriptionZh;
+  if (!description) return null;
+  for (const { prefix, zh } of ZH_DESCRIPTION_FALLBACKS) {
+    if (description.startsWith(prefix)) return zh;
+  }
+  return null;
+}
+
 async function apiGeneVariants(
   db: D1Database,
   req: Request,
@@ -850,7 +876,10 @@ async function apiGeneVariants(
   const active = await getAllActiveVariants(db);
 
   const localizedVariants = lang === "zh"
-    ? variants.map(v => ({ ...v, description: v.descriptionZh || v.description }))
+    ? variants.map(v => ({
+        ...v,
+        description: resolveZhDescription(v.descriptionZh, v.description) ?? v.description,
+      }))
     : variants;
 
   return Response.json({

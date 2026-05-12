@@ -428,6 +428,8 @@ const en = {
   geneEpochStarted: "Epoch Started",
   geneEpochCompleted: "Epoch Completed",
   geneNoVariants: "No gene variants yet. Baseline implementations are seeded on first pipeline run.",
+  geneLogEmpty: "No evolution events yet for the current filter.",
+  geneGenPrefix: "g",
   geneScoreTrajectory: "F(g) Score Trajectory",
 
   // Heartbeat
@@ -960,6 +962,8 @@ const zh: Record<TranslationKey, string> = {
   geneEpochStarted: "世代开始",
   geneEpochCompleted: "世代完成",
   geneNoVariants: "尚无基因变体。基线实现将在首次管线运行时注入。",
+  geneLogEmpty: "当前筛选条件下暂无进化事件。",
+  geneGenPrefix: "g",
   geneScoreTrajectory: "F(g) 评分轨迹",
 
   heartbeatLastScan: "最近扫描",

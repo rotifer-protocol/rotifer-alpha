@@ -210,7 +210,7 @@ function VariantRow({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
       <td className="py-1.5 pr-3">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-xs">{v.strategyKey}</span>
-          <span className="text-[var(--r-text-faint)] text-[11px]">g{v.generation}</span>
+          <span className="text-[var(--r-text-faint)] text-[11px]">{t("geneGenPrefix")}{v.generation}</span>
         </div>
         {v.description && (
           <p
@@ -248,7 +248,7 @@ function VariantCard({ v, t, expandedDesc, onToggleDesc }: VariantRowProps) {
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-xs font-medium">{v.strategyKey}</span>
-          <span className="text-[var(--r-text-faint)] text-[10px]">g{v.generation}</span>
+          <span className="text-[var(--r-text-faint)] text-[10px]">{t("geneGenPrefix")}{v.generation}</span>
         </div>
         <span className={`text-[10px] ${STATUS_COLORS[v.status] ?? ""}`}>
           {STATUS_KEYS[v.status] ? t(STATUS_KEYS[v.status]) : v.status}
@@ -516,7 +516,7 @@ export function GeneEvolutionPanel() {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-sm font-bold">{champion.strategyKey}</span>
-                        <span className="text-xs text-[var(--r-text-faint)]">g{champion.generation}</span>
+                        <span className="text-xs text-[var(--r-text-faint)]">{t("geneGenPrefix")}{champion.generation}</span>
                       </div>
                       {champion.description && (
                         <p
@@ -579,7 +579,7 @@ export function GeneEvolutionPanel() {
                     t={t}
                     expandedDesc={expandedDesc}
                     onToggleDesc={handleToggleDesc}
-                    showHeader={!champion}
+                    showHeader={true}
                   />
                 </div>
               )}
@@ -654,7 +654,7 @@ export function GeneEvolutionPanel() {
 
         {filteredLog.length === 0 ? (
           <div className="glass-card p-4 text-center text-[var(--r-text-faint)] text-xs">
-            {t("geneNoVariants")}
+            {t("geneLogEmpty")}
           </div>
         ) : (
           <div className="space-y-1">
@@ -691,7 +691,9 @@ export function GeneEvolutionPanel() {
                       )}
                     </div>
                     {entry.variantId && (
-                      <p className="text-[10px] text-[var(--r-text-faint)] font-mono truncate">{entry.variantId}</p>
+                      <p className="text-[10px] text-[var(--r-text-faint)] font-mono truncate">
+                        {entry.variantId.replace(/^[^:]+:/, "")}
+                      </p>
                     )}
                   </div>
                   <span className="text-[10px] text-[var(--r-text-faint)] shrink-0">
