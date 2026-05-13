@@ -219,6 +219,11 @@ const en = {
   footerBrandSub: "A Rotifer Protocol team experiment",
   footerProtocol: "Explore",
   footerData: "Data",
+  footerDocs: "Docs",
+  footerOpenSource: "Open Source",
+  docsLearnMore: "Learn more →",
+  heroLearnMoreLink: "How Petri works →",
+  navDocs: "Docs",
 
   // Language toggle
   langSwitchTooltip: "Switch to English",
@@ -280,6 +285,8 @@ const en = {
   filterEmptyLosses: "No losses — great!",
   filterEmptyVoid: "No invalidated trades",
   deployedCapital: "Deployed",
+  positionsOverLimit: "Exceeds limit —",
+  paramEvolvedLegend: "Highlighted params have been mutated by PBT evolution",
   calendarPeriodPnl: "Period PnL",
   calendarLast91Days: "last 91 days",
   calendarWinDays: "Win Days",
@@ -359,7 +366,7 @@ const en = {
   shadowReadinessTip: "Readiness score (0–5●): starts at 5, −1 if fill rate <80%, −1 again if <60%; −1 if PnL divergence >20%, −1 again if >40%. Higher score = fund is better prepared to switch to shadow mode.",
   tipEpoch: "An Epoch is one full PBT (Population-Based Training) evolution cycle. At the end of each epoch, the system scores every fund's fitness F(g) and mutates parameters of underperforming funds — or resets them if fitness is critically low.",
   tipBestFitness: "The highest F(g) score ever recorded across all funds and all epochs. F(g) combines Sharpe ratio, win rate, drawdown resilience, and parameter complexity into a single score.",
-  tipFitness: "Petri's fitness metric — F(g) = Sharpe×0.4 + WinRate×0.2 + (1−MaxDrawdown)×0.3 − Complexity×0.1. Higher = better overall trading quality. The PBT evolution algorithm uses F(g) to decide which funds need parameter mutation (min 3 trades required).",
+  tipFitness: "Fitness F(g) — Petri's current implementation: F(g) = Sharpe×0.4 + WinRate×0.2 + (1−MaxDrawdown)×0.3 − Complexity×0.1. Higher = better trading quality. PBT uses F(g) to decide which funds need parameter mutation. Note: this formula is Petri's reference implementation and may differ from the Rotifer Protocol spec.",
   tipLineage: "The lineage tree shows parent-child relationships created by PBT evolution. When a fund (child) inherits parameters from a higher-performing fund (parent), its parent_id updates and the tree redraws. Generation 0 = not yet evolved, or original strain.",
   tipParamHeatmap: "Tracks how each trading parameter changes across epochs (columns). Color intensity = magnitude of change; gray = parameter unchanged that epoch. Rows are grouped by category: Signal Filter, Risk Control, Position Mgmt.",
   tipMutationType: "Mutation types — STANDARD_PBT: perturbs parameters of top-performing funds; INHERIT+MUTATE: underperforming fund inherits a top fund's base params then mutates; GLOBAL_RESET: fitness critically low, params reset to initial values; SKIP: fitness good or insufficient data, no mutation; MICRO: real-time micro-adjustment between epochs.",
@@ -525,6 +532,13 @@ const en = {
   heartbeatSkipCash: "insufficient cash",
   heartbeatNeverRun: "Pipeline has not run yet",
 
+  // Command bar & today summary
+  cmdBarLive: "LIVE",
+  todaySummaryLabel: "Today",
+  todaySummaryScans: "scans",
+  todaySummaryTrades: "trades",
+  todaySummaryEvolutions: "evolutions",
+
   // Shadow table / status
   shadowTradingHalted: "Trading Halted",
   shadowSlippagePaperGt: "paper > shadow",
@@ -613,6 +627,10 @@ const en = {
   emptyEvolutionDesc: "First evolution runs on Sunday UTC 00:00",
   emptyEventsTitle: "Connecting to the lab",
   emptyEventsDesc: "The polymarket-scanner gene is scanning markets...",
+  emptyEventsConnected: "Live — waiting for market activity",
+  emptyEventsDisconnected: "Reconnecting to live feed…",
+  disconnectedBadge: "Reconnecting…",
+  dayRunning: "Day",
 
   // Relative time
   timeJustNow: "just now",
@@ -640,6 +658,43 @@ const en = {
   paramDrawdownLimit: "Drawdown Limit",
   paramDrawdownSoft: "Soft Drawdown",
   paramMonthlyTarget: "Monthly Target",
+
+  // ─── Analysis page ─────────────────────────────────────────────────────────
+  analysisEntryBtn: "History →",
+  analysisPageTitle: "Historical Analysis",
+  analysisPageSub: "Full trading history · daily returns · NAV comparison across all funds",
+  analysisBackToLive: "Back to Live",
+  analysisTabNav: "NAV Trends",
+  analysisTabReturns: "Daily Returns",
+  analysisTabTrades: "Trade History",
+  analysisAllTiers: "All Tiers",
+  analysisTierS: "S Tier",
+  analysisTierM: "M Tier",
+  analysisTierL: "L Tier",
+  analysis7D: "7D",
+  analysis30D: "30D",
+  analysis90D: "90D",
+  analysisAllTime: "All",
+  analysisNoData: "No data available",
+  analysisNAVIndexLabel: "NAV Index",
+  analysisDailyReturnLabel: "Daily Return %",
+  analysisSelectFund: "All Funds",
+  analysisExportCSV: "Export CSV",
+  analysisAllEventTypes: "All Types",
+
+  // ─── Share feature ─────────────────────────────────────────────────────────
+  shareTitle: "Share",
+  shareModalTitle: "Share Leaderboard",
+  shareTopN: "Top",
+  shareCopyTextLabel: "Generated Copy",
+  shareCopyText: "Copy Text",
+  shareCopied: "Copied!",
+  shareCopyPoster: "Copy Poster",
+  shareCopyingPoster: "Copying…",
+  shareCopiedPoster: "Copied!",
+  shareToX: "Share to X",
+  shareDownloadPoster: "Download Poster",
+  shareDownloading: "Exporting…",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -847,6 +902,11 @@ const zh: Record<TranslationKey, string> = {
   footerBrandSub: "Rotifer Protocol 团队的实验项目",
   footerProtocol: "探索",
   footerData: "数据",
+  footerDocs: "文档",
+  footerOpenSource: "开源",
+  docsLearnMore: "深入了解 →",
+  heroLearnMoreLink: "了解 Petri 工作原理 →",
+  navDocs: "文档",
 
   langSwitchTooltip: "Switch to English",
   langSwitchTooltipAlt: "切换到中文",
@@ -902,6 +962,8 @@ const zh: Record<TranslationKey, string> = {
   filterEmptyLosses: "暂无亏损，继续保持",
   filterEmptyVoid: "暂无失效交易",
   deployedCapital: "已部署",
+  positionsOverLimit: "超出限制 —",
+  paramEvolvedLegend: "高亮参数已被 PBT 进化变异（偏离初始默认值）",
   calendarPeriodPnl: "阶段盈亏",
   calendarLast91Days: "近 91 天",
   calendarWinDays: "盈利天",
@@ -976,7 +1038,7 @@ const zh: Record<TranslationKey, string> = {
   shadowReadinessTip: "就绪度评分 (0–5●)：满分 5 分基准，成交率 <80% 扣 1 分、<60% 再扣 1 分；盈亏偏差 >20% 扣 1 分、>40% 再扣 1 分。分数越高，基金进入影子模式的准备程度越好。",
   tipEpoch: "世代（Epoch）是 PBT（基于种群训练）进化算法的一个完整周期。每个世代结束时，系统为所有基金计算适应度 F(g)，并对表现较差的基金执行参数变异（STANDARD_PBT），或在适应度极低时触发全局重置（GLOBAL_RESET）。",
   tipBestFitness: "迄今为止所有基金 · 所有世代出现过的最高适应度分数。F(g) 综合 Sharpe 比率、胜率、最大回撤抗性和参数复杂度，范围约 0–1。",
-  tipFitness: "Petri 的适应度指标——F(g) = Sharpe×0.4 + 胜率×0.2 + (1−最大回撤)×0.3 − 参数复杂度×0.1。分数越高代表综合交易质量越好（需至少 3 笔交易数据）。PBT 进化算法以 F(g) 为依据决定哪些基金需要参数变异。",
+  tipFitness: "适应度 F(g) — Petri 当前实现：F(g) = Sharpe×0.4 + 胜率×0.2 + (1−最大回撤)×0.3 − 参数复杂度×0.1。分数越高代表综合交易质量越好，PBT 以此决定哪些基金需要变异（至少需 3 笔交易数据）。注：此公式为 Petri 的参考实现，与 Rotifer Protocol 规范层定义可能存在差异。",
   tipLineage: "基因族谱展示 PBT 进化产生的基金亲子关系。当算法决定某只基金（子代）从高性能基金（父代）继承参数基础时，parent_id 更新，族谱重新绘制。Generation 0 = 尚未参与进化，或为种群原始株系。",
   tipParamHeatmap: "记录每个世代（列）中每个交易参数（行）的变化情况。颜色越深，参数变化幅度越大；灰色表示该世代未对此参数进行调整。参数按类别分组：信号过滤、风险控制、头寸管理。",
   tipMutationType: "变异类型说明：STANDARD_PBT = 对高性能基金进行参数随机扰动；INHERIT+MUTATE = 低性能基金从优质基金继承参数基础再微调；GLOBAL_RESET = 适应度极低时重置至初始参数；SKIP = 适应度良好或数据不足跳过本轮；MICRO = 世代间实时微调。",
@@ -1139,6 +1201,13 @@ const zh: Record<TranslationKey, string> = {
   heartbeatSkipCash: "资金不足",
   heartbeatNeverRun: "管线尚未运行",
 
+  // Command bar & today summary
+  cmdBarLive: "实况",
+  todaySummaryLabel: "今日",
+  todaySummaryScans: "次扫描",
+  todaySummaryTrades: "笔开仓",
+  todaySummaryEvolutions: "次进化",
+
   shadowTradingHalted: "交易已暂停",
   shadowSlippagePaperGt: "模拟 > 影子",
   shadowSlippageShadowGt: "影子 > 模拟",
@@ -1220,6 +1289,10 @@ const zh: Record<TranslationKey, string> = {
   emptyEvolutionDesc: "首次进化将在周日 UTC 00:00 运行",
   emptyEventsTitle: "正在连接实验室",
   emptyEventsDesc: "polymarket-scanner 基因正在扫描市场...",
+  emptyEventsConnected: "实时连接中 — 等待市场活动",
+  emptyEventsDisconnected: "正在重新连接实时数据…",
+  disconnectedBadge: "重连中…",
+  dayRunning: "天",
 
   timeJustNow: "刚刚",
   timeMinAgo: "分钟前",
@@ -1244,6 +1317,43 @@ const zh: Record<TranslationKey, string> = {
   paramDrawdownLimit: "回撤限制",
   paramDrawdownSoft: "软回撤限制",
   paramMonthlyTarget: "月度目标",
+
+  // ─── Analysis page ─────────────────────────────────────────────────────────
+  analysisEntryBtn: "历史 →",
+  analysisPageTitle: "历史分析",
+  analysisPageSub: "全部基金的完整交易记录 · 每日收益率 · 净值走势对比",
+  analysisBackToLive: "返回实况",
+  analysisTabNav: "净值走势",
+  analysisTabReturns: "每日收益",
+  analysisTabTrades: "交易记录",
+  analysisAllTiers: "全部",
+  analysisTierS: "S 级",
+  analysisTierM: "M 级",
+  analysisTierL: "L 级",
+  analysis7D: "7 天",
+  analysis30D: "30 天",
+  analysis90D: "90 天",
+  analysisAllTime: "全期",
+  analysisNoData: "暂无数据",
+  analysisNAVIndexLabel: "净值指数",
+  analysisDailyReturnLabel: "每日收益率",
+  analysisSelectFund: "全部基金",
+  analysisExportCSV: "导出 CSV",
+  analysisAllEventTypes: "全部类型",
+
+  // ─── Share feature ─────────────────────────────────────────────────────────
+  shareTitle: "分享",
+  shareModalTitle: "分享排行榜",
+  shareTopN: "显示前",
+  shareCopyTextLabel: "生成文案",
+  shareCopyText: "复制文案",
+  shareCopied: "已复制！",
+  shareCopyPoster: "复制海报",
+  shareCopyingPoster: "复制中…",
+  shareCopiedPoster: "已复制！",
+  shareToX: "分享到 X",
+  shareDownloadPoster: "下载海报",
+  shareDownloading: "导出中…",
 };
 
 export const translations: Record<Locale, Record<TranslationKey, string>> = { en, zh };

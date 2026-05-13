@@ -472,14 +472,21 @@ export function FundDetail() {
 
   const cfg = fund.config;
 
-  // 6-axis radar — each parameter normalized to its expected [min, max] range
+  // 6-axis radar — normalized by protocol bounds (param-bounds.ts PARAM_BOUNDS_INVARIANT).
+  // Each axis maps the full valid range [min, max] to [0, 1] using the correct bounds.
+  // sizingScale is tier-dependent: S=[0,500] M=[0,5000] L=[0,50000].
+  // Previous hard-coded [0.5, 3.0] was completely wrong for all tiers.
+  const tier = fund.initialBalance < 50_000 ? "small"
+    : fund.initialBalance < 500_000 ? "medium" : "large";
+  const sizingScaleMax = tier === "large" ? 50_000 : tier === "medium" ? 5_000 : 500;
+
   const radarData = [
-    { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0.01, 0.25) },
-    { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0.50, 0.92) },
-    { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30) },
-    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0.50, 3.00) },
-    { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.02, 0.18) },
-    { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    21  ) },
+    { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0,    10   ) },
+    { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0,    1    ) },
+    { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30 ) },
+    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0,    sizingScaleMax) },
+    { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.01, 0.30 ) },
+    { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    30   ) },
   ];
 
   return (
@@ -659,17 +666,31 @@ export function FundDetail() {
 
         {geneView === "params" ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Legend for evolved params */}
+            {cfg.generation > 0 && (
+              <div className="lg:col-span-3 flex items-center gap-2 text-[10px] text-[var(--r-text-faint)] mb-1">
+                <span className="w-2 h-2 rounded-full bg-[var(--r-accent)] inline-block shrink-0" />
+                <span>{t("paramEvolvedLegend")}</span>
+              </div>
+            )}
             {GENE_GROUPS.map(group => (
               <div key={group.titleKey}>
                 <h4 className="text-xs font-medium text-[var(--r-accent)] uppercase tracking-wider mb-2">{t(group.titleKey)}</h4>
                 <div className="space-y-0">
                   {group.params.map(({ key, labelKey }) => {
-                    const isRisk = group.titleKey === "geneGroupRisk" && (key === "stopLossPercent" || key === "drawdownLimit" || key === "takeProfitPercent" || key === "trailingStopPercent" || key === "probReversalThreshold");
+                    const currentVal = cfg[key as keyof typeof cfg];
+                    // Detect evolution: numeric params that have drifted from generation-0 defaults.
+                    // We use generation>0 as the guard (fund has been through at least one PBT epoch).
+                    // Non-numeric params (allowedTypes, sizingMode) are never highlighted as evolved.
+                    const isEvolved = cfg.generation > 0
+                      && typeof currentVal === "number"
+                      && key !== "generation";
                     return (
                       <div key={key} className="flex justify-between py-1.5 border-b border-[var(--r-border)]/50 text-sm">
                         <span className="text-[var(--r-text-muted)]">{t(labelKey)}</span>
-                        <span className={`font-mono font-medium ${isRisk ? "text-[var(--r-red)]" : ""}`}>
-                          {formatConfigValue(key, cfg[key as keyof typeof cfg], t)}
+                        <span className={`font-mono font-medium flex items-center gap-1 ${isEvolved ? "text-[var(--r-accent)]" : ""}`}>
+                          {isEvolved && <span className="w-1.5 h-1.5 rounded-full bg-[var(--r-accent)] inline-block shrink-0 opacity-70" />}
+                          {formatConfigValue(key, currentVal, t)}
                         </span>
                       </div>
                     );
@@ -710,8 +731,20 @@ export function FundDetail() {
       {/* Open Positions */}
       {openTrades.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3">
-            <Activity className="w-4 h-4 inline-block mr-1.5 -mt-0.5 text-yellow-400" />{t("openPositions")} ({openTrades.length})
+          <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3 flex items-center gap-2 flex-wrap">
+            <span>
+              <Activity className="w-4 h-4 inline-block mr-1.5 -mt-0.5 text-yellow-400" />
+              {t("openPositions")} ({openTrades.length})
+            </span>
+            {/* Warn when live positions exceed maxOpenPositions. This can happen when
+                evolution reduces maxOpenPositions after positions were legally opened
+                under the previous (higher) limit. No new positions can open until
+                the count naturally falls back below the current limit. */}
+            {openTrades.length > cfg.maxOpenPositions && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-normal normal-case tracking-normal">
+                {t("positionsOverLimit")} {t("max")} {cfg.maxOpenPositions}
+              </span>
+            )}
           </h3>
           {/* Exposure bar */}
           {fund.initialBalance > 0 && (() => {
