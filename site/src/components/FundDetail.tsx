@@ -362,6 +362,45 @@ const GENE_GROUPS: ParamGroup[] = [
 const PARAM_LABELS: Record<string, TranslationKey> = {};
 for (const g of GENE_GROUPS) for (const p of g.params) PARAM_LABELS[p.key] = p.labelKey;
 
+/**
+ * Compute the effective per-trade position range for a fund config.
+ *
+ * Returns { minAmt, maxAmt, isCapped, isFixed } where amounts are in USD.
+ * Translates raw sizingBase + sizingScale into human-readable dollar bounds
+ * so users never need to understand the sizing formula internals.
+ *
+ * Formula reference (types.ts sizing()):
+ *   fixed:            = sizingBase
+ *   confidence:       = sizingBase + confidence × sizingScale  → range [base, base+scale]
+ *   edge:             = min(base+scale, base×(edge/1.5))        → range [base, base+scale]
+ *   edge_confidence:  = base × (1 + edge×conf×scale/100)        → range [base, base×(1+scale/100)]
+ */
+function calcEffectiveRange(cfg: FundDetailData["config"]): {
+  minAmt: number; maxAmt: number; isCapped: boolean; isFixed: boolean;
+} {
+  const { sizingMode, sizingBase, sizingScale, maxPerEvent } = cfg;
+  const cap = maxPerEvent ?? Infinity;
+  switch (sizingMode) {
+    case "fixed":
+      return { minAmt: sizingBase, maxAmt: sizingBase, isCapped: false, isFixed: true };
+    case "confidence": {
+      const raw = sizingBase + sizingScale;
+      return { minAmt: sizingBase, maxAmt: Math.min(raw, cap), isCapped: raw > cap, isFixed: false };
+    }
+    case "edge": {
+      const raw = sizingBase + sizingScale;
+      return { minAmt: sizingBase, maxAmt: Math.min(raw, cap), isCapped: raw > cap, isFixed: false };
+    }
+    case "edge_confidence": {
+      // Theoretical max: edge=1.0, confidence=1.0 → base × (1 + scale/100)
+      const raw = sizingBase * (1 + sizingScale / 100);
+      return { minAmt: sizingBase, maxAmt: Math.min(raw, cap), isCapped: raw > cap, isFixed: false };
+    }
+    default:
+      return { minAmt: sizingBase, maxAmt: sizingBase, isCapped: false, isFixed: true };
+  }
+}
+
 export function FundDetail() {
   const { fundId } = useParams<{ fundId: string }>();
   const { t, locale } = useI18n();
@@ -471,6 +510,11 @@ export function FundDetail() {
   const sign = fund.returnPct >= 0 ? "+" : "";
 
   const cfg = fund.config;
+  // Effective per-trade position range — computed once, used in both params panel and radar tooltip.
+  const effRange = calcEffectiveRange(cfg);
+  const effRangeLabel = effRange.isFixed
+    ? fmtUSD(effRange.minAmt, 0)
+    : `${fmtUSD(effRange.minAmt, 0)}–${fmtUSD(effRange.maxAmt, 0)}`;
 
   // 6-axis radar — normalized by protocol bounds (param-bounds.ts PARAM_BOUNDS_INVARIANT).
   // Each axis maps the full valid range [min, max] to [0, 1] using the correct bounds.
@@ -485,7 +529,7 @@ export function FundDetail() {
     { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0,    10           ), rawLabel: cfg.minEdge.toFixed(2) },
     { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0,    1            ), rawLabel: `${(cfg.minConfidence * 100).toFixed(0)}%` },
     { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30         ), rawLabel: `${(cfg.stopLossPercent * 100).toFixed(1)}%` },
-    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0,    sizingScaleMax), rawLabel: cfg.sizingScale.toString() },
+    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0,    sizingScaleMax), rawLabel: effRangeLabel },
     { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.01, 0.30         ), rawLabel: `${(cfg.monthlyTarget * 100).toFixed(0)}%` },
     { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    30           ), rawLabel: `${cfg.maxHoldDays}d` },
   ];
@@ -680,9 +724,6 @@ export function FundDetail() {
                 <div className="space-y-0">
                   {group.params.map(({ key, labelKey }) => {
                     const currentVal = cfg[key as keyof typeof cfg];
-                    // Detect evolution: numeric params that have drifted from generation-0 defaults.
-                    // We use generation>0 as the guard (fund has been through at least one PBT epoch).
-                    // Non-numeric params (allowedTypes, sizingMode) are never highlighted as evolved.
                     const isEvolved = cfg.generation > 0
                       && typeof currentVal === "number"
                       && key !== "generation";
@@ -696,6 +737,23 @@ export function FundDetail() {
                       </div>
                     );
                   })}
+
+                  {/* Effective position range — appended to the position management group only.
+                      Converts raw sizingBase + sizingScale into a human-readable per-trade dollar range
+                      so users understand actual trade size without knowing the sizing formula. */}
+                  {group.titleKey === "geneGroupPosition" && (
+                    <div className="flex justify-between py-1.5 text-sm">
+                      <span className="text-[var(--r-text-muted)]">{t("paramEffectiveRange")}</span>
+                      <span className="font-mono font-medium text-[var(--r-text)]">
+                        {effRange.isFixed
+                          ? `${fmtUSD(effRange.minAmt, 0)} ${t("paramEffectiveFixed")}`
+                          : effRange.isCapped
+                            ? `${fmtUSD(effRange.minAmt, 0)} – ${fmtUSD(effRange.maxAmt, 0)} ${t("paramEffectiveCapped")}`
+                            : `${fmtUSD(effRange.minAmt, 0)} – ${fmtUSD(effRange.maxAmt, 0)}`
+                        }
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
