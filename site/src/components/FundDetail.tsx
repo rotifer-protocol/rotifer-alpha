@@ -475,18 +475,19 @@ export function FundDetail() {
   // 6-axis radar — normalized by protocol bounds (param-bounds.ts PARAM_BOUNDS_INVARIANT).
   // Each axis maps the full valid range [min, max] to [0, 1] using the correct bounds.
   // sizingScale is tier-dependent: S=[0,500] M=[0,5000] L=[0,50000].
-  // Previous hard-coded [0.5, 3.0] was completely wrong for all tiers.
+  // rawLabel stores the human-readable actual value shown in the tooltip — the normalized
+  // value (0-1) is only used for the radar polygon shape, never displayed directly.
   const tier = fund.initialBalance < 50_000 ? "small"
     : fund.initialBalance < 500_000 ? "medium" : "large";
   const sizingScaleMax = tier === "large" ? 50_000 : tier === "medium" ? 5_000 : 500;
 
   const radarData = [
-    { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0,    10   ) },
-    { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0,    1    ) },
-    { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30 ) },
-    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0,    sizingScaleMax) },
-    { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.01, 0.30 ) },
-    { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    30   ) },
+    { dim: t("paramMinEdge"),       value: normParam(cfg.minEdge,          0,    10           ), rawLabel: cfg.minEdge.toFixed(2) },
+    { dim: t("paramMinConfidence"), value: normParam(cfg.minConfidence,     0,    1            ), rawLabel: `${(cfg.minConfidence * 100).toFixed(0)}%` },
+    { dim: t("paramStopLoss"),      value: normParam(cfg.stopLossPercent,   0.05, 0.30         ), rawLabel: `${(cfg.stopLossPercent * 100).toFixed(1)}%` },
+    { dim: t("paramSizingScale"),   value: normParam(cfg.sizingScale,       0,    sizingScaleMax), rawLabel: cfg.sizingScale.toString() },
+    { dim: t("paramMonthlyTarget"), value: normParam(cfg.monthlyTarget,     0.01, 0.30         ), rawLabel: `${(cfg.monthlyTarget * 100).toFixed(0)}%` },
+    { dim: t("paramMaxHold"),       value: normParam(cfg.maxHoldDays,       3,    30           ), rawLabel: `${cfg.maxHoldDays}d` },
   ];
 
   return (
@@ -721,7 +722,11 @@ export function FundDetail() {
               />
               <Tooltip
                 contentStyle={{ background: "var(--r-surface)", border: "1px solid var(--r-border)", borderRadius: 8, fontSize: 12 }}
-                formatter={(value: unknown) => [(Number(value) * 100).toFixed(0) + "%", ""]}
+                formatter={(_value: unknown, _name: unknown, item: { payload?: { rawLabel?: string } }) => {
+                  // Show the actual parameter value, not the normalized 0-1 radar position.
+                  // item.payload is the full data entry from radarData including rawLabel.
+                  return [item?.payload?.rawLabel ?? "", ""];
+                }}
               />
             </RadarChart>
           </ResponsiveContainer>
