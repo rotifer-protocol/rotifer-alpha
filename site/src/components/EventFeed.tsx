@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Link, Search, Crosshair, TrendingUp, OctagonX, Timer, CheckCircle2,
@@ -384,10 +384,23 @@ function DetailItem({ label, value, accent }: { label: string; value: string | R
   );
 }
 
-export function EventFeed({ events }: { events: AgentEvent[] }) {
+export function EventFeed({ events, connected = true, fillViewport = false }: { events: AgentEvent[]; connected?: boolean; fillViewport?: boolean }) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<FilterCategory>("all");
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  // Pulse bar: fires when a new event arrives
+  const prevLenRef = useRef(events.length);
+  const [showPulse, setShowPulse] = useState(false);
+  useEffect(() => {
+    if (events.length > prevLenRef.current) {
+      setShowPulse(true);
+      const t = setTimeout(() => setShowPulse(false), 900);
+      prevLenRef.current = events.length;
+      return () => clearTimeout(t);
+    }
+    prevLenRef.current = events.length;
+  }, [events.length]);
 
   const filtered = filter === "all"
     ? events
@@ -395,16 +408,43 @@ export function EventFeed({ events }: { events: AgentEvent[] }) {
 
   if (events.length === 0) {
     return (
-      <div className="glass-card p-8 text-center">
-        <Search className="w-8 h-8 mx-auto mb-3 text-[var(--r-accent)] animate-pulse" />
-        <p className="font-medium text-sm mb-1">{t("emptyEventsTitle")}</p>
-        <p className="text-xs text-[var(--r-text-muted)]">{t("emptyEventsDesc")}</p>
+      <div className={`glass-card px-6 py-10 text-center ${fillViewport ? "min-h-[calc(100svh-280px)] lg:min-h-0 flex flex-col items-center justify-center" : ""}`}>
+        {connected ? (
+          <>
+            {/* Animated waiting dots */}
+            <div className="flex items-center justify-center gap-1.5 mb-4">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="w-2 h-2 rounded-full bg-[var(--r-accent)]"
+                  style={{ animation: `pulse 1.4s ease-in-out ${i * 0.22}s infinite` }}
+                />
+              ))}
+            </div>
+            <p className="font-medium text-sm mb-1">{t("emptyEventsTitle")}</p>
+            <p className="text-xs text-[var(--r-text-muted)]">{t("emptyEventsConnected")}</p>
+          </>
+        ) : (
+          <>
+            <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-red-500/40 border-t-red-500 animate-spin" />
+            <p className="font-medium text-sm mb-1 text-red-400/80">{t("disconnectedBadge")}</p>
+            <p className="text-xs text-[var(--r-text-muted)]">{t("emptyEventsDisconnected")}</p>
+          </>
+        )}
       </div>
     );
   }
 
   return (
     <div>
+      {/* Live pulse bar — scans left→right when a new event arrives */}
+      <div className="relative h-[2px] mb-3 rounded-full overflow-hidden bg-[var(--r-border)]/30">
+        <div
+          className={`absolute inset-y-0 left-0 w-full rounded-full bg-[var(--r-accent)] origin-left transition-transform duration-700 ease-out ${
+            showPulse ? "scale-x-100 opacity-70" : "scale-x-0 opacity-0"
+          }`}
+        />
+      </div>
       {/* Filter tabs */}
       <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
         {FILTER_TABS.map(tab => (
@@ -423,7 +463,7 @@ export function EventFeed({ events }: { events: AgentEvent[] }) {
       </div>
 
       {/* Events list — height fills remaining viewport so sticky column never shows blank space */}
-      <div className="space-y-1.5 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+      <div className={`space-y-1.5 overflow-y-auto pr-1 max-h-[calc(100vh-220px)] ${fillViewport ? "min-h-[calc(100svh-280px)] lg:min-h-0" : ""}`}>
         {filtered.map((event, i) => {
           const config = EVENT_CONFIG[event.type];
           const IconComp = config?.icon ?? Link;

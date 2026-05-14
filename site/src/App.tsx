@@ -1,12 +1,20 @@
-import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
-import { Languages, ExternalLink, Info } from "lucide-react";
+import { Languages, ExternalLink, Info, Share2, BarChart2 } from "lucide-react";
+
+// Inline GitHub SVG octicon (lucide-react version used doesn't export Github)
+const GithubIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+  </svg>
+);
 import { useWebSocket, type AgentEvent } from "./hooks/useWebSocket";
 import { useFetch } from "./hooks/useApi";
 import { FundRanking } from "./components/FundRanking";
 import { EventFeed } from "./components/EventFeed";
 import { StatusBar } from "./components/StatusBar";
 import { MarketDriversCard } from "./components/MarketDriversCard";
+import { ShareModal } from "./components/ShareModal";
 
 // Heavy page panels — lazy-loaded per route so the initial bundle stays lean.
 // Each import() creates a separate chunk; React.Suspense shows a skeleton while it loads.
@@ -24,6 +32,12 @@ const GeneEvolutionPanel = lazy(() =>
 );
 const LazyDiagnosticsPage = lazy(() =>
   import("./components/DiagnosticsPage").then(m => ({ default: m.DiagnosticsPage }))
+);
+const LazyDocsPage = lazy(() =>
+  import("./components/DocsPage").then(m => ({ default: m.DocsPage }))
+);
+const LazyAnalysisPage = lazy(() =>
+  import("./components/AnalysisPage").then(m => ({ default: m.AnalysisPage }))
 );
 
 // Prefetch on hover — kick off the chunk download before the user clicks the nav link
@@ -320,6 +334,9 @@ function Layout() {
               <NavLink to="/shadow" className={navClass} onMouseEnter={prefetch.shadow}>{t("shadow")}</NavLink>
               <NavLink to="/gene-evolution" className={navClass} onMouseEnter={prefetch.gene}>{t("navGeneEvolution")}</NavLink>
               <NavLink to="/diagnostics" className={navClass} onMouseEnter={prefetch.diagnostics}>{t("diagnostics")}</NavLink>
+              <NavLink to="/docs" className={navClass}>
+                {t("navDocs")}
+              </NavLink>
         </div>
 
         <button
@@ -331,6 +348,17 @@ function Layout() {
               <Languages className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{locale === "en" ? "中文" : "EN"}</span>
         </button>
+
+            {/* GitHub icon link */}
+            <a
+              href="https://github.com/rotifer-protocol/rotifer-petri"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="GitHub"
+              className="p-1.5 text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors"
+            >
+              <GithubIcon className="w-4 h-4" />
+            </a>
 
             <StatusBar connected={connected} connectionCount={connectionCount} />
           </div>
@@ -390,6 +418,16 @@ function Layout() {
           >
             {t("diagnostics")}
           </NavLink>
+          <NavLink
+            to="/docs"
+            className={({ isActive }) =>
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
+              }`
+            }
+          >
+            {t("navDocs")}
+          </NavLink>
         </div>
 
         <Outlet context={ctx} />
@@ -411,15 +449,28 @@ function Layout() {
             </div>
 
             {/* Links */}
-            <div className="flex gap-12 text-xs">
+            <div className="flex flex-wrap gap-10 text-xs">
               <div className="space-y-2.5">
                 <p className="font-medium text-[var(--r-text-muted)] uppercase tracking-widest text-[10px]">{t("footerProtocol")}</p>
                 <a href="https://rotifer.dev" target="_blank" rel="noopener noreferrer" className="block text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">rotifer.dev</a>
                 <a href="https://rotifer.ai" target="_blank" rel="noopener noreferrer" className="block text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">rotifer.ai</a>
-                <a href="https://github.com/rotifer-protocol" target="_blank" rel="noopener noreferrer" className="block text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">GitHub</a>
               </div>
               <div className="space-y-2.5">
-                <p className="font-medium text-[var(--r-text-muted)] uppercase tracking-widest text-[10px]">{t("footerData")}</p>
+                <p className="font-medium text-[var(--r-text-muted)] uppercase tracking-widest text-[10px]">{t("footerOpenSource")}</p>
+                <a href="https://github.com/rotifer-protocol/rotifer-petri" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">
+                  <GithubIcon className="w-3 h-3" />petri
+                </a>
+                <a href="https://github.com/rotifer-protocol/rotifer-spec" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">
+                  <GithubIcon className="w-3 h-3" />spec
+                </a>
+              </div>
+              <div className="space-y-2.5">
+                <p className="font-medium text-[var(--r-text-muted)] uppercase tracking-widest text-[10px]">{t("footerDocs")}</p>
+                <NavLink to="/docs" className="block text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors no-underline">
+                  {t("navDocs")} →
+                </NavLink>
                 <a href="https://polymarket.com" target="_blank" rel="noopener noreferrer" className="block text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">Polymarket</a>
               </div>
             </div>
@@ -526,10 +577,29 @@ function HeartbeatBar({ heartbeat }: { heartbeat: HeartbeatData | null }) {
   if (lowEdge > 0) skipParts.push(`${lowEdge} ${t("heartbeatSkipEdge")}`);
 
   const isRecent = Date.now() - new Date(heartbeat.lastScanAt).getTime() < 45 * 60000;
+  const totalActions = heartbeat.tradesOpened + heartbeat.settlementsProcessed + heartbeat.monitorActions;
+  const totalSkips = Object.values(skip).reduce((s: number, n) => s + (n as number), 0);
+
+  // 5-block pipeline health: one block per criterion
+  const healthBlocks = [
+    isRecent,
+    heartbeat.marketsFiltered > 0,
+    heartbeat.signalsFound > 0,
+    totalActions > 0,
+    totalActions > 0 || totalSkips < 5,   // some activity OR very few skips
+  ];
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--r-text-faint)] mt-2">
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRecent ? "bg-[var(--r-green)]" : "bg-[var(--r-text-faint)] opacity-40"}`} />
+      {/* Health blocks */}
+      <div className="flex items-center gap-[3px] mr-0.5" title={t("heartbeatLastScan")}>
+        {healthBlocks.map((ok, i) => (
+          <div
+            key={i}
+            className={`w-3.5 h-1.5 rounded-sm transition-colors ${ok ? "bg-[var(--r-green)]" : "bg-[var(--r-text-faint)]/20"}`}
+          />
+        ))}
+      </div>
       <span className="font-medium">{t("heartbeatLastScan")}: {ago}</span>
       <span className="opacity-50">·</span>
       <span>{parts.join(" → ")}</span>
@@ -549,8 +619,22 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
   // P3: today's change — pull recent snapshots (60 = 4 days × 15 funds upper bound)
   const { data: snapResp } = useFetch<{ snapshots: SnapshotData[] }>("/api/snapshots?limit=60", 300_000);
 
+  const [showShare, setShowShare] = useState(false);
+
   const totalPool = funds.reduce((s, f) => s + f.totalValue, 0);
   const initialCapital = funds.reduce((s, f) => s + f.initialBalance, 0);
+
+  // Days running: days since earliest snapshot date
+  const daysRunning = snapResp?.snapshots?.length
+    ? Math.max(1, Math.floor(
+        (Date.now() - new Date(snapResp.snapshots.reduce((min, s) => s.date < min ? s.date : min, snapResp.snapshots[0].date)).getTime())
+        / 86400000
+      ) + 1)
+    : null;
+  const SEASON_DAYS = 90;
+  const arcRadius = 15;
+  const arcCirc = 2 * Math.PI * arcRadius;
+  const arcLen = daysRunning ? Math.min(daysRunning / SEASON_DAYS, 1) * arcCirc : 0;
   const totalPnl = totalPool - initialCapital;
   const totalReturnPct = initialCapital > 0 ? ((totalPool - initialCapital) / initialCapital) * 100 : 0;
 
@@ -622,55 +706,61 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
   const highlight = useHighlight(events);
 
   return (
+    <>
     <div className="glass-card p-5 mb-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-[var(--r-accent)]/5 to-transparent pointer-events-none" />
       <div className="relative">
-        {/* Primary row: 3 large metrics — mobile uses compact notation to prevent column overlap (P0 audit 2026-05-10). */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-3">
-          <div className="text-center min-w-0">
-            <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalPool")}</p>
-            <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">
-              <span className="sm:hidden">${fmtCompact(totalPool)}</span>
-              <span className="hidden sm:inline">${totalPool.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </p>
-            {/* P3: today's change — visual sibling to total-return realized/unrealized split */}
-            {todayChangePct != null && (
-              <p className={`text-[10px] font-mono tabular-nums mt-0.5 whitespace-nowrap ${todayColor}`}>
-                {t("heroToday")} {fmtPct(todayChangePct)}
-              </p>
-            )}
-          </div>
-          <div className="text-center min-w-0">
-            <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroTotalReturn")}</p>
-            <p className={`text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap ${returnColor}`}>{returnPrefix}{totalReturnPct.toFixed(2)}%</p>
-            {/* P0: realized / unrealized split — industry standard B2.
-                On mobile, stack the two clauses vertically to keep within column width. */}
-            <p className="text-[10px] font-mono tabular-nums mt-0.5 leading-tight">
-              <span className={`whitespace-nowrap ${realizedColor}`}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
-              <span className="text-[var(--r-text-faint)] mx-1 hidden sm:inline">·</span>
-              <span className="block sm:hidden" />
-              {/* P1-A (2026-05-11): demote full-width amber banner → inline badge next to the
-                  unrealized number. Same information, zero extra vertical space, semantically
-                  tied to the number it describes. Trigger threshold stays at 70%. */}
-              <span className={`whitespace-nowrap ${unrealizedColor}`}>
-                {t("heroUnrealized")} {fmtPct(unrealizedPct)}
-                {showUnrealizedWarning && (
-                  <span
-                    className="ml-1 text-amber-500/70 font-normal not-italic"
-                    title={t("heroUnrealizedWarning")}
-                  >
-                    ({Math.round(unrealizedShare * 100)}%{t("heroUnrealizedPaperLabel")})
-                  </span>
-                )}
-              </span>
-            </p>
-          </div>
-          <div className="text-center min-w-0">
-            <p className="text-xs text-[var(--r-text-muted)] mb-1">{t("heroActivePositions")}</p>
-            <p className="text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap">{totalOpen}</p>
-          </div>
+        {/* Share button + days-running arc — top-right of hero */}
+        <div className="absolute top-0 right-0 flex items-center gap-2">
+          {/* P2-①: Days running arc ring */}
+          {daysRunning !== null && (
+            <div className="relative w-9 h-9 shrink-0" title={`${t("dayRunning")} ${daysRunning}`}>
+              <svg width="36" height="36" className="-rotate-90">
+                <circle cx="18" cy="18" r={arcRadius} fill="none" stroke="var(--r-border)" strokeWidth="2" />
+                <circle
+                  cx="18" cy="18" r={arcRadius} fill="none"
+                  stroke="var(--r-accent)" strokeWidth="2" strokeLinecap="round"
+                  strokeDasharray={`${arcLen} ${arcCirc}`}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-[9px] font-bold tabular-nums text-[var(--r-accent)] leading-none">{daysRunning}</span>
+                <span className="text-[6px] text-[var(--r-text-faint)] leading-none mt-px">{t("dayRunning")}</span>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setShowShare(true)}
+            title={t("shareTitle")}
+            className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-[var(--r-text-faint)] hover:text-[var(--r-accent)] rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--r-accent)]"
+          >
+            <Share2 className="w-3 h-3 shrink-0" />
+            <span className="hidden sm:inline">{t("shareTitle")}</span>
+          </button>
         </div>
-        {/* D-Lite stale-price banner — surfaces positions excluded from unrealized due to CLOB mid being NULL or >10min old. */}
+
+        {/* P2-③: Disconnected banner — removed to avoid false-alarm on page load */}
+        {/* ── Hero dominant: 总收益率 ── */}
+        <div className="text-center mb-4 pt-1">
+          <p className="text-[10px] uppercase tracking-widest text-[var(--r-text-faint)] mb-1.5 font-medium">{t("heroTotalReturn")}</p>
+          <p className={`text-4xl sm:text-5xl font-bold font-mono tabular-nums tracking-tight ${returnColor}`}>
+            {returnPrefix}{totalReturnPct.toFixed(2)}%
+          </p>
+          <p className="text-[10px] font-mono tabular-nums mt-2">
+            <span className={realizedColor}>{t("heroRealized")} {fmtPct(realizedPct)}</span>
+            <span className="mx-1.5 text-[var(--r-border)]">·</span>
+            <span className={unrealizedColor}>
+              {t("heroUnrealized")} {fmtPct(unrealizedPct)}
+              {showUnrealizedWarning && (
+                <span className="ml-1 text-amber-500/70 font-normal" title={t("heroUnrealizedWarning")}>
+                  ({Math.round(unrealizedShare * 100)}%{t("heroUnrealizedPaperLabel")})
+                </span>
+              )}
+            </span>
+          </p>
+        </div>
+
+        {/* D-Lite stale-price banner */}
         {showStaleWarning && (
           <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-md bg-amber-500/5 border border-amber-500/20 text-[11px]">
             <span className="text-amber-400 font-bold tabular-nums shrink-0">{totalStale}</span>
@@ -678,28 +768,57 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
           </div>
         )}
 
-        {/* Secondary row: 3 supplementary metrics — mobile uses compact notation. */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
-          <div className="text-center min-w-0">
-            <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroInitialCapital")}</p>
-            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)] whitespace-nowrap">
-              <span className="sm:hidden">${fmtCompact(initialCapital)}</span>
-              <span className="hidden sm:inline">${initialCapital.toLocaleString("en-US")}</span>
-            </p>
-          </div>
-          <div className="text-center min-w-0">
-            <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroTotalPnl")}</p>
-            <p className={`text-sm font-mono tabular-nums whitespace-nowrap ${pnlColor}`}>
+        {/* ── Secondary metrics row  (4 cards: PnL · Today · Open Positions · Analysis) ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
+          <div className="text-center min-w-0 rounded-lg py-2.5 px-1 bg-white/[0.025]">
+            <p className="text-[10px] text-[var(--r-text-faint)] mb-1">{t("heroTotalPnl")}</p>
+            <p className={`text-base sm:text-lg font-bold font-mono tabular-nums whitespace-nowrap ${pnlColor}`}>
               <span className="sm:hidden">{pnlPrefix}${fmtCompact(Math.abs(totalPnl))}</span>
               <span className="hidden sm:inline">{pnlPrefix}${Math.abs(totalPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </p>
           </div>
-          <div className="text-center min-w-0">
-            <p className="text-[10px] text-[var(--r-text-faint)] mb-0.5">{t("heroSystemWR")}</p>
-            <p className="text-sm font-mono tabular-nums text-[var(--r-text-muted)] whitespace-nowrap">
-              {wrSufficient ? `${Math.round(avgWR * 100)}%` : t("heroWRInsufficient")}
+          <div className="text-center min-w-0 rounded-lg py-2.5 px-1 bg-white/[0.025]">
+            <p className="text-[10px] text-[var(--r-text-faint)] mb-1">
+              {todayChangePct != null ? t("heroToday") : t("heroTotalPool")}
+            </p>
+            <p className={`text-base sm:text-lg font-bold font-mono tabular-nums whitespace-nowrap ${todayChangePct != null ? todayColor : ""}`}>
+              {todayChangePct != null
+                ? fmtPct(todayChangePct)
+                : <><span className="sm:hidden">${fmtCompact(totalPool)}</span><span className="hidden sm:inline">${totalPool.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></>
+              }
             </p>
           </div>
+          <div className="text-center min-w-0 rounded-lg py-2.5 px-1 bg-white/[0.025]">
+            <p className="text-[10px] text-[var(--r-text-faint)] mb-1">{t("heroActivePositions")}</p>
+            <p className="text-base sm:text-lg font-bold font-mono tabular-nums whitespace-nowrap">{totalOpen}</p>
+          </div>
+          {/* 4th card: history analysis entry */}
+          <NavLink
+            to="/analysis"
+            className="text-center min-w-0 rounded-lg py-2.5 px-1 bg-white/[0.025] border border-transparent hover:border-[var(--r-accent)]/40 hover:bg-[var(--r-accent)]/5 transition-all no-underline group cursor-pointer"
+          >
+            <p className="text-[10px] text-[var(--r-text-faint)] mb-1.5 group-hover:text-[var(--r-accent)] transition-colors">
+              {t("analysisPageTitle")}
+            </p>
+            <div className="flex items-center justify-center">
+              <BarChart2 className="w-5 h-5 text-[var(--r-text-muted)] group-hover:text-[var(--r-accent)] transition-colors" />
+            </div>
+          </NavLink>
+        </div>
+
+        {/* ── Footnote: auxiliary context ── */}
+        <p className="text-center text-[10px] text-[var(--r-text-faint)] font-mono mb-4 leading-relaxed">
+          {t("heroInitialCapital")} <span className="tabular-nums">${fmtCompact(initialCapital)}</span>
+          <span className="mx-1.5 opacity-40">·</span>
+          {t("heroTotalPool")} <span className="tabular-nums">${fmtCompact(totalPool)}</span>
+          <span className="mx-1.5 opacity-40">·</span>
+          {t("heroSystemWR")} <span className="tabular-nums">{wrSufficient ? `${Math.round(avgWR * 100)}%` : t("heroWRInsufficient")}</span>
+        </p>
+        {/* P2-⑤: Hero aux link — docs */}
+        <div className="flex items-center justify-center mt-2">
+          <NavLink to="/docs" className="text-[10px] text-[var(--r-text-faint)] hover:text-[var(--r-accent)] transition-colors no-underline">
+            {t("heroLearnMoreLink")}
+          </NavLink>
         </div>
 
         {/* Highlight ticker */}
@@ -725,13 +844,89 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
         <HeartbeatBar heartbeat={hbResp?.heartbeat ?? null} />
       </div>
     </div>
+    <ShareModal
+      isOpen={showShare}
+      onClose={() => setShowShare(false)}
+      funds={funds}
+      snapshots={snapResp?.snapshots ?? []}
+      totalPool={totalPool}
+      initialCapital={initialCapital}
+      totalPnl={totalPnl}
+      totalReturnPct={totalReturnPct}
+      todayChangePct={todayChangePct}
+    />
+    </>
   );
 }
 
 function ArenaPage() {
-  const { events, funds, fundsLoading } = useLayoutContext();
+  const { events, funds, fundsLoading, connected } = useLayoutContext();
   const { t } = useI18n();
   const { data: snapshotsResp } = useFetch<{ snapshots: SnapshotData[] }>("/api/snapshots?limit=60", 120_000);
+
+  // Mobile tab state — persisted in sessionStorage
+  const [mobileTab, setMobileTab] = useState<"rankings" | "events">(() => {
+    try { return (sessionStorage.getItem("arena-tab") as "rankings" | "events") || "rankings"; } catch { return "rankings"; }
+  });
+  const [unreadEvents, setUnreadEvents] = useState(0);
+  const prevEventsLenRef = useRef(events.length);
+
+  useEffect(() => {
+    const diff = events.length - prevEventsLenRef.current;
+    if (diff > 0 && mobileTab === "rankings") {
+      setUnreadEvents(c => Math.min(c + diff, 99));
+    }
+    prevEventsLenRef.current = events.length;
+  }, [events.length, mobileTab]);
+
+  const switchTab = (tab: "rankings" | "events") => {
+    setMobileTab(tab);
+    if (tab === "events") setUnreadEvents(0);
+    try { sessionStorage.setItem("arena-tab", tab); } catch {}
+  };
+
+  // P1-①: Hero visibility → sticky command bar
+  const heroSentinelRef = useRef<HTMLDivElement>(null);
+  const [heroVisible, setHeroVisible] = useState(true);
+  useEffect(() => {
+    const el = heroSentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setHeroVisible(entry.isIntersecting),
+      { threshold: 0, rootMargin: "-64px 0px 0px 0px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // P1-②: Fund activity map (last event timestamp per fund_id)
+  const fundLastActivity = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const event of events) {
+      const fid = (event.payload as Record<string, unknown>)?.fund_id as string | undefined;
+      if (!fid) continue;
+      const ts = new Date(event.timestamp).getTime();
+      if (!map[fid] || ts > map[fid]) map[fid] = ts;
+    }
+    return map;
+  }, [events]);
+
+  // P1-⑤: Today's activity summary
+  const todaySummary = useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    let scans = 0, tradesOpened = 0, evolutions = 0, tradePnl = 0;
+    for (const event of events) {
+      if (new Date(event.timestamp).toISOString().split("T")[0] !== todayStr) continue;
+      if (event.type === "SCAN_COMPLETE") scans++;
+      else if (event.type === "TRADE_OPENED") tradesOpened++;
+      else if (event.type === "EVOLUTION_COMPLETED" || event.type === "MICRO_EVOLUTION") evolutions++;
+      else if (["TRADE_SETTLED", "TRADE_STOPPED", "TRADE_EXPIRED", "TRADE_PROFIT_TAKEN", "TRADE_TRAILING_STOPPED"].includes(event.type)) {
+        const d = event.payload as Record<string, unknown>;
+        tradePnl += (d?.pnl as number) ?? (d?.amount as number) ?? 0;
+      }
+    }
+    return { scans, tradesOpened, evolutions, tradePnl };
+  }, [events]);
 
   const sparklineData: Record<string, number[]> = {};
   if (snapshotsResp?.snapshots) {
@@ -744,15 +939,84 @@ function ArenaPage() {
     }
   }
 
-  const totalPool = funds.reduce((s, f) => s + f.totalValue, 0);
+  const totalPool    = funds.reduce((s, f) => s + f.totalValue, 0);
+  const initCap      = funds.reduce((s, f) => s + f.initialBalance, 0);
+  const totalPnl     = totalPool - initCap;
+  const totalRetPct  = initCap > 0 ? ((totalPool - initCap) / initCap) * 100 : 0;
+  const retColor     = totalRetPct > 0 ? "text-[var(--r-green)]" : totalRetPct < 0 ? "text-[var(--r-red)]" : "";
+  const pnlColor     = totalPnl  > 0 ? "text-[var(--r-green)]" : totalPnl  < 0 ? "text-[var(--r-red)]" : "";
+  const fmtC = (v: number) => v.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 2 });
+
+  const hasTodaySummary = todaySummary.scans > 0 || todaySummary.tradesOpened > 0 || todaySummary.evolutions > 0;
 
   return (
     <div>
-      {funds.length > 0 && <HeroOverview funds={funds} events={events} />}
-      {funds.length > 0 && <MarketDriversCard totalPool={totalPool} />}
+        {funds.length > 0 && <HeroOverview funds={funds} events={events} />}
+      {/* Sentinel: IntersectionObserver watches this to show/hide command bar */}
+      <div ref={heroSentinelRef} className="pointer-events-none h-0" aria-hidden />
+
+      {/* P1-①: Sticky command bar — slides in when hero scrolls above fold */}
+      <div
+        className={`fixed left-0 right-0 z-40 border-b border-[var(--r-border)] bg-[var(--r-surface)]/95 backdrop-blur-md transition-all duration-300 ${
+          heroVisible || funds.length === 0 ? "-top-12 opacity-0 pointer-events-none" : "top-[60px] opacity-100"
+        }`}
+      >
+        <div className="max-w-6xl mx-auto px-4 h-10 flex items-center gap-2.5 pt-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+          <span className="text-[10px] text-[var(--r-text-faint)] font-medium uppercase tracking-widest shrink-0">
+            {t("cmdBarLive")}
+          </span>
+          <span className="w-px h-3 bg-[var(--r-border)] shrink-0" />
+          <span className={`font-mono text-xs font-bold tabular-nums whitespace-nowrap ${retColor}`}>
+            {totalRetPct >= 0 ? "+" : ""}{totalRetPct.toFixed(2)}%
+          </span>
+          <span className="text-[var(--r-text-faint)] text-xs opacity-50 hidden sm:inline">·</span>
+          <span className={`font-mono text-xs font-medium tabular-nums whitespace-nowrap hidden sm:inline ${pnlColor}`}>
+            {totalPnl >= 0 ? "+" : "−"}${fmtC(Math.abs(totalPnl))}
+          </span>
+          <div className="flex-1" />
+          <NavLink
+            to="/analysis"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border border-[var(--r-border)] text-[var(--r-text-faint)] hover:border-[var(--r-accent)] hover:text-[var(--r-accent)] transition-colors no-underline shrink-0"
+          >
+            <BarChart2 className="w-2.5 h-2.5 shrink-0" />
+            <span className="hidden sm:inline">{t("analysisEntryBtn")}</span>
+          </NavLink>
+        </div>
+      </div>
+
+      {/* Mobile tab switcher */}
+      <div className="lg:hidden flex p-1 rounded-xl bg-[var(--r-surface)] border border-[var(--r-border)] mb-4">
+        <button
+          onClick={() => switchTab("rankings")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
+            mobileTab === "rankings"
+              ? "bg-[var(--r-bg)] shadow text-[var(--r-text)]"
+              : "text-[var(--r-text-muted)] hover:text-[var(--r-text)]"
+          }`}
+        >
+          🏆 {t("fundArenaRankings")}
+        </button>
+        <button
+          onClick={() => switchTab("events")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all relative ${
+            mobileTab === "events"
+              ? "bg-[var(--r-bg)] shadow text-[var(--r-text)]"
+              : "text-[var(--r-text-muted)] hover:text-[var(--r-text)]"
+          }`}
+        >
+          ⚡ {t("liveEventFeed")}
+          {unreadEvents > 0 && (
+            <span className="absolute -top-0.5 right-2 min-w-[16px] h-4 px-1 rounded-full bg-[var(--r-accent)] text-white text-[9px] flex items-center justify-center font-bold leading-none">
+              {unreadEvents > 9 ? "9+" : unreadEvents}
+            </span>
+          )}
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-3">
+        {/* Left: Fund rankings */}
+        <div className={`lg:col-span-3 ${mobileTab !== "rankings" ? "hidden lg:block" : ""}`}>
           <h2 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-3 flex items-center">
             {t("fundArenaRankings")}
             <a href="https://rotifer.dev" target="_blank" rel="noopener noreferrer" className="normal-case tracking-normal font-normal text-[10px] text-[var(--r-text-faint)] hover:text-[var(--r-accent)] transition-colors ml-1.5">
@@ -778,17 +1042,52 @@ function ArenaPage() {
               ))}
             </div>
           ) : funds.length > 0 ? (
-            <FundRanking funds={funds} sparklines={sparklineData} />
+            <>
+              <FundRanking funds={funds} sparklines={sparklineData} lastActivity={fundLastActivity} />
+              {/* Secondary CTA — natural discovery after reading rankings */}
+              <NavLink
+                to="/analysis"
+                className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-[var(--r-border)] text-[11px] text-[var(--r-text-muted)] hover:border-[var(--r-accent)] hover:text-[var(--r-accent)] transition-colors no-underline"
+              >
+                <BarChart2 className="w-3.5 h-3.5 shrink-0" />
+                {t("analysisFullHistoryBtn")}
+              </NavLink>
+            </>
           ) : (
             <div className="glass-card p-8 text-center text-[var(--r-text-muted)]">{t("noFundData")}</div>
           )}
         </div>
-        {/* Sticky event feed: stays in viewport while user scrolls fund rankings */}
-        <div className="lg:col-span-2 lg:sticky lg:top-4 lg:self-start">
+
+        {/* Right: Market drivers + today summary + event feed (sticky on desktop) */}
+        <div className={`lg:col-span-2 lg:sticky lg:top-4 lg:self-start ${mobileTab !== "events" ? "hidden lg:block" : ""}`}>
+          {/* P1-③: MarketDriversCard lives here — semantic coherence with event feed */}
+          {funds.length > 0 && <MarketDriversCard totalPool={totalPool} />}
+
+          {/* P1-⑤: Today's activity summary strip */}
+          {hasTodaySummary && (
+            <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-[var(--r-text-faint)] mb-3 px-0.5">
+              <span className="font-medium text-[var(--r-text-muted)] shrink-0">{t("todaySummaryLabel")}</span>
+              {todaySummary.scans > 0 && (
+                <span className="whitespace-nowrap">{todaySummary.scans} {t("todaySummaryScans")}</span>
+              )}
+              {todaySummary.tradesOpened > 0 && (
+                <span className="whitespace-nowrap">· {todaySummary.tradesOpened} {t("todaySummaryTrades")}</span>
+              )}
+              {todaySummary.evolutions > 0 && (
+                <span className="whitespace-nowrap">· {todaySummary.evolutions} {t("todaySummaryEvolutions")}</span>
+              )}
+              {todaySummary.tradePnl !== 0 && (
+                <span className={`font-mono tabular-nums whitespace-nowrap ${todaySummary.tradePnl > 0 ? "text-[var(--r-green)]" : "text-[var(--r-red)]"}`}>
+                  · {todaySummary.tradePnl >= 0 ? "+" : ""}${fmtC(Math.abs(todaySummary.tradePnl))}
+                </span>
+              )}
+            </div>
+          )}
+
           <h2 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-4">
             {t("liveEventFeed")}
           </h2>
-          <EventFeed events={events} />
+          <EventFeed events={events} connected={connected} fillViewport />
         </div>
       </div>
     </div>
@@ -851,6 +1150,12 @@ export default function App() {
         } />
         <Route path="diagnostics" element={
           <Suspense fallback={<PageSkeleton />}><LazyDiagnosticsPage /></Suspense>
+        } />
+        <Route path="docs" element={
+          <Suspense fallback={<PageSkeleton />}><LazyDocsPage /></Suspense>
+        } />
+        <Route path="analysis" element={
+          <Suspense fallback={<PageSkeleton />}><LazyAnalysisPage /></Suspense>
         } />
         <Route path="fund/:fundId" element={
           <Suspense fallback={<FundPageSkeleton />}><FundDetail /></Suspense>

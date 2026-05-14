@@ -151,10 +151,18 @@ function pnlStr(v: number): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Mini horizontal PBT score bar + number. Shows — when insufficient data. */
+/** Mini horizontal PBT score bar + number. Shows — when insufficient data or score is exactly 0 (clamped). */
 function ScoreBar({ score, evaluated }: { score: number; evaluated: number }) {
   if (evaluated < 3) {
     return <span className="text-[var(--r-text-faint)] text-xs font-mono">—</span>;
+  }
+  if (score === 0) {
+    return (
+      <span
+        className="text-[var(--r-text-faint)] text-xs font-mono"
+        title="PBT 评分为 0：此基因类型的适应度公式以交易收益为基准，部分内置模块（如风控）的特性导致评分为 0，属正常情况。"
+      >—</span>
+    );
   }
   const color =
     score >= 70 ? "bg-emerald-500" :
@@ -557,17 +565,24 @@ export function GeneEvolutionPanel() {
                         </div>
                       )}
                       {champion.tradesEvaluated >= 3 ? (
-                            <div className="flex items-center gap-1.5">
-                          <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${champion.petriScore >= 70 ? "bg-emerald-500" : champion.petriScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
-                              style={{ width: `${Math.min(100, champion.petriScore)}%` }}
-                            />
+                        champion.petriScore === 0 ? (
+                          <span
+                            className="text-sm text-[var(--r-text-faint)] italic"
+                            title="PBT 评分为 0：适应度公式以交易收益为基准，风控类内置模块的特性导致评分为 0，属正常情况，不代表模块故障。"
+                          >—</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${champion.petriScore >= 70 ? "bg-emerald-500" : champion.petriScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
+                                style={{ width: `${Math.min(100, champion.petriScore)}%` }}
+                              />
+                            </div>
+                            <span className={`font-mono text-lg font-bold tabular-nums ${color.accent}`}>
+                              {champion.petriScore.toFixed(1)}
+                            </span>
                           </div>
-                          <span className={`font-mono text-lg font-bold tabular-nums ${color.accent}`}>
-                            {champion.petriScore.toFixed(1)}
-                          </span>
-                        </div>
+                        )
                       ) : (
                         <span className="text-xs text-[var(--r-text-faint)] italic">{t("geneAwaitingEval")}</span>
                       )}
@@ -720,7 +735,7 @@ export function GeneEvolutionPanel() {
                     )}
                   </div>
                   <span className="text-[10px] text-[var(--r-text-faint)] shrink-0">
-                      {t("geneEpoch")} {entry.epoch}
+                      {t("evoEpochBadge")} {entry.epoch}
                     </span>
                 </div>
               );

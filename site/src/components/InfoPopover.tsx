@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { Info } from "lucide-react";
+import { useI18n } from "../i18n/context";
 
-/** Click-to-open info popover. Opens below-left; closes on outside click or Escape. */
-export function InfoPopover({ text }: { text: string }) {
+/** Click-to-open info popover. Optionally shows a "deep dive" link to the docs page. */
+export function InfoPopover({ text, docsHref }: { text: string; docsHref?: string }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -34,6 +37,15 @@ export function InfoPopover({ text }: { text: string }) {
           text-[11px] leading-relaxed text-[var(--r-text-muted)] normal-case font-normal
           tracking-normal whitespace-normal">
           {text}
+          {docsHref && (
+            <Link
+              to={docsHref}
+              onClick={() => setOpen(false)}
+              className="block mt-2 text-[var(--r-accent)] hover:underline no-underline"
+            >
+              {t("docsLearnMore")}
+            </Link>
+          )}
         </div>
       )}
     </div>

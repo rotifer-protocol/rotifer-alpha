@@ -61,7 +61,9 @@ function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }
   );
 }
 
-function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparklines?: Record<string, number[]> }) {
+function FundCard({ fund, rank, sparklines, maxReturnPct = 1, lastActivityTs }: {
+  fund: Fund; rank: number; sparklines?: Record<string, number[]>; maxReturnPct?: number; lastActivityTs?: number;
+}) {
   const { t } = useI18n();
   const pnlClass = fund.returnPct >= 0 ? "pnl-positive" : "pnl-negative";
   const sign = fund.returnPct >= 0 ? "+" : "";
@@ -73,14 +75,42 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
   const borderAccent = FUND_BORDER_COLORS[fund.id] || "";
   const tierBadge = fundTierLabel(fund.id);
 
+  // Performance fill bar
+  const barPct = maxReturnPct > 0 ? Math.min(Math.abs(fund.returnPct) / maxReturnPct * 100, 100) : 0;
+  const barBg = fund.returnPct >= 0
+    ? "linear-gradient(90deg, rgba(0,212,170,0.09), transparent)"
+    : "linear-gradient(90deg, rgba(239,68,68,0.09), transparent)";
+
+  // Activity dot: green (<5 min) / yellow (5–30 min) / none
+  const minsAgo = lastActivityTs ? (Date.now() - lastActivityTs) / 60000 : Infinity;
+  const activityDot = minsAgo < 5
+    ? { cls: "bg-green-500 animate-pulse", title: "Active < 5 min ago" }
+    : minsAgo < 30
+    ? { cls: "bg-yellow-500/70", title: "Active < 30 min ago" }
+    : null;
+
   return (
     <Link
       to={`/fund/${fund.id}`}
       className={`glass-card p-5 flex items-center gap-4 transition-all duration-300 cursor-pointer hover:border-[var(--r-accent)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 no-underline text-inherit border-l-3 ${borderAccent} bg-gradient-to-r ${gradient} ${
         fund.frozen ? "opacity-60" : ""
-      }`}
+      } relative overflow-hidden`}
       style={{ animationDelay: `${rank * 60}ms` }}
     >
+      {/* Performance fill bar */}
+      {barPct > 0 && (
+        <div
+          className="absolute left-0 top-0 bottom-0 pointer-events-none"
+          style={{ width: `${barPct}%`, background: barBg }}
+        />
+      )}
+      {/* Activity dot — top-right corner */}
+      {activityDot && (
+        <span
+          className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${activityDot.cls}`}
+          title={activityDot.title}
+        />
+      )}
       <span
         className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold border shrink-0 ${RANK_STYLES[rank] || RANK_STYLES[4]}`}
       >
@@ -143,8 +173,13 @@ function FundCard({ fund, rank, sparklines }: { fund: Fund; rank: number; sparkl
   );
 }
 
-export function FundRanking({ funds, sparklines }: { funds: Fund[]; sparklines?: Record<string, number[]> }) {
+export function FundRanking({ funds, sparklines, lastActivity }: {
+  funds: Fund[]; sparklines?: Record<string, number[]>; lastActivity?: Record<string, number>;
+}) {
   const { t } = useI18n();
+
+  // Global max |returnPct| — used by FundCard performance fill bar
+  const maxReturnPct = Math.max(...funds.map(f => Math.abs(f.returnPct)), 1);
 
   // If only small-tier funds, render flat list (backward compat for initial phase)
   const fundIds = funds.map(f => f.id);
@@ -155,7 +190,7 @@ export function FundRanking({ funds, sparklines }: { funds: Fund[]; sparklines?:
     return (
       <div className="space-y-3">
         {funds.map((fund, i) => (
-          <FundCard key={fund.id} fund={fund} rank={i} sparklines={sparklines} />
+          <FundCard key={fund.id} fund={fund} rank={i} sparklines={sparklines} maxReturnPct={maxReturnPct} lastActivityTs={lastActivity?.[fund.id]} />
         ))}
       </div>
     );
@@ -182,7 +217,7 @@ export function FundRanking({ funds, sparklines }: { funds: Fund[]; sparklines?:
             </div>
             <div className="space-y-2">
               {sorted.map((fund, i) => (
-                <FundCard key={fund.id} fund={fund} rank={i} sparklines={sparklines} />
+                <FundCard key={fund.id} fund={fund} rank={i} sparklines={sparklines} maxReturnPct={maxReturnPct} lastActivityTs={lastActivity?.[fund.id]} />
               ))}
             </div>
           </div>

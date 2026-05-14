@@ -200,12 +200,17 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
   }
   const families = Object.keys(familyMap);
 
-  // Mobile always uses family (collapsed) view
-  const effectiveExpanded = isMobile ? false : expanded;
+  // Mobile always uses family (collapsed) view unless user explicitly expands
+  const effectiveExpanded = expanded;
   const displayIds = effectiveExpanded ? allFundIds : families;
   const lastIdx = epochs.length - 1;
 
   // ── Build chart data ────────────────────────────────────────────────────────
+  // Pre-pass: build last-known fitness map per displayId for SKIP carry-forward.
+  // When a fund has no fitness_after for an epoch (SKIP_INSUFFICIENT), we carry
+  // forward the most recent known value so the line extends instead of truncating.
+  const lastKnownFitness = new Map<string, number>();
+
   const data = epochs.map(epoch => {
     const point: Record<string, number | string> = { epoch: `E${epoch}` };
     const afterVals: number[] = [];
@@ -234,8 +239,17 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
       }
 
       if (afterVal !== null) {
+        // Update carry-forward cache
+        lastKnownFitness.set(did, afterVal);
         point[`${did}_after`] = afterVal;
         afterVals.push(afterVal);
+      } else {
+        // SKIP carry-forward: use last known value so the line doesn't truncate
+        const carried = lastKnownFitness.get(did);
+        if (carried !== undefined) {
+          point[`${did}_after`] = carried;
+          afterVals.push(carried);
+        }
       }
       if (showBefore && beforeVal !== null) {
         point[`${did}_before`] = beforeVal;
@@ -379,7 +393,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest flex items-center gap-1.5">
           {t("fitnessTitle")}
-          <InfoPopover text={t("tipFitness")} />
+          <InfoPopover text={t("tipFitness")} docsHref="/docs#fitness" />
         </h3>
         <div className="flex items-center gap-1.5">
           <button
@@ -392,8 +406,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
           >
             {t("fitnessToggleBefore")}
           </button>
-          {!isMobile && (
-            <button
+          <button
               onClick={() => setExpanded(v => !v)}
               className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
                 expanded
@@ -403,7 +416,6 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
             >
               {expanded ? t("fitnessCollapse") : t("fitnessExpand")}
             </button>
-          )}
         </div>
       </div>
 
@@ -439,7 +451,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
 
       {/* ── Chart ── */}
       <div ref={chartWrapRef}>
-      <ResponsiveContainer width="100%" height={isMobile ? 200 : 260}>
+      <ResponsiveContainer width="100%" height={isMobile ? (effectiveExpanded ? 260 : 200) : 260}>
         <ComposedChart
           data={data}
           margin={{ top: 8, right: rightMargin, bottom: 0, left: -8 }}
@@ -643,12 +655,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
           );
         })}
 
-        {isMobile && (
-          <span className="text-[9px] text-[var(--r-text-muted)] self-center ml-1">
-            {t("fitnessExpand")}
-          </span>
-        )}
-      </div>
+        </div>
     </div>
   );
 }

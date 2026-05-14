@@ -38,10 +38,19 @@ interface FundLineage {
   parent_id: string | null;
 }
 
+interface EpochProgress {
+  tradesThisEpoch: number;
+  tradesTarget: number;
+  minEpochDays: number;
+  maxEpochDays: number;
+  lastEpochAt: string | null;
+}
+
 interface EvolutionResponse {
   logs: EvolutionLog[];
   epochs: EpochSummary[];
   lineage: FundLineage[];
+  epochProgress?: EpochProgress;
 }
 
 interface ActionCfg {
@@ -209,7 +218,7 @@ function EvoMutCard({ log }: { log: EvolutionLog }) {
 
         {/* Epoch + time */}
         <span className="text-[10px] text-[var(--r-text-faint)] shrink-0 ml-auto">
-          {t("epoch")} {log.epoch}
+          {t("evoEpochBadge")} {log.epoch}
           {!isNoise && ` · ${relativeTime(log.executed_at, locale)}`}
         </span>
 
@@ -402,9 +411,12 @@ function DropdownSelect({
   );
 }
 
-function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSummary[] }) {
+function EvoKpiStrip({ logs, epochs, epochProgress }: {
+  logs: EvolutionLog[];
+  epochs: EpochSummary[];
+  epochProgress?: EpochProgress;
+}) {
   const { t } = useI18n();
-  const { days, hours, minutes } = useCountdown();
   const latestEpochNum = useMemo(() =>
     epochs.length > 0 ? Math.max(...epochs.map(e => e.epoch)) : null, [epochs]
   );
@@ -422,14 +434,38 @@ function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSumm
     [logs]
   );
 
-  const countdownValue = days > 0 ? `${days}D ${hours}H` : hours > 0 ? `${hours}H ${minutes}M` : `${minutes}M`;
+  // Real next-epoch trigger display: trade progress + time gate
+  const nextEvoValue = useMemo(() => {
+    if (!epochProgress) return "—";
+    const { tradesThisEpoch, tradesTarget, minEpochDays, lastEpochAt } = epochProgress;
+    const tradesPct = Math.min(100, Math.round((tradesThisEpoch / tradesTarget) * 100));
+    void tradesPct; // available for future progress bar use
+    // Days since last epoch
+    if (lastEpochAt) {
+      const msSince = Date.now() - new Date(lastEpochAt).getTime();
+      const daysSince = msSince / 86_400_000;
+      const daysRemaining = Math.max(0, minEpochDays - daysSince);
+      if (daysRemaining > 0.05) {
+        const h = Math.ceil(daysRemaining * 24);
+        return `≥${h}H`;   // time gate still active
+      }
+    }
+    // Time gate passed — show trade progress
+    const remaining = Math.max(0, tradesTarget - tradesThisEpoch);
+    if (remaining === 0) return t("evoNextEvoReady");
+    return `~${remaining}笔`;
+  }, [epochProgress, t]);
+
+  const nextEvoTooltip = epochProgress
+    ? `进化触发条件：系统累计 ${epochProgress.tradesTarget} 笔成交 ＆ 距上次进化 ≥ ${epochProgress.minEpochDays} 天。当前本轮次已累计 ${epochProgress.tradesThisEpoch}/${epochProgress.tradesTarget} 笔。`
+    : undefined;
 
   const items = [
     { label: t("epoch"),       value: String(epochs.length), mono: true,  dim: false, tooltip: t("tipEpoch") },
     { label: t("evoKpiAvg"),   value: avgFitness != null ? avgFitness.toFixed(3) : "—", mono: true, dim: false },
     { label: t("evoKpiBest"),  value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true, tooltip: t("tipBestFitness") },
     { label: t("evoKpiLast"),  value: lastEvo ? relativeTime(lastEvo, "") : "—", mono: false, dim: true },
-    { label: t("evoNextEvo"),  value: countdownValue, mono: true, dim: true },
+    { label: t("evoNextEvo"),  value: nextEvoValue, mono: true, dim: true, tooltip: nextEvoTooltip },
   ];
 
   return (
@@ -449,27 +485,6 @@ function EvoKpiStrip({ logs, epochs }: { logs: EvolutionLog[]; epochs: EpochSumm
   );
 }
 
-function useCountdown() {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const d = new Date(now);
-  const dayOfWeek = d.getUTCDay();
-  let daysUntil = (7 - dayOfWeek) % 7;
-  if (daysUntil === 0 && d.getUTCHours() >= 0) daysUntil = 7;
-  const nextSunday = new Date(Date.UTC(
-    d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysUntil, 0, 0, 0
-  ));
-  const diff = nextSunday.getTime() - now;
-  const days = Math.floor(diff / 86_400_000);
-  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((diff % 3_600_000) / 60_000);
-  return { days, hours, minutes };
-}
-
 const STEPS = [
   { iconKey: "swords" as const, titleKey: "evoStep1Title" as TranslationKey, descKey: "evoStep1Desc" as TranslationKey },
   { iconKey: "barChart" as const, titleKey: "evoStep2Title" as TranslationKey, descKey: "evoStep2Desc" as TranslationKey },
@@ -483,29 +498,13 @@ const STEP_ICONS: Record<string, LucideIcon> = {
 
 function EvolutionEmptyState() {
   const { t } = useI18n();
-  const { days, hours, minutes } = useCountdown();
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Countdown hero */}
+      {/* Waiting state hero */}
       <div className="glass-card p-8 text-center">
         <Dna className="w-10 h-10 mx-auto mb-4 text-[var(--r-accent)] animate-pulse" />
         <h2 className="text-lg font-semibold mb-4">{t("evoEmptyTitle")}</h2>
-
-        <div className="flex items-center justify-center gap-3 mb-4">
-          {[
-            { value: days, unit: "D" },
-            { value: hours, unit: "H" },
-            { value: minutes, unit: "M" },
-          ].map(({ value, unit }) => (
-            <div key={unit} className="flex flex-col items-center">
-              <span className="text-3xl font-mono font-bold text-[var(--r-accent)] tabular-nums leading-none">
-                {String(value).padStart(2, "0")}
-              </span>
-              <span className="text-[10px] uppercase tracking-widest text-[var(--r-text-muted)] mt-1">{unit}</span>
-            </div>
-          ))}
-        </div>
 
         <div className="flex items-center justify-center gap-1.5 text-xs text-[var(--r-text-muted)]">
           <Clock className="w-3.5 h-3.5" />
@@ -676,7 +675,7 @@ export function EvolutionPanel() {
   return (
     <div className="space-y-6">
       {/* KPI strip */}
-      <EvoKpiStrip logs={data.logs} epochs={data.epochs} />
+      <EvoKpiStrip logs={data.logs} epochs={data.epochs} epochProgress={data.epochProgress} />
 
       {/* Epoch timeline — interactive */}
       <div className="flex gap-2 overflow-x-auto pb-2 pt-1 -mt-1 px-0.5 -mx-0.5">
@@ -759,18 +758,45 @@ export function EvolutionPanel() {
         {/* Header + toolbar — two rows for clean responsive layout */}
         <div className="flex flex-col gap-1.5 mb-3">
 
-          {/* Row 1: title (left) + sort / fund / clear (right) */}
+          {/* Row 1: title only */}
           <div className="flex items-center gap-2 min-w-0">
             <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest shrink-0 inline-flex items-center gap-1">
               <span>{t("recentMutations")}</span>
-              <InfoPopover text={t("tipMutationType")} />
+              <InfoPopover text={t("tipMutationType")} docsHref="/docs#pbt" />
               {activeEpoch != null && (
                 <span className="ml-2 normal-case font-normal text-[var(--r-accent)]">· {t("epoch")} {activeEpoch}</span>
               )}
         </h3>
+          </div>
 
-            <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
-              {/* Sort dropdown */}
+          {/* Row 2: type filter chips (left, scrollable) + sort / fund / clear (right, shrink-0) */}
+          <div className="flex items-center gap-1 min-w-0">
+            {/* Filter chips — flex-1 with overflow scroll so they never push the controls off-screen */}
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5 flex-1 min-w-0">
+              {([
+                { key: "all",       label: t("evoFilterAll")   },
+                { key: "evolution", label: t("evoFilterEvo")   },
+                { key: "skip",      label: t("evoFilterSkip")  },
+                { key: "reset",     label: t("evoFilterReset") },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => { setMutTypeGroup(opt.key); setMutShowAll(false); }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap shrink-0
+                    ${mutTypeGroup === opt.key
+                      ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] ring-1 ring-[var(--r-accent)]/40"
+                      : "text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] hover:bg-white/5"
+                    }`}
+                >
+                  {opt.label}
+                  <span className="ml-0.5 text-[10px] opacity-50">({filterCounts[opt.key] ?? 0})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Sort + fund dropdowns + clear — always right-aligned, never wrap */}
+            <div className="flex items-center gap-1.5 shrink-0 pl-1.5 ml-0.5 border-l border-[var(--r-border)]">
               <DropdownSelect
                 value={mutSortKey}
                 options={[
@@ -781,7 +807,6 @@ export function EvolutionPanel() {
                 onChange={v => { setMutSortKey(v); setMutShowAll(false); }}
               />
 
-              {/* Fund dropdown */}
               {availableFunds.length > 1 && (
                 <DropdownSelect
                   value={mutFundId}
@@ -793,7 +818,6 @@ export function EvolutionPanel() {
                 />
               )}
 
-              {/* Clear filter button */}
               {isFilterActive && (
                 <button
                   type="button"
@@ -805,30 +829,6 @@ export function EvolutionPanel() {
                 </button>
               )}
             </div>
-          </div>
-
-          {/* Row 2: type filter chips (horizontally scrollable on mobile) */}
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
-            {([
-              { key: "all",       label: t("evoFilterAll")   },
-              { key: "evolution", label: t("evoFilterEvo")   },
-              { key: "skip",      label: t("evoFilterSkip")  },
-              { key: "reset",     label: t("evoFilterReset") },
-            ] as const).map(opt => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => { setMutTypeGroup(opt.key); setMutShowAll(false); }}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap shrink-0
-                  ${mutTypeGroup === opt.key
-                    ? "bg-[var(--r-accent)]/20 text-[var(--r-accent)] ring-1 ring-[var(--r-accent)]/40"
-                    : "text-[var(--r-text-faint)] hover:text-[var(--r-text-muted)] hover:bg-white/5"
-                  }`}
-              >
-                {opt.label}
-                <span className="ml-0.5 text-[10px] opacity-50">({filterCounts[opt.key] ?? 0})</span>
-              </button>
-            ))}
           </div>
 
         </div>

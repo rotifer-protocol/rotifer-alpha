@@ -72,14 +72,28 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds, activeEpoch }: Pr
   const fundIdsFromLogs = [...new Set(logs.map(l => l.fund_id))];
   const fundIds = allFundIds && allFundIds.length > 0 ? allFundIds : fundIdsFromLogs;
 
-  const [activeFund, setActiveFund] = useState<string | null>(selectedFund);
+  // Default to the fund with the most mutation entries so the heatmap is
+  // immediately data-rich when first opened (rather than an arbitrary Set order).
+  const mutationCounts: Record<string, number> = {};
+  for (const log of logs) {
+    if (log.action !== "UNCHANGED") {
+      mutationCounts[log.fund_id] = (mutationCounts[log.fund_id] ?? 0) + 1;
+    }
+  }
+  const mostMutatedFund = fundIdsFromLogs.length > 0
+    ? fundIdsFromLogs.reduce((best, fid) =>
+        (mutationCounts[fid] ?? 0) >= (mutationCounts[best] ?? 0) ? fid : best,
+      fundIdsFromLogs[0])
+    : (fundIds[0] ?? null);
+
+  const [activeFund, setActiveFund] = useState<string | null>(selectedFund ?? mostMutatedFund);
 
   // Sync when parent updates selectedFund (P2-② linkage from LineageTree)
   useEffect(() => {
     if (selectedFund != null) setActiveFund(selectedFund);
   }, [selectedFund]);
 
-  const targetFund = activeFund || fundIdsFromLogs[0] || fundIds[0];
+  const targetFund = activeFund || mostMutatedFund || fundIds[0];
   const epochs = [...new Set(logs.map(l => l.epoch))].sort((a, b) => a - b);
 
   if (epochs.length === 0 || !targetFund) {
@@ -140,7 +154,7 @@ export function ParamHeatmap({ logs, selectedFund, allFundIds, activeEpoch }: Pr
       {/* Title */}
       <h3 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-2 flex items-center gap-1.5">
         {t("heatmapTitle")}
-        <InfoPopover text={t("tipParamHeatmap")} />
+        <InfoPopover text={t("tipParamHeatmap")} docsHref="/docs#fitness" />
       </h3>
 
       {/* Fund selector — grouped by personality */}

@@ -460,7 +460,18 @@ async function runTierPBT(
 
   if (action === "SKIP_INSUFFICIENT" || action === "SKIP_ALL_GOOD") {
     for (const fr of tierResults) {
-      await logEvolution(db, epoch, action, fr.fundId, {}, {}, fr.fitness, fr.fitness,
+      // Carry forward the last known fitness so the chart line isn't truncated
+      // when a fund is skipped due to insufficient trades.
+      let fitnessForLog = fr.fitness;
+      if (fitnessForLog == null) {
+        const lastKnown = await db.prepare(
+          `SELECT fitness_after FROM evolution_log
+           WHERE fund_id = ? AND fitness_after IS NOT NULL
+           ORDER BY epoch DESC, executed_at DESC LIMIT 1`,
+        ).bind(fr.fundId).first<{ fitness_after: number | null }>();
+        fitnessForLog = lastKnown?.fitness_after ?? null;
+      }
+      await logEvolution(db, epoch, action, fr.fundId, {}, {}, fitnessForLog, fitnessForLog,
         action === "SKIP_INSUFFICIENT" ? `Tier ${tier}: insufficient trades` : `Tier ${tier}: all fitness >0.6`);
     }
     return action;
@@ -828,9 +839,34 @@ export async function apiEvolution(
     "SELECT id, name, emoji, generation, parent_id FROM fund_configs ORDER BY id",
   ).all();
 
+  // ── Epoch progress: expose real trigger state to frontend ──────────────────
+  // Find the latest epoch completion timestamp (most recent evolution_log row)
+  const lastEpochRow = await db.prepare(
+    "SELECT MAX(executed_at) as last_at FROM evolution_log",
+  ).first<{ last_at: string | null }>();
+  const lastEpochAt = lastEpochRow?.last_at ?? null;
+
+  // Count closed trades since last epoch completed
+  let tradesThisEpoch = 0;
+  if (lastEpochAt) {
+    const tradesRow = await db.prepare(
+      "SELECT COUNT(*) as cnt FROM paper_trades WHERE status = 'closed' AND closed_at > ?",
+    ).bind(lastEpochAt).first<{ cnt: number }>();
+    tradesThisEpoch = tradesRow?.cnt ?? 0;
+  }
+
+  const epochProgress = {
+    tradesThisEpoch,
+    tradesTarget: TARGET_TRADES_SYSTEM,
+    minEpochDays: MIN_EPOCH_DAYS,
+    maxEpochDays: MAX_EPOCH_DAYS,
+    lastEpochAt,
+  };
+
   return Response.json({
     logs: logs.results || [],
     epochs: epochStats.results || [],
     lineage: lineage.results || [],
+    epochProgress,
   }, { headers });
 }
