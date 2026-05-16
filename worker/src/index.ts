@@ -596,43 +596,106 @@ export default {
     }
 
     // One-time cleanup: invalidate duplicate closed trades caused by the
-    // missing re-entry cooldown (pre-fix period: 2026-05-11 → 2026-05-16).
-    // Keeps the earliest trade per (fund_id, market_id, calendar day).
-    // Safe to call multiple times — already-invalidated rows are excluded.
+    // missing re-entry cooldown (pre-fix period: 2026-04 → 2026-05-16).
+    // Keeps the EARLIEST trade per (fund_id, market_id, calendar day).
+    // Safe to call multiple times — already-MIGRATED rows are excluded.
+    //
+    // Use ?dry_run=1 to preview without writing; default is dry-run (require
+    // ?execute=1 to actually write — safer default for a destructive operation).
     if (path === "/admin/dedup-trades" && req.method === "POST") {
       const authError = requireAuth(req, env);
       if (authError) return authError;
       const db = env.DB;
-      // Find duplicate groups: same fund+market+day with more than one closed trade.
-      // Selects the IDs of all rows that are NOT the earliest in their group.
-      const dupes = await db.prepare(`
-        SELECT pt.id
-        FROM paper_trades pt
-        WHERE pt.status NOT IN ('OPEN', 'EXPIRED')
-          AND (pt.monitor_reason IS NULL OR pt.monitor_reason NOT LIKE 'MIGRATED:%')
-          AND pt.id NOT IN (
-            SELECT MIN(id) FROM paper_trades
-            WHERE status NOT IN ('OPEN', 'EXPIRED')
-              AND (monitor_reason IS NULL OR monitor_reason NOT LIKE 'MIGRATED:%')
-            GROUP BY fund_id, market_id, DATE(opened_at)
-          )
-      `).all<{ id: string }>();
-      const ids = dupes.results?.map(r => r.id) ?? [];
-      if (ids.length === 0) {
-        return Response.json({ invalidated: 0, message: "No duplicates found" }, { headers: corsHeaders(origin) });
+      const u = new URL(req.url);
+      const execute = u.searchParams.get("execute") === "1";
+
+      // Application-layer grouping: avoids the SQLite GROUP BY pitfall where
+      // MIN(id) (random UUID) is not the earliest trade. We fetch all eligible
+      // rows ordered by (fund, market, day, opened_at, id) and keep the first
+      // row of each group in JS — guaranteed to be the chronologically earliest.
+      //
+      // Filter rationale:
+      //   status IN (...REALIZED 6 statuses including EXPIRED): EXPIRED is a
+      //     legitimate close path (max-hold timeout) and must be subject to
+      //     dedup, not excluded.
+      //   monitor_reason NOT LIKE 'MIGRATED:%': excludes both prior MIGRATED
+      //     legacy rows and rows already invalidated by a previous run of
+      //     this endpoint (idempotent).
+      const eligibleSql = `
+        SELECT id, fund_id, market_id, opened_at, pnl, status
+        FROM paper_trades
+        WHERE status IN ('RESOLVED','STOPPED','EXPIRED','PROFIT_TAKEN','TRAILING_STOPPED','REVERSED')
+          AND (monitor_reason IS NULL OR monitor_reason NOT LIKE 'MIGRATED:%')
+        ORDER BY fund_id, market_id, DATE(opened_at), opened_at, id
+      `;
+      const rowsResult = await db.prepare(eligibleSql).all<{
+        id: string; fund_id: string; market_id: string; opened_at: string; pnl: number | null; status: string;
+      }>();
+      const rows = rowsResult.results ?? [];
+
+      // Group by (fund_id, market_id, day) — keep first (earliest opened_at).
+      const seen = new Set<string>();
+      const toInvalidate: typeof rows = [];
+      for (const r of rows) {
+        const day = (r.opened_at ?? "").slice(0, 10);
+        const key = `${r.fund_id}|${r.market_id}|${day}`;
+        if (seen.has(key)) {
+          toInvalidate.push(r);
+        } else {
+          seen.add(key);
+        }
       }
+
+      // Per-fund stats for dry-run preview & post-execute reporting
+      const byFund: Record<string, { count: number; pnl_drop: number }> = {};
+      let totalPnlDrop = 0;
+      for (const r of toInvalidate) {
+        const s = (byFund[r.fund_id] ??= { count: 0, pnl_drop: 0 });
+        const pnl = Number(r.pnl ?? 0);
+        s.count += 1;
+        s.pnl_drop += pnl;
+        totalPnlDrop += pnl;
+      }
+
+      if (toInvalidate.length === 0) {
+        return Response.json(
+          { mode: execute ? "execute" : "dry_run", invalidated: 0, message: "No duplicates found" },
+          { headers: corsHeaders(origin) },
+        );
+      }
+
+      if (!execute) {
+        return Response.json({
+          mode: "dry_run",
+          would_invalidate: toInvalidate.length,
+          total_pnl_drop: Math.round(totalPnlDrop * 100) / 100,
+          per_fund: byFund,
+          hint: "Re-run with ?execute=1 to actually invalidate these trades",
+        }, { headers: corsHeaders(origin) });
+      }
+
+      // Execute — chunked UPDATE to avoid D1 statement size limits
       const now = new Date().toISOString();
-      // Batch UPDATE in chunks of 50 to avoid D1 statement size limits
+      const ids = toInvalidate.map(r => r.id);
       let invalidated = 0;
       for (let i = 0; i < ids.length; i += 50) {
         const chunk = ids.slice(i, i + 50);
         const placeholders = chunk.map(() => "?").join(",");
         const result = await db.prepare(
-          `UPDATE paper_trades SET status = 'EXPIRED', monitor_reason = 'MIGRATED: duplicate — pre-cooldown bug', closed_at = COALESCE(closed_at, ?) WHERE id IN (${placeholders})`
+          `UPDATE paper_trades SET status = 'EXPIRED',
+                  monitor_reason = 'MIGRATED: duplicate — pre-cooldown bug',
+                  closed_at = COALESCE(closed_at, ?)
+           WHERE id IN (${placeholders})`,
         ).bind(now, ...chunk).run();
         invalidated += result.meta?.changes ?? 0;
       }
-      return Response.json({ invalidated, message: `Invalidated ${invalidated} duplicate trades` }, { headers: corsHeaders(origin) });
+      return Response.json({
+        mode: "execute",
+        invalidated,
+        total_pnl_drop: Math.round(totalPnlDrop * 100) / 100,
+        per_fund: byFund,
+        message: `Invalidated ${invalidated} duplicate trades`,
+      }, { headers: corsHeaders(origin) });
     }
 
     if (path === "/risk-monitor") {
