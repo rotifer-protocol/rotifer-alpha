@@ -102,10 +102,21 @@ async function isFrozen(db: D1Database, fundId: string): Promise<boolean> {
   return new Date(r.frozen_until) > new Date();
 }
 
+// Re-entry cooldown: 4 hours after a closed position in the same market.
+// Without this, the cron sequence (monitor-closes → paperTrade-reopens) would
+// generate duplicate trades every 5 minutes for the same market signal.
+const REENTRY_COOLDOWN_HOURS = 4;
+
 async function isDuplicate(db: D1Database, fundId: string, marketId: string): Promise<boolean> {
+  const cooldownCutoff = new Date(Date.now() - REENTRY_COOLDOWN_HOURS * 3_600_000).toISOString();
   const r = await db.prepare(
-    "SELECT COUNT(*) as cnt FROM paper_trades WHERE fund_id = ? AND market_id = ? AND status = 'OPEN'",
-  ).bind(fundId, marketId).first<{ cnt: number }>();
+    `SELECT COUNT(*) as cnt FROM paper_trades
+     WHERE fund_id = ? AND market_id = ? AND (
+       status = 'OPEN'
+       OR (status IN ('PROFIT_TAKEN','TRAILING_STOPPED','RESOLVED','RISK_STOPPED')
+           AND closed_at >= ?)
+     )`,
+  ).bind(fundId, marketId, cooldownCutoff).first<{ cnt: number }>();
   return (r?.cnt ?? 0) > 0;
 }
 
@@ -128,6 +139,10 @@ export async function paperTrade(
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
+  // In-run dedup: tracks (fundId, marketId) pairs opened in THIS invocation so
+  // a concurrent Worker instance racing through the same pipeline tick cannot
+  // bypass the isDuplicate() DB check before the first INSERT is visible.
+  const openedThisRun = new Set<string>();
 
   for (const fund of funds) {
     if (await isFrozen(db, fund.id)) {
@@ -192,7 +207,8 @@ export async function paperTrade(
       }
 
       const effectiveMarketId = sig.resolvedMarketId ?? sig.marketId;
-      if (await isDuplicate(db, fund.id, effectiveMarketId)) {
+      const runKey = `${fund.id}:${effectiveMarketId}`;
+      if (openedThisRun.has(runKey) || await isDuplicate(db, fund.id, effectiveMarketId)) {
         skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
         continue;
       }
@@ -272,6 +288,7 @@ export async function paperTrade(
         await recordShadowOpen(db, tradeId, fund.id, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount);
       }
 
+      openedThisRun.add(runKey);
       cash -= amount;
       positionsOpened++;
       trades.push({
