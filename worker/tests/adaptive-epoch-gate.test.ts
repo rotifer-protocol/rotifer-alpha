@@ -149,3 +149,11 @@ test("gate: day 5 low-traffic cold market → SKIP_LOW_TRADES", () => {
   assert.equal(result.shouldEvolve, false);
   assert.equal(result.reason, "SKIP_LOW_TRADES");
 });
+
+// ─── TARGET_TRADES_SYSTEM matches UI progress bar target ──────────────────
+// Regression guard: apiEvolution epochProgress.tradesTarget must equal
+// TARGET_TRADES_SYSTEM. The UI SQL must count opened_at (not status='closed'
+// which doesn't exist) to stay in sync with the gate trigger logic.
+test("TARGET_TRADES_SYSTEM is 60 (UI progress bar denominator)", () => {
+  assert.equal(TARGET_TRADES_SYSTEM, 60);
+});

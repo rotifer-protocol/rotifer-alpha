@@ -846,11 +846,14 @@ export async function apiEvolution(
   ).first<{ last_at: string | null }>();
   const lastEpochAt = lastEpochRow?.last_at ?? null;
 
-  // Count closed trades since last epoch completed
+  // Count trades since last epoch completed — must match countTradesSince() logic
+  // exactly so the UI progress bar reflects the same threshold as the gate trigger.
+  // (There is no 'closed' status; closed trades are RESOLVED/PROFIT_TAKEN/STOPPED/etc.)
   let tradesThisEpoch = 0;
   if (lastEpochAt) {
     const tradesRow = await db.prepare(
-      "SELECT COUNT(*) as cnt FROM paper_trades WHERE status = 'closed' AND closed_at > ?",
+      `SELECT COUNT(*) as cnt FROM paper_trades
+       WHERE opened_at >= ? AND status NOT IN ('INVALID_PRICE')`,
     ).bind(lastEpochAt).first<{ cnt: number }>();
     tradesThisEpoch = tradesRow?.cnt ?? 0;
   }
