@@ -72,29 +72,64 @@ interface FundFitnessEntry {
   fundId: string;
   fitness: number | null;
   latestEpoch: number | null;
+  /** Δ vs previous epoch's fitness_after. null = first epoch or no prior data. */
+  delta: number | null;
 }
+
+// ─── Fitness zone color ───────────────────────────────────────────────────────
+
+/**
+ * Returns a semantic color based on absolute F(g) value:
+ *   <0.2  → red (danger / mutation candidate)
+ *   <0.4  → orange (warning)
+ *   <0.6  → yellow (fair)
+ *   ≥0.6  → teal accent (good)
+ */
+function fitnessZoneColor(fitness: number): string {
+  if (fitness < 0.2) return "#ef4444";
+  if (fitness < 0.4) return "#f97316";
+  if (fitness < 0.6) return "#eab308";
+  return "var(--r-accent)";
+}
+
+// ─── Latest fitness with delta ───────────────────────────────────────────────
 
 function computeLatestFitness(
   logs: EvolutionLog[],
   allFundIds: string[],
 ): FundFitnessEntry[] {
-  // Build a map: fundId → { fitness, epoch } for the latest known fitness
-  const map: Record<string, { fitness: number | null; epoch: number }> = {};
+  // Per-fund map: epoch → best fitness value (prefer fitness_after over fitness_before)
+  const perFund: Record<string, Map<number, number>> = {};
 
   for (const log of logs) {
-    const existing = map[log.fund_id];
-    if (!existing || log.epoch > existing.epoch) {
-      // Prefer fitness_after; fall back to fitness_before
-      const fitness = log.fitness_after ?? log.fitness_before ?? null;
-      map[log.fund_id] = { fitness, epoch: log.epoch };
+    const fit =
+      log.fitness_after !== null ? log.fitness_after
+      : log.fitness_before !== null ? log.fitness_before
+      : null;
+    if (fit === null) continue;
+    if (!perFund[log.fund_id]) perFund[log.fund_id] = new Map();
+    const existing = perFund[log.fund_id].get(log.epoch);
+    // Only overwrite with fitness_before if there's no entry yet
+    if (existing === undefined || log.fitness_after !== null) {
+      perFund[log.fund_id].set(log.epoch, fit);
     }
   }
 
-  return allFundIds.map(fundId => ({
-    fundId,
-    fitness: map[fundId]?.fitness ?? null,
-    latestEpoch: map[fundId]?.epoch ?? null,
-  }));
+  return allFundIds.map(fundId => {
+    const epochEntries = perFund[fundId]
+      ? [...perFund[fundId].entries()].sort((a, b) => b[0] - a[0])
+      : [];
+    const [latest, prev] = epochEntries;
+    return {
+      fundId,
+      fitness: latest?.[1] ?? null,
+      latestEpoch: latest?.[0] ?? null,
+      delta:
+        latest !== undefined && prev !== undefined
+          ? latest[1] - prev[1]
+          : null,
+    };
+  });
 }
 
 // ─── Tier labels ──────────────────────────────────────────────────────────────
@@ -132,59 +167,127 @@ function StandingsRow({
   const isChampion = rank === 0;
   const isLast = rank === tierSize - 1;
   const fitnessValid = entry.fitness !== null && entry.fitness >= 0;
-  const fitnessBar = fitnessValid ? Math.round((entry.fitness ?? 0) * 100) : 0;
+  const fitness = entry.fitness ?? 0;
+  const { delta } = entry;
+
+  // Semantic color derived from zone (P0-1)
+  const zoneColor = fitnessValid ? fitnessZoneColor(fitness) : "#52525b";
+  const barWidth = fitnessValid ? Math.min(100, fitness * 100) : 0;
+
+  // How deep is this fund in the danger zone (0..1, positive only when fitness < 0.2) (P0-3)
+  const dangerLevel = fitnessValid && fitness < 0.2 ? (1 - fitness / 0.2) : 0;
+
   const medal = medalFor(rank);
   const name = fundDisplayName(entry.fundId, t as any);
 
+  // Delta labels (P0-2)
+  const deltaArrow =
+    delta === null ? null
+    : delta > 0.001 ? "↑"
+    : delta < -0.001 ? "↓"
+    : null;
+  const deltaStr =
+    delta === null || Math.abs(delta) < 0.001 ? null
+    : (delta > 0 ? "+" : "") + delta.toFixed(3);
+  const deltaColor =
+    delta !== null && delta > 0.001 ? "#22c55e"
+    : delta !== null && delta < -0.001 ? "#ef4444"
+    : "#52525b";
+
   return (
     <div
-      className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-colors ${
+      className={`relative flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all overflow-hidden ${
         isChampion
           ? "bg-[var(--r-accent)]/10 border border-[var(--r-accent)]/20"
+          : isLast && dangerLevel > 0
+          ? "border border-red-500/25"
           : isLast
           ? "bg-amber-500/5 border border-amber-500/15"
           : "hover:bg-[var(--r-surface-2)]"
       }`}
+      style={
+        dangerLevel > 0
+          ? { background: `rgba(239,68,68,${(dangerLevel * 0.10).toFixed(3)})` }
+          : undefined
+      }
     >
+      {/* P0-4 Champion: left fund-color accent strip */}
+      {isChampion && (
+        <span
+          className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
+          style={{ background: color }}
+        />
+      )}
+
       {/* Rank badge */}
-      <span className="w-7 text-center text-sm shrink-0">
-        {medal ?? <span className="text-xs text-[var(--r-text-faint)] font-mono">#{rank + 1}</span>}
+      <span className="w-7 text-center text-sm shrink-0 pl-1">
+        {medal ?? (
+          <span className="text-xs text-[var(--r-text-faint)] font-mono">
+            #{rank + 1}
+          </span>
+        )}
       </span>
 
       {/* Fund color dot + name */}
-      <span
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{ background: color }}
-      />
-      <span className="flex-1 text-sm font-medium text-[var(--r-text)] truncate">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+      <span className="flex-1 text-sm font-medium text-[var(--r-text)] truncate min-w-0">
         {name}
       </span>
 
-      {/* Fitness bar */}
-      <div className="hidden sm:flex items-center gap-2 shrink-0">
-        <div className="w-24 h-1.5 rounded-full bg-[var(--r-border)] overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${fitnessBar}%`, background: color, opacity: 0.8 }}
-          />
-        </div>
+      {/* P0-1 Semantic fitness bar — always visible (removed hidden sm:flex) */}
+      <div className="relative w-16 sm:w-24 h-2 rounded-full bg-[var(--r-border)] shrink-0 overflow-hidden">
+        {/* Threshold markers: 0.2 danger line + 0.6 good-zone line */}
+        <span
+          className="absolute inset-y-0 w-px bg-red-500/50"
+          style={{ left: "20%" }}
+        />
+        <span
+          className="absolute inset-y-0 w-px bg-yellow-400/25"
+          style={{ left: "60%" }}
+        />
+        {/* Filled portion */}
+        <span
+          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+          style={{ width: `${barWidth}%`, background: zoneColor }}
+        />
       </div>
 
-      {/* Fitness value */}
-      <span
-        className="w-14 text-right font-mono text-xs tabular-nums shrink-0"
-        style={{ color: fitnessValid ? color : "var(--r-text-faint)" }}
-      >
-        {fitnessValid ? (entry.fitness ?? 0).toFixed(4) : "—"}
-      </span>
+      {/* P0-1 + P0-2 Fitness value (zone-colored) + delta */}
+      <div className="flex flex-col items-end shrink-0 w-[52px]">
+        <span
+          className="font-mono text-xs tabular-nums leading-tight"
+          style={{ color: fitnessValid ? zoneColor : "var(--r-text-faint)" }}
+        >
+          {fitnessValid ? fitness.toFixed(4) : "—"}
+        </span>
+        {deltaArrow && deltaStr && (
+          <span
+            className="text-[9px] font-mono tabular-nums leading-tight"
+            style={{ color: deltaColor }}
+          >
+            {deltaArrow}{deltaStr}
+          </span>
+        )}
+      </div>
 
       {/* Status icon */}
-      <span className="w-4 shrink-0 text-center" aria-label={isChampion && fitnessValid ? t("arenaProtected") : isLast && fitnessValid ? t("arenaMutationCandidate") : undefined}>
+      <span className="w-5 text-center shrink-0">
+        {/* P0-4 Champion: Trophy with accent glow */}
         {isChampion && fitnessValid && (
-          <Trophy className="w-3.5 h-3.5 inline text-[var(--r-accent)]" />
+          <Trophy
+            className="w-4 h-4 inline text-[var(--r-accent)]"
+            style={{ filter: "drop-shadow(0 0 5px var(--r-accent))" }}
+            aria-label={t("arenaProtected")}
+          />
         )}
+        {/* P0-3 Danger: pulse if deep in danger zone */}
         {isLast && fitnessValid && (
-          <AlertTriangle className="w-3.5 h-3.5 inline text-amber-400" />
+          <AlertTriangle
+            className={`w-3.5 h-3.5 inline ${
+              dangerLevel > 0.3 ? "text-red-400 animate-pulse" : "text-amber-400"
+            }`}
+            aria-label={t("arenaMutationCandidate")}
+          />
         )}
       </span>
     </div>
@@ -206,7 +309,15 @@ function TierStandings({
 
   // Sort by fitness desc; null fitness goes to the bottom
   const sorted = group.funds
-    .map(fid => allEntries.find(e => e.fundId === fid) ?? { fundId: fid, fitness: null, latestEpoch: null })
+    .map(
+      fid =>
+        allEntries.find(e => e.fundId === fid) ?? {
+          fundId: fid,
+          fitness: null,
+          latestEpoch: null,
+          delta: null,
+        },
+    )
     .sort((a, b) => {
       if (a.fitness === null && b.fitness === null) return 0;
       if (a.fitness === null) return 1;
@@ -234,9 +345,13 @@ function TierStandings({
         <span className="text-sm font-medium text-[var(--r-text)]">
           {t(cfg.key)}
         </span>
+        {/* P0-4 Champion fitness in header uses semantic zone color */}
         {championFitness !== null && championFitness !== undefined && (
           <span className="ml-auto text-[10px] text-[var(--r-text-faint)]">
-            <span className="text-[var(--r-accent)] font-mono tabular-nums">
+            <span
+              className="font-mono tabular-nums"
+              style={{ color: fitnessZoneColor(championFitness) }}
+            >
               {championFitness.toFixed(4)}
             </span>{" "}
             {t("arenaChampion")}
@@ -319,11 +434,13 @@ export function ArenaPageContent() {
   const logs = data?.logs ?? [];
   const lineage = data?.lineage ?? [];
   const allFundIds = lineage.map(l => l.id);
-  const latestEpoch = data?.epochs?.length
-    ? Math.max(...data.epochs.map(e => e.epoch))
-    : null;
+  // Exclude epoch=-1 (MICRO_EVOLUTION) — only show real PBT epoch number.
+  const latestEpoch = useMemo(() => {
+    const real = (data?.epochs ?? []).filter(e => e.epoch > 0);
+    return real.length > 0 ? Math.max(...real.map(e => e.epoch)) : null;
+  }, [data?.epochs]);
 
-  // Compute latest F(g) per fund
+  // Compute latest F(g) + delta per fund
   const fitnessEntries = useMemo(
     () => computeLatestFitness(logs, allFundIds),
     [logs, allFundIds],

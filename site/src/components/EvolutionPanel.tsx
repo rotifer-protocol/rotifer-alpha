@@ -417,9 +417,11 @@ function EvoKpiStrip({ logs, epochs, epochProgress }: {
   epochProgress?: EpochProgress;
 }) {
   const { t } = useI18n();
-  const latestEpochNum = useMemo(() =>
-    epochs.length > 0 ? Math.max(...epochs.map(e => e.epoch)) : null, [epochs]
-  );
+  // Exclude epoch=-1 (MICRO_EVOLUTION) entries — only count real PBT epochs.
+  const latestEpochNum = useMemo(() => {
+    const real = epochs.filter(e => e.epoch > 0);
+    return real.length > 0 ? Math.max(...real.map(e => e.epoch)) : null;
+  }, [epochs]);
   const avgFitness = useMemo(() => {
     if (latestEpochNum == null) return null;
     const vals = logs.filter(l => l.epoch === latestEpochNum && l.fitness_after != null).map(l => l.fitness_after!);
@@ -461,7 +463,9 @@ function EvoKpiStrip({ logs, epochs, epochProgress }: {
     : undefined;
 
   const items = [
-    { label: t("epoch"),       value: String(epochs.length), mono: true,  dim: false, tooltip: t("tipEpoch") },
+    // Use max real epoch number (exclude epoch=-1 micro-evolution entries) so the
+    // KPI shows "8" when epoch 8 is the latest PBT run, not "9" from epochs.length.
+    { label: t("epoch"),       value: latestEpochNum != null ? String(latestEpochNum) : "—", mono: true,  dim: false, tooltip: t("tipEpoch") },
     { label: t("evoKpiAvg"),   value: avgFitness != null ? avgFitness.toFixed(3) : "—", mono: true, dim: false },
     { label: t("evoKpiBest"),  value: bestFitness != null ? bestFitness.toFixed(3) : "—", mono: true, dim: false, green: true, tooltip: t("tipBestFitness") },
     { label: t("evoKpiLast"),  value: lastEvo ? relativeTime(lastEvo, "") : "—", mono: false, dim: true },
