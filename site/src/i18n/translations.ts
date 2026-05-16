@@ -688,6 +688,26 @@ const en = {
   analysisExportCSV: "Export CSV",
   analysisAllEventTypes: "All Types",
 
+  // ─── Arena page ────────────────────────────────────────────────────────────
+  navArena: "Arena",
+  arenaTitle: "Arena — F(g) Rankings",
+  arenaSubtitle: "Current fitness standings and evolution race by tier",
+  arenaChampion: "Champion",
+  arenaOnNotice: "On Notice",
+  arenaCurrentStandings: "Current Standings",
+  arenaRaceChart: "F(g) Race",
+  arenaNoData: "No evolution data yet",
+  arenaTierAll: "All",
+  arenaTierS: "Small · $10k",
+  arenaTierM: "Mid · $100k",
+  arenaTierL: "Large · $1M",
+  arenaFitnessLabel: "Fitness F(g)",
+  arenaEpochBadge: "Epoch",
+  arenaEpochProgress: "Epoch Progress",
+  arenaBackToLive: "Back to Live",
+  arenaMutationCandidate: "Mutation candidate at next epoch",
+  arenaProtected: "Top performer — protected from mutation",
+
   // ─── Share feature ─────────────────────────────────────────────────────────
   shareTitle: "Share",
   shareModalTitle: "Share Leaderboard",
@@ -1352,6 +1372,26 @@ const zh: Record<TranslationKey, string> = {
   analysisSelectFund: "全部基金",
   analysisExportCSV: "导出 CSV",
   analysisAllEventTypes: "全部类型",
+
+  // ─── Arena page ────────────────────────────────────────────────────────────
+  navArena: "竞技场",
+  arenaTitle: "竞技场 — F(g) 排行",
+  arenaSubtitle: "各层适应度当前排名与进化赛道",
+  arenaChampion: "本层冠军",
+  arenaOnNotice: "待进化",
+  arenaCurrentStandings: "当前排名",
+  arenaRaceChart: "F(g) 赛道",
+  arenaNoData: "暂无进化数据",
+  arenaTierAll: "全部",
+  arenaTierS: "S 层 · $10k",
+  arenaTierM: "M 层 · $100k",
+  arenaTierL: "L 层 · $1M",
+  arenaFitnessLabel: "适应度 F(g)",
+  arenaEpochBadge: "世代",
+  arenaEpochProgress: "本轮进度",
+  arenaBackToLive: "返回实况",
+  arenaMutationCandidate: "下次进化的变异候选",
+  arenaProtected: "最高适应度 — 受保护不被变异",
 
   // ─── Share feature ─────────────────────────────────────────────────────────
   shareTitle: "分享",

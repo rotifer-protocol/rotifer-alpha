@@ -10,6 +10,7 @@ const SECTIONS = [
   { id: "funds",    zh: "基金说明",      en: "Fund Guide" },
   { id: "pbt",      zh: "进化算法 PBT",  en: "PBT Algorithm" },
   { id: "fitness",  zh: "适应度 F(g)",   en: "Fitness F(g)" },
+  { id: "arena",    zh: "竞技场 Arena",  en: "Arena" },
   { id: "glossary", zh: "术语词典",      en: "Glossary" },
   { id: "data",     zh: "数据说明",      en: "Data Notes" },
 ];
@@ -313,7 +314,68 @@ export function DocsPage() {
             )}
           </Section>
 
-          {/* ── 5. Glossary ── */}
+          {/* ── 5. Arena ── */}
+          <Section id="arena" zh="竞技场 Arena" en="Arena">
+            {isZh ? (
+              <>
+                <p>
+                  竞技场（Arena）是 Petri 实验室各层基金<strong className="text-[var(--r-text)]">适应度 F(g) 排名竞争</strong>的专属视图。
+                  在这里，同一层（S / M / L）的 5 支基金以 F(g) 分数为唯一标准排名，
+                  分数最高的基金成为<strong className="text-[var(--r-text)]">本层冠军</strong>（受保护，不被 PBT 变异），
+                  分数最低的基金进入<strong className="text-[var(--r-text)]">待进化</strong>名单，在下一个世代接受参数变异。
+                </p>
+                <div className="glass-card px-4 py-3 space-y-2 text-xs">
+                  {[
+                    ["竞争规则", "仅在同层（相同资金体量）内比较，S 层 vs S 层、M 层 vs M 层、L 层 vs L 层，跨层不做横向比较。"],
+                    ["冠军保护", "每层 F(g) 最高的基金在本轮进化中不会被变异，其参数作为继承来源。"],
+                    ["待进化标记", "每层 F(g) 最低的基金在下一次 PBT Epoch 触发时有高概率接受 INHERIT_MUTATE（继承冠军参数后微调）。"],
+                    ["F(g) 赛道图", "「F(g) 赛道」图以 Epoch 为横轴，展示各基金的适应度曲线。竞争格局的演化可通过赛道图直观查看。"],
+                    ["竞技场 vs 实况", "实况（/）展示当前交易行为；竞技场（/arena）专注于适应度的历史竞争。两者共用同一份进化数据，视角不同。"],
+                  ].map(([term, desc]) => (
+                    <div key={term as string} className="flex gap-2 border-b border-[var(--r-border)]/40 pb-2 last:border-0">
+                      <span className="text-[var(--r-accent)] font-medium shrink-0 w-24">{term}</span>
+                      <span>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-accent)]/40 text-[var(--r-text-faint)]">
+                  🏟️ 竞技场页面入口：导航栏{" "}
+                  <Link to="/arena" className="text-[var(--r-accent)] hover:underline">竞技场</Link>{" "}
+                  → 选择层（S / M / L）→ 查看当前排名与 F(g) 赛道。
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  The Arena is the dedicated view for <strong className="text-[var(--r-text)]">F(g) fitness competition</strong> within each tier.
+                  Five funds compete within the same tier (S / M / L) ranked solely by F(g) score.
+                  The highest-scoring fund becomes the <strong className="text-[var(--r-text)]">Tier Champion</strong> (protected from PBT mutation)
+                  while the lowest-scoring fund is <strong className="text-[var(--r-text)]">On Notice</strong> — it is the mutation candidate for the next epoch.
+                </p>
+                <div className="glass-card px-4 py-3 space-y-2 text-xs">
+                  {[
+                    ["Competition scope", "Within-tier only (same capital size): S vs S, M vs M, L vs L. No cross-tier comparison."],
+                    ["Champion protection", "The highest F(g) fund in each tier is not mutated this round — its parameters become the inheritance source for others."],
+                    ["On Notice", "The lowest F(g) fund in each tier has high probability of receiving INHERIT_MUTATE (copy champion + nudge) at next epoch."],
+                    ["F(g) Race chart", "The race chart plots F(g) over epochs for all funds in the selected tier — lets you track which fund is gaining or losing ground."],
+                    ["Arena vs Live", "Live (/) shows current trading activity; Arena (/arena) focuses on historical fitness competition. Both share the same evolution data, different lens."],
+                  ].map(([term, desc]) => (
+                    <div key={term as string} className="flex gap-2 border-b border-[var(--r-border)]/40 pb-2 last:border-0">
+                      <span className="text-[var(--r-accent)] font-medium shrink-0 w-40">{term}</span>
+                      <span>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-accent)]/40 text-[var(--r-text-faint)]">
+                  🏟️ Open the Arena:{" "}
+                  <Link to="/arena" className="text-[var(--r-accent)] hover:underline">Arena</Link>{" "}
+                  in the nav bar → select tier (S / M / L) → view current standings and F(g) race.
+                </p>
+              </>
+            )}
+          </Section>
+
+          {/* ── 6. Glossary ── */}
           <Section id="glossary" zh="术语词典" en="Glossary">
             {isZh ? (
               <div>

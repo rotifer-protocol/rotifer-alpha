@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
-import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
-import { Languages, ExternalLink, Info, Share2, BarChart2 } from "lucide-react";
+import { Routes, Route, NavLink, Link, Outlet, useOutletContext } from "react-router-dom";
+import { Languages, ExternalLink, Info, Share2, BarChart2, ChevronLeft } from "lucide-react";
 
 // Inline GitHub SVG octicon (lucide-react version used doesn't export Github)
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -38,6 +38,9 @@ const LazyDocsPage = lazy(() =>
 );
 const LazyAnalysisPage = lazy(() =>
   import("./components/AnalysisPage").then(m => ({ default: m.AnalysisPage }))
+)
+const LazyArenaPage = lazy(() =>
+  import("./components/ArenaPage").then(m => ({ default: m.ArenaPageContent }))
 );
 
 // Prefetch on hover — kick off the chunk download before the user clicks the nav link
@@ -46,6 +49,7 @@ const prefetch = {
   shadow:      () => import("./components/ShadowPanel"),
   gene:        () => import("./components/GeneEvolutionPanel"),
   diagnostics: () => import("./components/DiagnosticsPage"),
+  arena:       () => import("./components/ArenaPage"),
 };
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
@@ -330,6 +334,7 @@ function Layout() {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1">
               <NavLink to="/" className={navClass} end>{t("arena")}</NavLink>
+              <NavLink to="/arena" className={navClass} onMouseEnter={prefetch.arena}>{t("navArena")}</NavLink>
               <NavLink to="/evolution" className={navClass} onMouseEnter={prefetch.evolution}>{t("evolution")}</NavLink>
               <NavLink to="/shadow" className={navClass} onMouseEnter={prefetch.shadow}>{t("shadow")}</NavLink>
               <NavLink to="/gene-evolution" className={navClass} onMouseEnter={prefetch.gene}>{t("navGeneEvolution")}</NavLink>
@@ -377,6 +382,16 @@ function Layout() {
             }
           >
             {t("arena")}
+          </NavLink>
+          <NavLink
+            to="/arena"
+            className={({ isActive }) =>
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
+              }`
+            }
+          >
+            {t("navArena")}
           </NavLink>
           <NavLink
             to="/evolution"
@@ -617,20 +632,22 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
   const { t } = useI18n();
   const { data: hbResp } = useFetch<{ heartbeat: HeartbeatData | null }>("/api/heartbeat", 60_000);
   // P3: today's change — pull recent snapshots (60 = 4 days × 15 funds upper bound)
-  const { data: snapResp } = useFetch<{ snapshots: SnapshotData[] }>("/api/snapshots?limit=60", 300_000);
+  const { data: snapResp } = useFetch<{ snapshots: SnapshotData[]; startDate?: string | null }>("/api/snapshots?limit=60", 300_000);
 
   const [showShare, setShowShare] = useState(false);
 
   const totalPool = funds.reduce((s, f) => s + f.totalValue, 0);
   const initialCapital = funds.reduce((s, f) => s + f.initialBalance, 0);
 
-  // Days running: days since earliest snapshot date
-  const daysRunning = snapResp?.snapshots?.length
-    ? Math.max(1, Math.floor(
-        (Date.now() - new Date(snapResp.snapshots.reduce((min, s) => s.date < min ? s.date : min, snapResp.snapshots[0].date)).getTime())
-        / 86400000
-      ) + 1)
-    : null;
+  // Days running: use the API-provided startDate (MIN(date) from DB) so the count
+  // always reflects the true launch date, not the sliding snapshot-window cutoff.
+  const daysRunning = (() => {
+    const anchor = snapResp?.startDate ?? (snapResp?.snapshots?.length
+      ? snapResp.snapshots.reduce((min, s) => s.date < min ? s.date : min, snapResp.snapshots[0].date)
+      : null);
+    if (!anchor) return null;
+    return Math.max(1, Math.floor((Date.now() - new Date(anchor).getTime()) / 86400000) + 1);
+  })();
   const SEASON_DAYS = 90;
   const arcRadius = 15;
   const arcCirc = 2 * Math.PI * arcRadius;
@@ -849,6 +866,7 @@ function HeroOverview({ funds, events }: { funds: FundData[]; events: AgentEvent
       onClose={() => setShowShare(false)}
       funds={funds}
       snapshots={snapResp?.snapshots ?? []}
+      startDate={snapResp?.startDate}
       totalPool={totalPool}
       initialCapital={initialCapital}
       totalPnl={totalPnl}
@@ -1120,6 +1138,30 @@ function GeneEvolutionPage() {
   );
 }
 
+function ArenaCompetitionPage() {
+  const { t } = useI18n();
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <Link
+          to="/"
+          className="flex items-center gap-1 text-xs text-[var(--r-text-faint)] hover:text-[var(--r-accent)] transition-colors no-underline"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          {t("arenaBackToLive")}
+        </Link>
+      </div>
+      <div className="mb-6">
+        <h2 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-1">
+          {t("arenaTitle")}
+        </h2>
+        <p className="text-xs text-[var(--r-text-faint)]">{t("arenaSubtitle")}</p>
+      </div>
+      <LazyArenaPage />
+    </div>
+  );
+}
+
 function ShadowPage() {
   const { t } = useI18n();
 
@@ -1144,6 +1186,9 @@ export default function App() {
         } />
         <Route path="shadow" element={
           <Suspense fallback={<PageSkeleton />}><ShadowPage /></Suspense>
+        } />
+        <Route path="arena" element={
+          <Suspense fallback={<PageSkeleton />}><ArenaCompetitionPage /></Suspense>
         } />
         <Route path="gene-evolution" element={
           <Suspense fallback={<PageSkeleton />}><GeneEvolutionPage /></Suspense>
