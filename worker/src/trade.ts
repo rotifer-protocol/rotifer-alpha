@@ -28,6 +28,7 @@ import {
   type OpenTradeWithMark,
   OPEN_TRADE_MARK_COLUMNS_SQL,
   PERFORMANCE_REALIZED_TRADE_WHERE_SQL,
+  REALIZED_TRADE_STATUS_SQL,
 } from "./accounting";
 import { fetchClobTokenIds } from "./price";
 import { getExecutionMode, recordShadowOpen } from "./execution";
@@ -102,9 +103,16 @@ async function isFrozen(db: D1Database, fundId: string): Promise<boolean> {
   return new Date(r.frozen_until) > new Date();
 }
 
-// Re-entry cooldown: 4 hours after a closed position in the same market.
-// Without this, the cron sequence (monitor-closes → paperTrade-reopens) would
-// generate duplicate trades every 5 minutes for the same market signal.
+// Re-entry cooldown: prevent re-entering a market that was recently closed by
+// ANY exit path (take-profit, stop-loss, expiry, reversal, resolution).
+//
+// Without this, the pipeline sequence (risk→settle→monitor → trader) would
+// re-open positions that were just closed in the same 5-minute cron tick.
+// Confirmed root cause of the Harvey Weinstein 3× duplicate trades (2026-05-16).
+//
+// REALIZED_TRADE_STATUS_SQL is imported from accounting.ts — single source of
+// truth for all closed-trade statuses. Adding a new close reason there
+// automatically extends the cooldown, preventing future recurrences.
 const REENTRY_COOLDOWN_HOURS = 4;
 
 async function isDuplicate(db: D1Database, fundId: string, marketId: string): Promise<boolean> {
@@ -113,8 +121,7 @@ async function isDuplicate(db: D1Database, fundId: string, marketId: string): Pr
     `SELECT COUNT(*) as cnt FROM paper_trades
      WHERE fund_id = ? AND market_id = ? AND (
        status = 'OPEN'
-       OR (status IN ('PROFIT_TAKEN','TRAILING_STOPPED','RESOLVED','RISK_STOPPED')
-           AND closed_at >= ?)
+       OR (status IN (${REALIZED_TRADE_STATUS_SQL}) AND closed_at >= ?)
      )`,
   ).bind(fundId, marketId, cooldownCutoff).first<{ cnt: number }>();
   return (r?.cnt ?? 0) > 0;
@@ -157,6 +164,8 @@ export async function paperTrade(
     }
 
     let cash = await getBalance(db, fund.id, fund.initialBalance);
+    // positionsOpened tracks new opens within this invocation so the
+    // MAX_POSITIONS gate stays accurate without an extra DB round-trip per signal.
     let positionsOpened = 0;
     // D-Lite: read last_price from D1 (refreshed every 5min by price-refresh.ts cron),
     // never fetch per-request. Stale rows contribute 0 to unrealized — see

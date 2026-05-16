@@ -595,6 +595,46 @@ export default {
       }
     }
 
+    // One-time cleanup: invalidate duplicate closed trades caused by the
+    // missing re-entry cooldown (pre-fix period: 2026-05-11 → 2026-05-16).
+    // Keeps the earliest trade per (fund_id, market_id, calendar day).
+    // Safe to call multiple times — already-invalidated rows are excluded.
+    if (path === "/admin/dedup-trades" && req.method === "POST") {
+      const authError = requireAuth(req, env);
+      if (authError) return authError;
+      const db = env.DB;
+      // Find duplicate groups: same fund+market+day with more than one closed trade.
+      // Selects the IDs of all rows that are NOT the earliest in their group.
+      const dupes = await db.prepare(`
+        SELECT pt.id
+        FROM paper_trades pt
+        WHERE pt.status NOT IN ('OPEN', 'EXPIRED')
+          AND (pt.monitor_reason IS NULL OR pt.monitor_reason NOT LIKE 'MIGRATED:%')
+          AND pt.id NOT IN (
+            SELECT MIN(id) FROM paper_trades
+            WHERE status NOT IN ('OPEN', 'EXPIRED')
+              AND (monitor_reason IS NULL OR monitor_reason NOT LIKE 'MIGRATED:%')
+            GROUP BY fund_id, market_id, DATE(opened_at)
+          )
+      `).all<{ id: string }>();
+      const ids = dupes.results?.map(r => r.id) ?? [];
+      if (ids.length === 0) {
+        return Response.json({ invalidated: 0, message: "No duplicates found" }, { headers: corsHeaders(origin) });
+      }
+      const now = new Date().toISOString();
+      // Batch UPDATE in chunks of 50 to avoid D1 statement size limits
+      let invalidated = 0;
+      for (let i = 0; i < ids.length; i += 50) {
+        const chunk = ids.slice(i, i + 50);
+        const placeholders = chunk.map(() => "?").join(",");
+        const result = await db.prepare(
+          `UPDATE paper_trades SET status = 'EXPIRED', monitor_reason = 'MIGRATED: duplicate — pre-cooldown bug', closed_at = COALESCE(closed_at, ?) WHERE id IN (${placeholders})`
+        ).bind(now, ...chunk).run();
+        invalidated += result.meta?.changes ?? 0;
+      }
+      return Response.json({ invalidated, message: `Invalidated ${invalidated} duplicate trades` }, { headers: corsHeaders(origin) });
+    }
+
     if (path === "/risk-monitor") {
       const id = env.RISK_MONITOR.idFromName("singleton");
       const stub = env.RISK_MONITOR.get(id);
