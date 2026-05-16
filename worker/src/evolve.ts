@@ -556,8 +556,9 @@ async function runTierPBT(
 // ─── Adaptive Gate DB Helpers ────────────────────────────
 
 async function getLastEpochStartedAt(db: D1Database): Promise<string | null> {
+  // epoch > 0 explicitly excludes MICRO_EVOLUTION rows (epoch = -1).
   const r = await db.prepare(
-    "SELECT MIN(executed_at) as started_at FROM evolution_log WHERE epoch = (SELECT MAX(epoch) FROM evolution_log)",
+    "SELECT MIN(executed_at) as started_at FROM evolution_log WHERE epoch = (SELECT MAX(epoch) FROM evolution_log WHERE epoch > 0)",
   ).first<{ started_at: string | null }>();
   return r?.started_at ?? null;
 }
@@ -840,23 +841,17 @@ export async function apiEvolution(
   ).all();
 
   // ── Epoch progress: expose real trigger state to frontend ──────────────────
-  // Find the latest epoch completion timestamp (most recent evolution_log row)
-  const lastEpochRow = await db.prepare(
-    "SELECT MAX(executed_at) as last_at FROM evolution_log",
-  ).first<{ last_at: string | null }>();
-  const lastEpochAt = lastEpochRow?.last_at ?? null;
+  // Use getLastEpochStartedAt() — same helper as the adaptive gate — so the
+  // UI progress bar is guaranteed to share identical "since when" semantics.
+  // IMPORTANT: must NOT use MAX(executed_at) from all rows because MICRO_EVOLUTION
+  // entries (epoch=-1) constantly update executed_at and would make tradesThisEpoch
+  // appear as 0 (only trades from the last few minutes would qualify).
+  const lastEpochAt = await getLastEpochStartedAt(db);
 
-  // Count trades since last epoch completed — must match countTradesSince() logic
-  // exactly so the UI progress bar reflects the same threshold as the gate trigger.
-  // (There is no 'closed' status; closed trades are RESOLVED/PROFIT_TAKEN/STOPPED/etc.)
-  let tradesThisEpoch = 0;
-  if (lastEpochAt) {
-    const tradesRow = await db.prepare(
-      `SELECT COUNT(*) as cnt FROM paper_trades
-       WHERE opened_at >= ? AND status NOT IN ('INVALID_PRICE')`,
-    ).bind(lastEpochAt).first<{ cnt: number }>();
-    tradesThisEpoch = tradesRow?.cnt ?? 0;
-  }
+  // Count trades since last PBT epoch — identical logic to countTradesSince()
+  const tradesThisEpoch = lastEpochAt
+    ? await countTradesSince(db, lastEpochAt)
+    : 0;
 
   const epochProgress = {
     tradesThisEpoch,
