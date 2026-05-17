@@ -146,9 +146,15 @@ export async function paperTrade(
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
-  // In-run dedup: tracks (fundId, marketId) pairs opened in THIS invocation so
-  // a concurrent Worker instance racing through the same pipeline tick cannot
-  // bypass the isDuplicate() DB check before the first INSERT is visible.
+  // In-run dedup: tracks (fundId, marketId) pairs opened in THIS invocation.
+  // First line of defense — eliminates same-invocation duplicates (sigs[] containing
+  // multiple signals for the same effectiveMarketId).
+  //
+  // NOT sufficient on its own: Cloudflare Workers cron at-least-once semantics
+  // routinely fires 2-3 concurrent isolates per */5 schedule (forensic 2026-05-17:
+  // 16 of 24h ticks). Each isolate has its own openedThisRun set, so the residual
+  // race is caught by the schema/021 partial UNIQUE index → SQLITE_CONSTRAINT_UNIQUE
+  // is handled at the INSERT site below.
   const openedThisRun = new Set<string>();
 
   for (const fund of funds) {
@@ -280,17 +286,31 @@ export async function paperTrade(
       } catch {
         tokenId = null;
       }
-      await db.prepare(
-        `INSERT INTO paper_trades (
-          id, fund_id, signal_id, market_id, slug, question, direction,
-          entry_price, shares, amount, status, opened_at,
-          token_id, last_price, last_price_updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
-      ).bind(
-        tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir,
-        price, shares, amount, ts,
-        tokenId, price, ts,
-      ).run();
+      // schema/021 partial UNIQUE index on (fund_id, market_id) WHERE status='OPEN'
+      // catches the residual race that openedThisRun + isDuplicate cannot:
+      // Cloudflare Workers cron at-least-once → 2-3 concurrent isolates each
+      // with their own in-memory set, all reading 0 OPEN rows pre-INSERT.
+      // SQLITE_CONSTRAINT_UNIQUE → translate to DUPLICATE_MARKET skip; do NOT throw.
+      try {
+        await db.prepare(
+          `INSERT INTO paper_trades (
+            id, fund_id, signal_id, market_id, slug, question, direction,
+            entry_price, shares, amount, status, opened_at,
+            token_id, last_price, last_price_updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
+        ).bind(
+          tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir,
+          price, shares, amount, ts,
+          tokenId, price, ts,
+        ).run();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("UNIQUE constraint failed") && msg.includes("paper_trades")) {
+          skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
+          continue;
+        }
+        throw e;
+      }
 
       const mode = await getExecutionMode(db);
       if (mode === "shadow") {

@@ -238,3 +238,365 @@ test("openedThisRun prevents same-fund same-market being opened twice in one inv
   assert.equal(insertCount, 1,
     "openedThisRun should block the second signal for the same market — expected exactly 1 INSERT");
 });
+
+// ─── partial UNIQUE index race (schema/021) ───────────────────────────────────
+//
+// Validates the LAST line of defense for the cron-concurrency duplicate-trade
+// pattern. Forensic 2026-05-17: Cloudflare Workers cron at-least-once semantics
+// fired 2-3 concurrent isolates for the same */5 schedule on 16 of 24h ticks.
+// Each isolate runs its own paperTrade() with its own openedThisRun set, all
+// reading 0 OPEN rows pre-INSERT (D1 read-replica lag), then all INSERT racing.
+//
+// schema/021 partial UNIQUE index on (fund_id, market_id) WHERE status='OPEN'
+// makes only ONE INSERT win at the DB; the rest receive
+// SQLITE_CONSTRAINT_UNIQUE. trade.ts must catch this and translate to a
+// DUPLICATE_MARKET skip (NOT propagate the error and break the loop for
+// subsequent funds/sigs).
+
+test("INSERT failing with SQLITE_CONSTRAINT_UNIQUE is caught and skipped (schema/021 race)", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let insertAttempts = 0;
+  let insertSuccesses = 0;
+  let duplicateSkips = 0;
+  class UniqueRaceDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            // Simulate 0 rows from every read — the racing-isolates view of D1
+            // before any INSERT is committed.
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) {
+              insertAttempts++;
+              // First INSERT succeeds (this isolate "wins" the race);
+              // every subsequent INSERT for the same (fund, market) hits the
+              // partial unique index and SQLite raises this exact error string.
+              if (insertAttempts === 1) {
+                insertSuccesses++;
+                return { success: true, results: [] };
+              }
+              throw new Error(
+                "D1_ERROR: UNIQUE constraint failed: paper_trades.fund_id, paper_trades.market_id: SQLITE_CONSTRAINT",
+              );
+            }
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  // Two DIFFERENT signals for two DIFFERENT markets — but we'll force them to
+  // resolve to the SAME effectiveMarketId so the partial index race fires.
+  // openedThisRun would normally block this in a single paperTrade call (sig B
+  // → set.has() === true → DUPLICATE_MARKET skip). We bypass openedThisRun by
+  // making sig A fail at INSERT (here it succeeds) and feeding two markets
+  // that are actually different — the 2nd raises UNIQUE because we asserted it
+  // in the mock. This is the post-cleanup invariant: the catch block must
+  // translate the throw into a skipReason, NOT bubble the error out.
+  const sigA = {
+    signalId: "SIG-CONCURRENT-A",
+    type: "MISPRICING" as const,
+    marketId: "market-A",
+    slug: "concurrent-A",
+    question: "concurrent A?",
+    description: "test",
+    edge: 2.5,
+    confidence: 0.7,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 50000 },
+    timestamp: new Date().toISOString(),
+  };
+  const sigB = { ...sigA, signalId: "SIG-CONCURRENT-B", marketId: "market-B", slug: "concurrent-B" };
+
+  const fund = {
+    id: "shark",
+    name: "鲨鱼·S",
+    emoji: "🦈",
+    initialBalance: 10000,
+    maxOpenPositions: 5,
+    maxPerEvent: 10000,
+    minEdge: 1.0,
+    minConfidence: 0.3,
+    minVolume: 1000,
+    minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61,
+    trailingStopPercent: 0,
+    probReversalThreshold: 0,
+    stopLossPercent: 0,
+    maxHoldDays: 21,
+    sizingScale: 0.1,
+    tier: "S" as const,
+    allowOtmBuys: true,
+    baseSizingUsd: 100,
+    referenceSizingEquity: 10000,
+  };
+
+  let result: Awaited<ReturnType<typeof paperTrade>>;
+  try {
+    result = await paperTrade(
+      new UniqueRaceDb() as unknown as D1Database,
+      [sigA, sigB],
+      [],
+      [fund as any],
+      new Date().toISOString(),
+    );
+  } catch (e) {
+    assert.fail(`paperTrade must NOT throw on UNIQUE constraint failure — got: ${e}`);
+  }
+
+  duplicateSkips = result.skipReasons.filter(s => s.code === "DUPLICATE_MARKET").length;
+
+  assert.equal(insertAttempts, 2, "Expected 2 INSERT attempts (one per signal)");
+  assert.equal(insertSuccesses, 1, "Expected exactly 1 INSERT to succeed (the race winner)");
+  assert.equal(result.trades.length, 1, "Only the winning INSERT should produce a trade record");
+  assert.equal(duplicateSkips, 1,
+    "The losing INSERT must produce a DUPLICATE_MARKET skip reason (not bubble the throw)");
+});
+
+test("non-UNIQUE INSERT errors still propagate (no overly broad swallow)", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  class FailingDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) {
+              throw new Error("D1_ERROR: disk full / network timeout / arbitrary other error");
+            }
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const sig = {
+    signalId: "SIG-FAIL-OTHER",
+    type: "MISPRICING" as const,
+    marketId: "market-other-error",
+    slug: "other-error",
+    question: "Other error?",
+    description: "test",
+    edge: 2.5,
+    confidence: 0.7,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 50000 },
+    timestamp: new Date().toISOString(),
+  };
+  const fund = {
+    id: "shark",
+    name: "鲨鱼·S",
+    emoji: "🦈",
+    initialBalance: 10000,
+    maxOpenPositions: 5,
+    maxPerEvent: 10000,
+    minEdge: 1.0,
+    minConfidence: 0.3,
+    minVolume: 1000,
+    minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61,
+    trailingStopPercent: 0,
+    probReversalThreshold: 0,
+    stopLossPercent: 0,
+    maxHoldDays: 21,
+    sizingScale: 0.1,
+    tier: "S" as const,
+    allowOtmBuys: true,
+    baseSizingUsd: 100,
+    referenceSizingEquity: 10000,
+  };
+
+  await assert.rejects(
+    paperTrade(
+      new FailingDb() as unknown as D1Database,
+      [sig],
+      [],
+      [fund as any],
+      new Date().toISOString(),
+    ),
+    /disk full|network timeout|arbitrary other error/,
+    "Non-UNIQUE INSERT errors must propagate (the catch must NOT swallow generic errors)",
+  );
+});
+
+// ─── isDuplicate cooldown behavior — M15 distributed read-after-write ─────────
+//
+// Behavior-level tests added per ADR-280 D5: instead of asserting SQL string
+// shape (which M10 warns is "spuriously precise"), verify paperTrade's actual
+// behavior given different mock D1 responses to the isDuplicate query.
+//
+// What's tested: the *behavior* of the cooldown decision (cnt=1 → skip vs
+// cnt=0 → INSERT), not the SQL string. Future refactors that change the SQL
+// (e.g. adjust cooldown window, change status list) keep these tests valid as
+// long as the function still maps cnt > 0 to "duplicate".
+//
+// Limitation: still a mock-based test, not a real SQLite integration test.
+// Per ADR-280 D5, full in-memory SQLite is deferred to trade.ts refactor or
+// isDuplicate cooldown logic change. M10 ("spurious accuracy") not fully
+// eliminated, but partial-UNIQUE index (schema/021) is the physical floor.
+
+const cooldownFund = {
+  id: "shark",
+  name: "鲨鱼·S",
+  emoji: "🦈",
+  initialBalance: 10000,
+  maxOpenPositions: 5,
+  maxPerEvent: 10000,
+  minEdge: 1.0,
+  minConfidence: 0.3,
+  minVolume: 1000,
+  minLiquidity: 1000,
+  allowedTypes: ["MISPRICING"] as const,
+  takeProfitPercent: 0.61,
+  trailingStopPercent: 0,
+  probReversalThreshold: 0,
+  stopLossPercent: 0,
+  maxHoldDays: 21,
+  sizingScale: 0.1,
+  tier: "S" as const,
+  allowOtmBuys: true,
+  baseSizingUsd: 100,
+  referenceSizingEquity: 10000,
+};
+
+const cooldownSig = (id: string, marketId: string, slug: string) => ({
+  signalId: id,
+  type: "MISPRICING" as const,
+  marketId,
+  slug,
+  question: "Cooldown test?",
+  description: "test",
+  edge: 2.5,
+  confidence: 0.7,
+  direction: "BUY_BOTH" as const,
+  prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 50000 },
+  timestamp: new Date().toISOString(),
+});
+
+test("isDuplicate cooldown HIT (cnt=1) → DUPLICATE_MARKET skip + 0 INSERT", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let insertCount = 0;
+  class CooldownHitDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            // SIMULATE: D1 returns cnt=1 for the isDuplicate query → there's
+            // a recent realized trade for (fund, market) within the cooldown
+            // window. paperTrade should treat this as duplicate and skip.
+            if (sql.includes("closed_at >= ?")) return { cnt: 1 };
+            // No active OPEN positions for the open-position-count check
+            if (sql.includes("COUNT(*) as cnt") && sql.includes("status = 'OPEN'")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCount++;
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const result = await paperTrade(
+    new CooldownHitDb() as unknown as D1Database,
+    [cooldownSig("SIG-COOLDOWN-HIT", "market-cooldown-hit", "cooldown-hit")],
+    [],
+    [cooldownFund as any],
+    new Date().toISOString(),
+  );
+
+  const dupSkips = result.skipReasons.filter(s => s.code === "DUPLICATE_MARKET");
+
+  assert.equal(insertCount, 0,
+    "Cooldown hit must produce 0 INSERT — paperTrade must respect isDuplicate's positive signal");
+  assert.equal(result.trades.length, 0,
+    "No trade record should be produced when cooldown blocks");
+  assert.equal(dupSkips.length, 1,
+    `Cooldown hit should produce exactly 1 DUPLICATE_MARKET skip; got skipReasons: ${JSON.stringify(result.skipReasons)}`);
+});
+
+test("isDuplicate cooldown MISS (cnt=0) → INSERT proceeds + trade record produced", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let insertCount = 0;
+  class CooldownMissDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            // SIMULATE: D1 returns cnt=0 → no recent duplicate within cooldown.
+            // paperTrade should proceed with the INSERT.
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt") && sql.includes("status = 'OPEN'")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCount++;
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const result = await paperTrade(
+    new CooldownMissDb() as unknown as D1Database,
+    [cooldownSig("SIG-COOLDOWN-MISS", "market-cooldown-miss", "cooldown-miss")],
+    [],
+    [cooldownFund as any],
+    new Date().toISOString(),
+  );
+
+  const dupSkips = result.skipReasons.filter(s => s.code === "DUPLICATE_MARKET");
+
+  assert.equal(insertCount, 1,
+    "Cooldown miss must produce 1 INSERT — paperTrade should proceed when isDuplicate signals no duplicate");
+  assert.equal(result.trades.length, 1,
+    "Exactly one trade record should be produced when cooldown is clean");
+  assert.equal(dupSkips.length, 0,
+    `No DUPLICATE_MARKET skip should appear when cnt=0; got skipReasons: ${JSON.stringify(result.skipReasons)}`);
+});
