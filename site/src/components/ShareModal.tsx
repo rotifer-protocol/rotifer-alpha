@@ -26,6 +26,7 @@ interface ShareModalProps {
   onClose: () => void;
   funds: FundData[];
   snapshots: SnapshotRow[];
+  startDate?: string | null;
   totalPool: number;
   initialCapital: number;
   totalPnl: number;
@@ -196,7 +197,7 @@ function StepBadge({ done, active, label }: { done?: boolean; active?: boolean; 
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 function ShareModalInner({
-  onClose, funds, snapshots,
+  onClose, funds, snapshots, startDate,
   totalPnl, totalReturnPct, todayChangePct,
 }: Omit<ShareModalProps, "isOpen">) {
   const { t, locale } = useI18n();
@@ -259,14 +260,16 @@ function ShareModalInner({
     if (yPool > 0) todayChangeAbs = todayMatched - yPool;
   }
 
+  // Use API-provided startDate (MIN(date) from DB) to avoid the sliding window bug.
   let daysRunning: number | null = null;
-  if (snapshots.length > 0) {
-    const earliest = snapshots.reduce((m, s) => {
-      const ts = new Date(s.date).getTime();
-      return ts < m ? ts : m;
+  const anchor = startDate ?? (snapshots.length > 0 ? (() => {
+    const ts = snapshots.reduce((m, s) => {
+      const t = new Date(s.date).getTime();
+      return t < m ? t : m;
     }, Infinity);
-    if (isFinite(earliest)) daysRunning = Math.round((Date.now() - earliest) / 86_400_000);
-  }
+    return isFinite(ts) ? new Date(ts).toISOString() : null;
+  })() : null);
+  if (anchor) daysRunning = Math.round((Date.now() - new Date(anchor).getTime()) / 86_400_000);
 
   const now = new Date();
   const dateStr = isZh

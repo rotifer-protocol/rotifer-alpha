@@ -677,7 +677,17 @@ async function apiSnapshots(
   const result = await db.prepare(
     "SELECT * FROM portfolio_snapshots ORDER BY date DESC LIMIT ?",
   ).bind(limit * 5).all();
-  return Response.json({ snapshots: result.results || [] }, { headers });
+
+  // Always query the true system start date independently of the sliding limit window.
+  // This prevents daysRunning from decreasing as the window shrinks relative to total records.
+  const startRow = await db.prepare(
+    "SELECT MIN(date) as start_date FROM portfolio_snapshots",
+  ).first<{ start_date: string | null }>();
+
+  return Response.json({
+    snapshots: result.results || [],
+    startDate: startRow?.start_date ?? null,
+  }, { headers });
 }
 
 /**

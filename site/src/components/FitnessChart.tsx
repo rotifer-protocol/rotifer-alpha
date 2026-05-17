@@ -23,6 +23,9 @@ interface Props {
   allFundIds?: string[];
   /** Epoch selected in the timeline — highlights that column in the chart */
   activeEpoch?: number | null;
+  /** External hover from a sibling component (e.g. standings row). Maps to
+   *  the correct display ID (personality family in collapsed mode). */
+  externalHoveredId?: string | null;
 }
 
 // ─── Custom Tooltip (excludes _min/_bandSize from display) ──────────────────
@@ -126,7 +129,7 @@ function ThresholdLabel({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
-export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: Props) {
+export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, externalHoveredId }: Props) {
   const { t, locale } = useI18n();
   const [showBefore, setShowBefore] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -334,8 +337,14 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const getColor = (did: string) => FUND_HEX_COLORS[did] ?? "#a1a1aa";
   const getLabel = (did: string) => fundDisplayName(did, t);
+  // Map an external (individual) fund ID to the display ID used in this chart.
+  // In collapsed mode, displayIds are personality keys; in expanded mode they're fund IDs.
+  const externalDisplayId = externalHoveredId
+    ? (effectiveExpanded ? externalHoveredId : fundPersonality(externalHoveredId))
+    : null;
+  const effectiveHoveredId = hoveredId ?? externalDisplayId ?? null;
   const getOpacity = (did: string) =>
-    hoveredId === null ? 1 : hoveredId === did ? 1 : 0.15;
+    effectiveHoveredId === null ? 1 : effectiveHoveredId === did ? 1 : 0.15;
 
   // Custom dot: invisible everywhere; label + dot only at last index
   const makeEndDot = (did: string) => (props: {
@@ -616,7 +625,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch }: 
         {displayIds.filter(did => fundsWithData.has(did)).map(did => {
           const color = getColor(did);
           const isBest = did === bestId;
-          const isHov = hoveredId === did;
+          const isHov = hoveredId === did || (hoveredId === null && externalDisplayId === did);
           return (
             <button
               key={did}

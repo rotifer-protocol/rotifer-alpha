@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
-import { Routes, Route, NavLink, Link, Outlet, useOutletContext } from "react-router-dom";
-import { Languages, ExternalLink, Info, Share2, BarChart2, ChevronLeft } from "lucide-react";
+import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
+import { Languages, ExternalLink, Info, Share2, BarChart2 } from "lucide-react";
 
 // Inline GitHub SVG octicon (lucide-react version used doesn't export Github)
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -1142,15 +1142,6 @@ function ArenaCompetitionPage() {
   const { t } = useI18n();
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <Link
-          to="/"
-          className="flex items-center gap-1 text-xs text-[var(--r-text-faint)] hover:text-[var(--r-accent)] transition-colors no-underline"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-          {t("arenaBackToLive")}
-        </Link>
-      </div>
       <div className="mb-6">
         <h2 className="text-sm font-medium text-[var(--r-text-muted)] uppercase tracking-widest mb-1">
           {t("arenaTitle")}
