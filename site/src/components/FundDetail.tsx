@@ -130,9 +130,13 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
   const livePnl = trade.unrealized_pnl ?? 0;
   const statusKey = STATUS_KEYS[trade.status];
   const dirKey = DIRECTION_KEYS[trade.direction];
-  // Derive displayOutcome for rows pre-dating the outcome_name column (2026-05-18 migration).
-  const displayOutcome = trade.outcome_name
-    ?? (trade.direction === "BUY_YES" ? "Yes" : trade.direction === "SELL_YES" ? "No" : null);
+  // Derive displayOutcome. For binary YES/NO markets the outcome ("Yes"/"No") adds no
+  // information beyond the direction label — only show it for categorical/multi-outcome markets
+  // where the specific option name (e.g. "Cleveland Cavaliers") is genuinely informative.
+  const rawOutcome = trade.outcome_name ?? null;
+  // "Yes" / "No" are the Polymarket token names for binary markets; suppress them.
+  const isCategoricalOutcome = rawOutcome !== null && rawOutcome !== "Yes" && rawOutcome !== "No";
+  const displayOutcome = isCategoricalOutcome ? rawOutcome : null;
   const closeReasonKey = trade.close_reason_code ? CLOSE_REASON_KEYS[trade.close_reason_code] : undefined;
   const closeReasonSummary = closeReasonKey
     ? t(closeReasonKey)
@@ -180,9 +184,11 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
             <ExternalLink className="w-3 h-3 shrink-0 opacity-40" />
           </a>
         </div>
-        {displayOutcome && (
-          <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0 max-w-[120px] truncate" title={displayOutcome}>{displayOutcome}</span>
-        )}
+        {/* Header summary: categorical → show outcome name; binary → show direction label */}
+        {displayOutcome
+          ? <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0 max-w-[140px] truncate" title={displayOutcome}>{displayOutcome}</span>
+          : <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0">{dirKey ? t(dirKey) : trade.direction}</span>
+        }
         <span className="text-xs font-mono shrink-0">{fmtUSD(trade.amount)}</span>
         {isOpen && trade.unrealized_pnl != null && (
           <span className={`text-xs font-mono font-medium shrink-0 ${livePnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
@@ -251,12 +257,12 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
                   : trade.exit_price != null ? `$${trade.exit_price.toFixed(3)}` : isInvalidated ? t("notApplicable") : "—"}
               </p>
             </div>
-            <div>
-              <span className="text-[var(--r-text-muted)]">{t("outcomeLabel")}</span>
-              <p className="font-medium truncate" title={displayOutcome ?? undefined}>
-                {displayOutcome ?? "—"}
-              </p>
-            </div>
+            {displayOutcome && (
+              <div>
+                <span className="text-[var(--r-text-muted)]">{t("outcomeLabel")}</span>
+                <p className="font-medium truncate" title={displayOutcome}>{displayOutcome}</p>
+              </div>
+            )}
             <div>
               <span className="text-[var(--r-text-muted)]">{t("direction")}</span>
               <p className="font-medium">{dirKey ? t(dirKey) : trade.direction}</p>
