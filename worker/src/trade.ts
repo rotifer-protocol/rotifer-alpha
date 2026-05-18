@@ -55,6 +55,30 @@ export function entryPrice(sig: ArbSignal): number {
 }
 
 /**
+ * Returns the specific outcome label being traded.
+ *
+ * For binary YES/NO markets: "Yes" or "No".
+ * For multi-outcome categorical markets (MULTI_OUTCOME_ARB): the outcome key
+ * whose price was selected by entryPrice() — e.g. "Cleveland Cavaliers".
+ *
+ * Mirrors entryPrice() exactly: same META_KEYS filter, same max/min logic,
+ * but returns the KEY (outcome name) instead of the VALUE (price).
+ */
+export function outcomeKey(sig: ArbSignal): string {
+  if (sig.direction === "BUY_YES") return "Yes";
+  if (sig.direction === "SELL_YES") return "No";
+  if (sig.type === "SPREAD") return "Spread";
+  const META_KEYS = new Set(["sum", "yes_price_sum", "volume24hr", "liquidity"]);
+  const p = Object.entries(sig.prices).filter(([k]) => !META_KEYS.has(k));
+  if (p.length === 0) return sig.direction;
+  if (sig.direction === "BUY_STRONGEST" || sig.direction === "BUY_BOTH") {
+    return p.reduce((best, cur) => cur[1] > best[1] ? cur : best)[0];
+  }
+  // SELL_WEAKEST, SELL_BOTH — min-side outcome
+  return p.reduce((worst, cur) => cur[1] < worst[1] ? cur : worst)[0];
+}
+
+/**
  * Direction-aware price boundary check.
  *
  * Why direction matters: entryPrice() returns max-side for BUY signals
@@ -314,15 +338,16 @@ export async function paperTrade(
       // Cloudflare Workers cron at-least-once → 2-3 concurrent isolates each
       // with their own in-memory set, all reading 0 OPEN rows pre-INSERT.
       // SQLITE_CONSTRAINT_UNIQUE → translate to DUPLICATE_MARKET skip; do NOT throw.
+      const outcomeName = outcomeKey(sig);
       try {
         await db.prepare(
           `INSERT INTO paper_trades (
-            id, fund_id, signal_id, market_id, slug, question, direction,
+            id, fund_id, signal_id, market_id, slug, question, direction, outcome_name,
             entry_price, shares, amount, status, opened_at,
             token_id, last_price, last_price_updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
         ).bind(
-          tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir,
+          tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir, outcomeName,
           price, shares, amount, ts,
           tokenId, price, ts,
         ).run();

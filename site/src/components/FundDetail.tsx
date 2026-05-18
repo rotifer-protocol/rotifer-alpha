@@ -39,6 +39,9 @@ interface FundDetailData {
 
 interface Trade {
   id: string; fund_id: string; question: string; direction: string;
+  /** Specific outcome token being traded: "Yes"/"No" for binary, team/candidate name for categorical.
+   *  NULL for rows created before 2026-05-18 schema migration (backfilled at display time). */
+  outcome_name?: string | null;
   entry_price: number; exit_price: number | null; amount: number;
   pnl: number | null; status: string; opened_at: string; closed_at: string | null;
   signal_id: string; market_id: string; slug: string; shares: number;
@@ -127,6 +130,9 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
   const livePnl = trade.unrealized_pnl ?? 0;
   const statusKey = STATUS_KEYS[trade.status];
   const dirKey = DIRECTION_KEYS[trade.direction];
+  // Derive displayOutcome for rows pre-dating the outcome_name column (2026-05-18 migration).
+  const displayOutcome = trade.outcome_name
+    ?? (trade.direction === "BUY_YES" ? "Yes" : trade.direction === "SELL_YES" ? "No" : null);
   const closeReasonKey = trade.close_reason_code ? CLOSE_REASON_KEYS[trade.close_reason_code] : undefined;
   const closeReasonSummary = closeReasonKey
     ? t(closeReasonKey)
@@ -174,8 +180,10 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
             <ExternalLink className="w-3 h-3 shrink-0 opacity-40" />
           </a>
         </div>
-        <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0">{dirKey ? t(dirKey) : trade.direction}</span>
-                <span className="text-xs font-mono shrink-0">{fmtUSD(trade.amount)}</span>
+        {displayOutcome && (
+          <span className="text-xs font-mono text-[var(--r-text-muted)] shrink-0 max-w-[120px] truncate" title={displayOutcome}>{displayOutcome}</span>
+        )}
+        <span className="text-xs font-mono shrink-0">{fmtUSD(trade.amount)}</span>
         {isOpen && trade.unrealized_pnl != null && (
           <span className={`text-xs font-mono font-medium shrink-0 ${livePnl >= 0 ? "pnl-positive" : "pnl-negative"}`}>
             {livePnl >= 0 ? "+" : ""}{livePnl.toFixed(2)}
@@ -241,6 +249,12 @@ function TradeRow({ trade, maxHoldDays, maxAbsPnl }: { trade: Trade; maxHoldDays
                 {isOpen
                   ? trade.current_price != null ? `$${trade.current_price.toFixed(3)}` : "—"
                   : trade.exit_price != null ? `$${trade.exit_price.toFixed(3)}` : isInvalidated ? t("notApplicable") : "—"}
+              </p>
+            </div>
+            <div>
+              <span className="text-[var(--r-text-muted)]">{t("outcomeLabel")}</span>
+              <p className="font-medium truncate" title={displayOutcome ?? undefined}>
+                {displayOutcome ?? "—"}
               </p>
             </div>
             <div>
