@@ -46,6 +46,9 @@ export interface MarketSnapshot {
   endDate: string;
   eventSlug: string;
   eventTitle: string;
+  /** Polymarket grouped-market entity label, e.g. "Detroit Pistons" for a
+   *  binary "Will Detroit Pistons win?" child market. Empty string when absent. */
+  groupItemTitle: string;
   active: boolean;
   closed: boolean;
 }
@@ -65,6 +68,10 @@ export interface ArbSignal {
   prices: Record<string, number>;
   timestamp: string;
   resolvedMarketId?: string;
+  /** Human-readable entity label for binary grouped markets, e.g. "Detroit Pistons".
+   *  For MULTI_OUTCOME_ARB, this is the winning/losing candidate from prices map.
+   *  Empty string when not applicable (standalone binary markets). */
+  groupItemTitle?: string;
 }
 
 export interface FundConfig {
@@ -97,6 +104,11 @@ export interface FundConfig {
   // may consume. Prevents trading in thin markets where our order causes price impact.
   // Optional — defaults to 0.15 (15%) if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
   maxMarketImpactRatio?: number;
+  // Same-event horizontal cap (2026-05-18, 1a 圆桌 6:0): max OPEN positions a fund
+  // may hold concurrently in the same event (multi-outcome arb fan-out limit).
+  // Distinct from maxPerEvent (amount-based); both gates apply.
+  // Optional — defaults to 3 if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
+  maxSameEventPositions?: number;
 }
 
 export type TradeStatus =

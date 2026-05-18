@@ -49,6 +49,7 @@ function parseMarket(m: any): MarketSnapshot {
     endDate: m.endDate ?? "",
     eventSlug: ev?.slug ?? "",
     eventTitle: ev?.title ?? "",
+    groupItemTitle: m.groupItemTitle ?? "",
     active: m.active ?? true,
     closed: m.closed ?? false,
   };
@@ -124,6 +125,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
         volume24hr: m.volume24hr,
         liquidity: m.liquidity,
       },
+      groupItemTitle: m.groupItemTitle || undefined,
       timestamp: ts,
     });
   }
@@ -167,6 +169,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
       confidence: Math.round(conf * 100) / 100,
       direction: over ? "SELL_WEAKEST" : "BUY_STRONGEST",
       prices,
+      groupItemTitle: selected.groupItemTitle || undefined,
       timestamp: ts,
     });
   }
@@ -185,6 +188,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
       confidence: Math.round(conf * 100) / 100,
       direction: "PROVIDE_LIQUIDITY",
       prices: { bestBid: m.bestBid, bestAsk: m.bestAsk, spread: sp, midpoint: mid, volume24hr: m.volume24hr, liquidity: m.liquidity },
+      groupItemTitle: m.groupItemTitle || undefined,
       timestamp: ts,
     });
   }

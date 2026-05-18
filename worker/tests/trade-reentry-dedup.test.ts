@@ -957,3 +957,169 @@ test("INSERT failing with D1DatabaseError-style object (no instanceof Error) is 
   assert.equal(result.trades.length, 0,
     "No trade should be recorded when D1DatabaseError-style UNIQUE violation is thrown");
 });
+
+// ─── maxSameEventPositions horizontal cap (2026-05-18 圆桌 6:0) ──────────────
+//
+// Root cause: 蜜獾·L / 海龟 etc. opened N positions across N candidates of the
+// same multi-outcome event (邦德演员 7 笔, NBA 东部 4 笔). KV cooldown does NOT
+// protect against this because each candidate has a distinct market_id.
+// Fix: getSameEventOpenCount(db, fundId, slug) count-based cap in paperTrade().
+//
+// Tests use a mock DB where `getSameEventOpenCount` returns a configurable value.
+// Distinguishing the three COUNT(*) queries:
+//   isDuplicate:          sql.includes("closed_at >= ?")
+//   getSameEventOpenCount: sql.includes("slug")   (AND slug = ?)
+//   getOpenPositionCount:  neither of the above
+
+function makeSameEventDb(sameEventCount: number, insertCountRef: { n: number }) {
+  class SameEventDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };          // isDuplicate → no cooldown
+            if (sql.includes("COUNT(*) as cnt") && sql.includes("slug"))
+              return { cnt: sameEventCount };                                // getSameEventOpenCount
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };         // getOpenPositionCount
+            if (sql.includes("SUM(amount)")) return { total: 0 };           // getEventExposure / getBalance
+            if (sql.includes("frozen_until")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCountRef.n++;
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+  return new SameEventDb() as unknown as D1Database;
+}
+
+const BASE_FUND = {
+  id: "gambler-l", name: "蜜獾·L", emoji: "🎲",
+  initialBalance: 1_000_000, maxOpenPositions: 20, maxPerEvent: 500_000,
+  minEdge: 1.0, minConfidence: 0.3, minVolume: 5_000, minLiquidity: 5_000,
+  allowedTypes: ["MULTI_OUTCOME_ARB"] as const,
+  takeProfitPercent: 1.08, trailingStopPercent: 0.27,
+  probReversalThreshold: 0.30, stopLossPercent: 0.30, maxHoldDays: 21,
+  sizingMode: "fixed" as const, sizingBase: 40_000, sizingScale: 0,
+  maxMarketImpactRatio: 0.50,
+} as const;
+
+const BOND_SIG = {
+  signalId: "SIG-BOND-HENRY",
+  type: "MULTI_OUTCOME_ARB" as const,
+  marketId: "market-henry-cavill",
+  slug: "next-james-bond-actor-635",
+  question: "Will Henry Cavill be the next James Bond?",
+  description: "test signal",
+  edge: 3.5,
+  confidence: 0.75,
+  direction: "BUY_STRONGEST" as const,
+  prices: { "Henry Cavill": 0.06, sum: 0.88, volume24hr: 500_000, liquidity: 500_000 },
+  timestamp: new Date().toISOString(),
+};
+
+test("MAX_SAME_EVENT_POSITIONS blocks entry when same-event open count reaches cap", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  const insertCountRef = { n: 0 };
+  // Simulate 2 positions already open in the bond event (cap = 2)
+  const db = makeSameEventDb(2, insertCountRef);
+
+  const fund = { ...BASE_FUND, maxSameEventPositions: 2 };
+
+  const result = await paperTrade(db, [BOND_SIG], [], [fund as any], new Date().toISOString());
+
+  const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
+  assert.equal(capSkips.length, 1,
+    "Should produce exactly 1 MAX_SAME_EVENT_POSITIONS skip when count equals cap");
+  assert.equal(result.trades.length, 0, "No trade should be opened when cap is reached");
+  assert.equal(insertCountRef.n, 0, "No INSERT should be issued");
+});
+
+test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event slug", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  // DB says bond event is at cap (2), but we send a signal for a different slug
+  let sameEventCallCount = 0;
+  class CrossEventDb {
+    prepare(sql: string) {
+      return {
+        bind: (...args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt") && sql.includes("slug")) {
+              sameEventCallCount++;
+              // Return cap-busting count only for bond slug, 0 for anything else
+              const slug = args[1] as string;
+              return { cnt: slug === "next-james-bond-actor-635" ? 99 : 0 };
+            }
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            return null;
+          },
+          run: async () => ({ success: true, results: [] }),
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const nbaWestSig = {
+    ...BOND_SIG,
+    signalId: "SIG-NBA-WEST",
+    marketId: "market-okc-thunder",
+    slug: "nba-playoffs-western-conference-champion",
+    question: "Will OKC Thunder win the NBA West?",
+    prices: { "OKC Thunder": 0.55, sum: 0.95, volume24hr: 800_000, liquidity: 800_000 },
+  };
+
+  const fund = { ...BASE_FUND, maxSameEventPositions: 2, allowedTypes: ["MULTI_OUTCOME_ARB"] as const };
+
+  const result = await paperTrade(
+    new CrossEventDb() as unknown as D1Database,
+    [BOND_SIG, nbaWestSig],
+    [],
+    [fund as any],
+    new Date().toISOString(),
+  );
+
+  const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
+  assert.equal(capSkips.length, 1,
+    "Bond signal (same-event cnt=99 >= cap 2) should be blocked");
+  assert.equal(result.trades.length, 1,
+    "NBA West signal (different slug, cnt=0) must pass through and trade");
+  assert.ok(sameEventCallCount >= 2,
+    "getSameEventOpenCount should be queried for both slugs");
+});
+
+test("MAX_SAME_EVENT_POSITIONS uses default cap 3 when fund.maxSameEventPositions is not set", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  // Fund without explicit maxSameEventPositions — default is 3
+  const insertCountRef = { n: 0 };
+  const db = makeSameEventDb(3, insertCountRef); // same-event count = 3 = default cap
+
+  // Strip maxSameEventPositions from fund to confirm default is applied
+  const { maxMarketImpactRatio, ...fundWithoutCap } = BASE_FUND as any;
+  const fund = { ...fundWithoutCap, maxMarketImpactRatio: 0.50 };
+  // Ensure maxSameEventPositions is truly absent
+  delete fund.maxSameEventPositions;
+
+  const result = await paperTrade(db, [BOND_SIG], [], [fund as any], new Date().toISOString());
+
+  const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
+  assert.equal(capSkips.length, 1,
+    "Default cap of 3 must fire when sameEventCount (3) >= default (3) and fund has no maxSameEventPositions");
+  assert.equal(insertCountRef.n, 0, "No INSERT when default cap is reached");
+});

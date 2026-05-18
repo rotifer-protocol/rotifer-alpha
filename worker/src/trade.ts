@@ -65,6 +65,10 @@ export function entryPrice(sig: ArbSignal): number {
  * but returns the KEY (outcome name) instead of the VALUE (price).
  */
 export function outcomeKey(sig: ArbSignal): string {
+  // For binary grouped markets ("Will Detroit Pistons win?"), Polymarket provides
+  // groupItemTitle = "Detroit Pistons" — use that instead of "Yes"/"No".
+  if (sig.groupItemTitle) return sig.groupItemTitle;
+
   if (sig.direction === "BUY_YES") return "Yes";
   if (sig.direction === "SELL_YES") return "No";
   if (sig.type === "SPREAD") return "Spread";
@@ -112,6 +116,17 @@ async function getBalance(db: D1Database, fundId: string, initial: number): Prom
      WHERE fund_id = ? AND ${PERFORMANCE_REALIZED_TRADE_WHERE_SQL}`,
   ).bind(fundId).first<{ total: number }>();
   return calculateCashBalance(initial, invested?.total ?? 0, realized?.total ?? 0);
+}
+
+async function getSameEventOpenCount(db: D1Database, fundId: string, eventSlug: string): Promise<number> {
+  // Count-based sibling of getEventExposure (amount-based). Used to enforce
+  // maxSameEventPositions horizontal cap — limits multi-outcome arb fan-out
+  // where a single fund opens N positions across N candidates in the same
+  // event (邦德演员 / NBA 东部 / etc., 2026-05-18 圆桌 6:0)。
+  const r = await db.prepare(
+    "SELECT COUNT(*) as cnt FROM paper_trades WHERE fund_id = ? AND status = 'OPEN' AND slug = ?",
+  ).bind(fundId, eventSlug).first<{ cnt: number }>();
+  return r?.cnt ?? 0;
 }
 
 async function getEventExposure(db: D1Database, fundId: string, eventSlug: string): Promise<number> {
@@ -262,6 +277,19 @@ export async function paperTrade(
         skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
         continue;
       }
+      // Same-event horizontal cap (2026-05-18, 1a 圆桌 6:0 决议):
+      // limit how many OPEN positions a fund holds concurrently in the same
+      // event. Distinct from MAX_EVENT_EXPOSURE (amount-based) — count check
+      // runs first to short-circuit fan-out (邦德演员 7 笔 / NBA 东部 4 笔
+      // 同 event 不同 marketId case where KV cooldown does not apply since
+      // each candidate is a distinct marketId).
+      const sameEventCount = await getSameEventOpenCount(db, fund.id, sig.slug);
+      const maxSameEvent = fund.maxSameEventPositions ?? 3;
+      if (sameEventCount >= maxSameEvent) {
+        skipReasons.push({ fundId: fund.id, code: "MAX_SAME_EVENT_POSITIONS" });
+        continue;
+      }
+
       const exposure = await getEventExposure(db, fund.id, sig.slug);
       if (exposure >= fund.maxPerEvent) {
         skipReasons.push({ fundId: fund.id, code: "MAX_EVENT_EXPOSURE" });
