@@ -122,6 +122,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
         [m.outcomes[1]]: m.outcomePrices[1],
         sum,
         volume24hr: m.volume24hr,
+        liquidity: m.liquidity,
       },
       timestamp: ts,
     });
@@ -151,6 +152,9 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
     const selected = over
       ? g.reduce((min, m) => ((m.outcomePrices[0] ?? 1) < (min.outcomePrices[0] ?? 1) ? m : min))
       : g.reduce((max, m) => ((m.outcomePrices[0] ?? 0) > (max.outcomePrices[0] ?? 0) ? m : max));
+    // Use liquidity of the specifically selected market (resolvedMarketId),
+    // since that is the single market we will actually trade.
+    prices["liquidity"] = selected.liquidity;
 
     sigs.push({
       signalId: sid(), type: "MULTI_OUTCOME_ARB",
@@ -180,7 +184,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
       edge: Math.round(sp * 10000) / 100,
       confidence: Math.round(conf * 100) / 100,
       direction: "PROVIDE_LIQUIDITY",
-      prices: { bestBid: m.bestBid, bestAsk: m.bestAsk, spread: sp, midpoint: mid, volume24hr: m.volume24hr },
+      prices: { bestBid: m.bestBid, bestAsk: m.bestAsk, spread: sp, midpoint: mid, volume24hr: m.volume24hr, liquidity: m.liquidity },
       timestamp: ts,
     });
   }
