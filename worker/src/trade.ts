@@ -42,8 +42,10 @@ export function entryDirection(sig: ArbSignal): string {
 
 export function entryPrice(sig: ArbSignal): number {
   if (sig.type === "SPREAD") return sig.prices["midpoint"] ?? 0.5;
+  // Filter non-price metadata fields; price values are always in [0,1].
+  const META_KEYS = new Set(["sum", "yes_price_sum", "volume24hr", "liquidity"]);
   const p = Object.entries(sig.prices).filter(
-    ([k]) => k !== "sum" && k !== "yes_price_sum" && k !== "volume24hr",
+    ([k]) => !META_KEYS.has(k),
   );
   if (p.length === 0) return 0.5;
   if (sig.direction === "BUY_STRONGEST" || sig.direction === "BUY_BOTH") {
@@ -243,6 +245,18 @@ export async function paperTrade(
       }
 
       const rawSize = sizing(fund, sig);
+
+      // Market Impact Gate (2026-05-18): reject if rawSize would consume too much
+      // of market liquidity — our own order would cause significant price impact.
+      // Use rawSize (pre-drawdown-adjustment) as the "intended" order size;
+      // liquidity comes from Gamma API data attached to the signal.
+      const liquidity = (sig.prices["liquidity"] as number | undefined) ?? (sig.prices["volume24hr"] as number | undefined) ?? 0;
+      const maxImpactRatio = fund.maxMarketImpactRatio ?? 0.15;
+      if (liquidity > 0 && rawSize / liquidity > maxImpactRatio) {
+        skipReasons.push({ fundId: fund.id, code: "MARKET_IMPACT_TOO_HIGH" });
+        continue;
+      }
+
       const adjustedSize = effectiveSizing(rawSize, currentDrawdown, fund);
       const amount = Math.min(adjustedSize, cash, fund.maxPerEvent - exposure);
       if (amount < 50) {

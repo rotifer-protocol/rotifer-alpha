@@ -89,6 +89,10 @@ export interface FundConfig {
   sizingScale: number;
   // evolveExempt removed (ADR-274 D4): tier-aware PARAM_BOUNDS replaces the need for
   // an exemption flag. All funds now evolve within their own tier's bounds.
+  // Market Impact Gate (2026-05-18): max fraction of market liquidity a single order
+  // may consume. Prevents trading in thin markets where our order causes price impact.
+  // Optional — defaults to 0.15 (15%) if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
+  maxMarketImpactRatio?: number;
 }
 
 export type TradeStatus =

@@ -58,6 +58,9 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   takeProfitPercent:     { min: 0.05, max: 2.0 },
   trailingStopPercent:   { min: 0.03, max: 0.50 },
   probReversalThreshold: { min: 0.05, max: 0.50 },
+  // Market Impact Gate: 5%–50% of market liquidity per order.
+  // Conservative funds should tend lower (≤10%); aggressive funds may go higher.
+  maxMarketImpactRatio:  { min: 0.05, max: 0.50 },
 };
 
 export const EVOLVABLE_PARAMS: string[] = [

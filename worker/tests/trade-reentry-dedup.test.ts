@@ -698,6 +698,167 @@ test("freshlyClosedThisRun blocks re-entry without DB query (in-pipeline cooldow
     "isDuplicate DB query must NOT be reached when freshlyClosedThisRun hits first (short-circuit)");
 });
 
+// ─── Market Impact Gate ────────────────────────────────────────────────────
+//
+// rawSize / liquidity > maxMarketImpactRatio → MARKET_IMPACT_TOO_HIGH skip.
+// Default ratio is 0.15 (15%). Evolvable via PARAM_BOUNDS_INVARIANT.
+
+test("Market Impact Gate: rawSize > 15% of liquidity → MARKET_IMPACT_TOO_HIGH skip", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let insertCount = 0;
+  class ImpactDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCount++;
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const fund = {
+    id: "gambler_l", name: "蜜獾·L", emoji: "🦡",
+    initialBalance: 100000, maxOpenPositions: 5, maxPerEvent: 50000,
+    minEdge: 1.0, minConfidence: 0.3, minVolume: 1000, minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61, trailingStopPercent: 0,
+    probReversalThreshold: 0, stopLossPercent: 0, maxHoldDays: 21,
+    sizingMode: "fixed" as const, sizingBase: 50000, sizingScale: 0,
+    maxMarketImpactRatio: 0.15, // 15% cap
+    tier: "M" as const,
+  };
+
+  // Signal: liquidity = 100k, fund.sizingBase = 50k → rawSize/liquidity = 50%  > 15% → should skip
+  const sigThin = {
+    signalId: "SIG-THIN",
+    type: "MISPRICING" as const,
+    marketId: "market-thin",
+    slug: "thin-market",
+    question: "Thin market?",
+    description: "test",
+    edge: 3.0,
+    confidence: 0.8,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 200000, liquidity: 100000 },
+    timestamp: new Date().toISOString(),
+  };
+
+  // Signal: liquidity = 1M, fund.sizingBase = 50k → rawSize/liquidity = 5% < 15% → should trade
+  const sigDeep = {
+    ...sigThin,
+    signalId: "SIG-DEEP",
+    marketId: "market-deep",
+    slug: "deep-market",
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 2000000, liquidity: 1000000 },
+  };
+
+  const result = await paperTrade(
+    new ImpactDb() as unknown as D1Database,
+    [sigThin, sigDeep],
+    [],
+    [fund as any],
+    new Date().toISOString(),
+  );
+
+  const impactSkips = result.skipReasons.filter(r => r.code === "MARKET_IMPACT_TOO_HIGH");
+  assert.equal(impactSkips.length, 1,
+    "Thin market (rawSize/liq > maxMarketImpactRatio) must produce MARKET_IMPACT_TOO_HIGH skip");
+  assert.equal(result.trades.length, 1,
+    "Deep market (rawSize/liq <= maxMarketImpactRatio) must produce 1 trade");
+  assert.equal(insertCount, 1,
+    "Only 1 INSERT should occur — thin market skipped, deep market traded");
+});
+
+test("Market Impact Gate: no skip when ratio is below threshold (deep market)", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let insertCount = 0;
+  class ZeroLiqDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCount++;
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const fund = {
+    id: "shark", name: "鲨鱼·S", emoji: "🦈",
+    initialBalance: 10000, maxOpenPositions: 5, maxPerEvent: 10000,
+    minEdge: 1.0, minConfidence: 0.3, minVolume: 1000, minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61, trailingStopPercent: 0,
+    probReversalThreshold: 0, stopLossPercent: 0, maxHoldDays: 21,
+    sizingMode: "fixed" as const, sizingBase: 5000, sizingScale: 0,
+    maxMarketImpactRatio: 0.15,
+    tier: "S" as const,
+  };
+
+  // Signal: no liquidity field, but has volume24hr (so volume check passes).
+  // liquidity = sig.prices["liquidity"] ?? sig.prices["volume24hr"] ?? 0
+  // We strip "liquidity" from prices — gate falls back to volume24hr = 500000.
+  // rawSize = 5000, liquidity = 500000 → ratio = 0.01 < 0.15 → gate does NOT fire.
+  // This verifies the gate only fires when ratio is exceeded, not on missing data.
+  const sig = {
+    signalId: "SIG-NO-LIQ",
+    type: "MISPRICING" as const,
+    marketId: "market-no-liq",
+    slug: "no-liq",
+    question: "No liquidity data?",
+    description: "test",
+    edge: 2.5,
+    confidence: 0.7,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 500000 },  // no explicit liquidity field
+    timestamp: new Date().toISOString(),
+  };
+
+  const result = await paperTrade(
+    new ZeroLiqDb() as unknown as D1Database,
+    [sig],
+    [],
+    [fund as any],
+    new Date().toISOString(),
+  );
+
+  const impactSkips = result.skipReasons.filter(r => r.code === "MARKET_IMPACT_TOO_HIGH");
+  assert.equal(impactSkips.length, 0,
+    "Market Impact Gate must NOT fire when rawSize/liquidity ratio is below the threshold");
+  assert.equal(insertCount, 1, "Trade should proceed when market has sufficient liquidity depth");
+});
+
 // ─── D1DatabaseError (non-Error instanceof) catch path ────────────────────
 //
 // Production Cloudflare D1 throws D1DatabaseError which has a .message property
