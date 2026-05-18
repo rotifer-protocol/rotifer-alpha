@@ -37,7 +37,7 @@ import {
 } from "./gene-strategies";
 import { checkAndRunCodeEvolution } from "./code-evolver";
 import { PHENOTYPE_REGISTRY } from "./phenotypes/index";
-import { isKillSwitchActive, storeHeartbeat, storeError, storeSkipByFund } from "./execution";
+import { isKillSwitchActive, storeHeartbeat, storeError, storeSkipByFund, workerHeartbeatContext } from "./execution";
 import { refreshOpenPrices } from "./price-refresh";
 
 // ─── GENE_REGISTRY ↔ Phenotype consistency check ────────
@@ -171,6 +171,7 @@ export async function runGenomePipeline(
     console.warn("[Genome] KILL_SWITCH active — pipeline halted");
     await storeHeartbeat(env.DB, {
       lastScanAt: ts,
+      worker: workerHeartbeatContext(env, "genome"),
       totalFetched: 0,
       marketsFiltered: 0,
       signalsFound: 0,
@@ -207,6 +208,7 @@ export async function runGenomePipeline(
   // itself is not being invoked (check Cloudflare Worker logs / cron trigger config).
   await storeHeartbeat(env.DB, {
     lastScanAt: ts,
+    worker: workerHeartbeatContext(env, "genome"),
     totalFetched: 0,
     marketsFiltered: 0,
     signalsFound: 0,
@@ -330,6 +332,7 @@ export async function runGenomePipeline(
     await storeError(env.DB, "scanner", e);
     await storeHeartbeat(env.DB, {
       lastScanAt: ts, totalFetched: 0, marketsFiltered: 0, signalsFound: 0,
+      worker: workerHeartbeatContext(env, "genome"),
       tradesOpened: 0, settlementsProcessed: 0, monitorActions: 0,
       riskStops: risk.stopped.length, riskExpired: risk.expired.length,
       skipSummary: {}, skipByFund: undefined, pipelineRunning: false,
@@ -531,6 +534,7 @@ export async function runGenomePipeline(
   // Execution order: early partial write (PENDING) → pipeline stages → full write → broadcast → Telegram
   await storeHeartbeat(env.DB, {
     lastScanAt: ts,
+    worker: workerHeartbeatContext(env, "genome"),
     totalFetched: scanner.totalFetched,
     marketsFiltered: scanner.filtered.length,
     signalsFound: scanner.signals.length,

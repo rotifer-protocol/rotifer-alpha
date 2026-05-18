@@ -101,6 +101,9 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
   sigCtr = 0;
   const sigs: ArbSignal[] = [];
   const TH = 0.015, MS = 0.02, MC = 0.2;
+  const MULTI_OUTCOME_MIN_GROUP_SIZE = 3;
+  const COMPLETE_OUTCOME_SUM_MIN = 0.85;
+  const COMPLETE_OUTCOME_SUM_MAX = 1.15;
 
   for (const m of markets) {
     if (m.outcomes.length !== 2 || m.outcomePrices.length !== 2) continue;
@@ -141,6 +144,16 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
   for (const g of groups.values()) {
     if (g.length < 2) continue;
     const ySum = g.reduce((s, m) => s + (m.outcomePrices[0] ?? 0), 0);
+    // Multi-outcome arb is only valid when the scanner has a near-complete view
+    // of the mutually-exclusive event. Gamma offset pagination + liquidity filters
+    // may expose only a subset of candidates (James Bond 2026-05-18: two visible
+    // candidates summed to 0.0715, producing a fake 92.85% edge). Treat extreme
+    // yes-sum gaps as incomplete coverage, not alpha.
+    if (
+      g.length < MULTI_OUTCOME_MIN_GROUP_SIZE
+      || ySum < COMPLETE_OUTCOME_SUM_MIN
+      || ySum > COMPLETE_OUTCOME_SUM_MAX
+    ) continue;
     const dev = Math.abs(ySum - 1.0);
     if (dev < TH) continue;
     const over = ySum > 1.0;

@@ -33,6 +33,7 @@ import {
   getSystemConfig,
   setExecutionMode,
   storeHeartbeat,
+  workerHeartbeatContext,
   type ExecutionMode,
   type PipelineHeartbeat,
 } from "./execution";
@@ -368,6 +369,7 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
 
   await storeHeartbeat(env.DB, {
     lastScanAt: ts,
+    worker: workerHeartbeatContext(env, "legacy"),
     totalFetched,
     marketsFiltered: filtered.length,
     signalsFound: sigs.length,

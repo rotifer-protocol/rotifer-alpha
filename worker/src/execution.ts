@@ -103,6 +103,14 @@ function simulateClob(
 
 export interface PipelineHeartbeat {
   lastScanAt: string;
+  // Identifies which Cloudflare Worker deployment wrote this heartbeat.
+  // 2026-05-19: stale scheduled Workers kept writing to the same D1 after fixes
+  // landed in polymarket-agent. This field makes split-brain writers visible.
+  worker?: {
+    name: string;
+    versionId: string;
+    pipeline: "genome" | "legacy" | "unknown";
+  };
   totalFetched: number;
   marketsFiltered: number;
   signalsFound: number;
@@ -124,6 +132,21 @@ export interface PipelineHeartbeat {
     fetchFailed: number;
     missingTokenId: number;
     backfilledTokenIds: number;
+  };
+}
+
+export function workerHeartbeatContext(
+  env: {
+    WORKER_NAME?: string;
+    WORKER_VERSION_ID?: string;
+    CF_VERSION_METADATA?: { id?: string; tag?: string; timestamp?: string };
+  },
+  pipeline: "genome" | "legacy" | "unknown",
+): NonNullable<PipelineHeartbeat["worker"]> {
+  return {
+    name: env.WORKER_NAME ?? "unknown-worker",
+    versionId: env.CF_VERSION_METADATA?.id ?? env.WORKER_VERSION_ID ?? "unknown-version",
+    pipeline,
   };
 }
 

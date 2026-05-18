@@ -4,6 +4,8 @@ compatibility_date = "2026-03-01"
 workers_dev = true
 
 [vars]
+WORKER_NAME = "polymarket-agent"
+
 # Pipeline routing feature flag.
 # "false" (default) = legacy runPipeline path (direct module calls).
 # "true"            = runGenomePipeline (Genome orchestrator + Gene variant dispatch).
@@ -50,6 +52,9 @@ crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * *"]
 
 [ai]
 binding = "AI"
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
 
 [[kv_namespaces]]
 # Cross-tick trade cooldown cache — prevents re-entry into a market closed in

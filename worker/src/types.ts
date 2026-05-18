@@ -23,6 +23,14 @@ export interface Env {
   /** Feature flag: set to "true" to route pipeline through runGenomePipeline (Genome orchestrator).
    *  Default "false" keeps the legacy runPipeline path. Rollback: set back to "false" and redeploy. */
   ENABLE_GENOME_PIPELINE?: string;
+  /** Heartbeat identity fields — set in wrangler.toml so split-brain scheduled Workers are visible in D1. */
+  WORKER_NAME?: string;
+  WORKER_VERSION_ID?: string;
+  CF_VERSION_METADATA?: {
+    id: string;
+    tag?: string;
+    timestamp?: string;
+  };
   /** Cloudflare Workers AI binding — used for Phase 3.5 LLM variant config generation. */
   AI?: {
     run(
