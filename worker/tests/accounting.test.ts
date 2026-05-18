@@ -152,6 +152,8 @@ test("realized trade status list includes monitor-driven close states", () => {
       "PROFIT_TAKEN",
       "TRAILING_STOPPED",
       "REVERSED",
+      // Admin-voided concentration positions (2026-05-18) — triggers 4h re-entry cooldown
+      "FORCE_CLOSED",
     ],
   );
 });

@@ -118,14 +118,27 @@ async function getBalance(db: D1Database, fundId: string, initial: number): Prom
   return calculateCashBalance(initial, invested?.total ?? 0, realized?.total ?? 0);
 }
 
-async function getSameEventOpenCount(db: D1Database, fundId: string, eventSlug: string): Promise<number> {
-  // Count-based sibling of getEventExposure (amount-based). Used to enforce
-  // maxSameEventPositions horizontal cap — limits multi-outcome arb fan-out
-  // where a single fund opens N positions across N candidates in the same
-  // event (邦德演员 / NBA 东部 / etc., 2026-05-18 圆桌 6:0)。
+async function getDailyEventEntryCount(
+  db: D1Database,
+  fundId: string,
+  eventSlug: string,
+  todayStart: string,
+): Promise<number> {
+  // "Daily quota" semantics — counts ALL entries (any status) for fund+slug
+  // opened since UTC midnight, regardless of whether they are still OPEN.
+  //
+  // Root cause of 2026-05-18 James Bond fan-out bypass: the original version
+  // only counted OPEN positions. As each position was stopped out the count
+  // dropped to 0, allowing unlimited same-day re-entries by cycling through
+  // different market_ids (candidates) in the same event.
+  //
+  // Using a daily total prevents the "stop → count resets → re-enter" loop.
+  // The cap is intentionally low (default 1) for multi-outcome events where
+  // each candidate is correlated — one entry per day is sufficient signal
+  // for the event; excess entries only amplify concentration risk.
   const r = await db.prepare(
-    "SELECT COUNT(*) as cnt FROM paper_trades WHERE fund_id = ? AND status = 'OPEN' AND slug = ?",
-  ).bind(fundId, eventSlug).first<{ cnt: number }>();
+    "SELECT COUNT(*) as cnt FROM paper_trades WHERE fund_id = ? AND slug = ? AND opened_at >= ?",
+  ).bind(fundId, eventSlug, todayStart).first<{ cnt: number }>();
   return r?.cnt ?? 0;
 }
 
@@ -188,6 +201,9 @@ export async function paperTrade(
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
+  // Derive today's UTC midnight from ts for getDailyEventEntryCount.
+  // ts is guaranteed ISO format (e.g. "2026-05-18T13:00:01.000Z").
+  const todayStart = ts.slice(0, 10) + "T00:00:00.000Z";
   // In-run dedup: tracks (fundId, marketId) pairs opened in THIS invocation.
   // First line of defense — eliminates same-invocation duplicates (sigs[] containing
   // multiple signals for the same effectiveMarketId).
@@ -277,15 +293,21 @@ export async function paperTrade(
         skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
         continue;
       }
-      // Same-event horizontal cap (2026-05-18, 1a 圆桌 6:0 决议):
-      // limit how many OPEN positions a fund holds concurrently in the same
-      // event. Distinct from MAX_EVENT_EXPOSURE (amount-based) — count check
-      // runs first to short-circuit fan-out (邦德演员 7 笔 / NBA 东部 4 笔
-      // 同 event 不同 marketId case where KV cooldown does not apply since
-      // each candidate is a distinct marketId).
-      const sameEventCount = await getSameEventOpenCount(db, fund.id, sig.slug);
-      const maxSameEvent = fund.maxSameEventPositions ?? 3;
-      if (sameEventCount >= maxSameEvent) {
+      // Same-event daily quota (2026-05-18, 1a 圆桌 6:0 → v2 fix 2026-05-18 晚):
+      // Limit how many times a fund may enter the same event per calendar day
+      // (UTC), counting ALL positions regardless of current status.
+      //
+      // v1 design flaw: counted only OPEN positions → cycling through different
+      // market_ids (candidates) in the same event after stops brought count
+      // back to 0 bypassed the cap entirely (James Bond 7-entry fan-out).
+      // v2 fix: daily total count — "stop → count resets" loop is impossible.
+      //
+      // Default cap 1: for multi-outcome correlated events one entry per day
+      // is sufficient; additional entries only amplify concentration risk.
+      // Evolvable via PARAM_BOUNDS_INVARIANT (min: 1, max: 5).
+      const dailyEventCount = await getDailyEventEntryCount(db, fund.id, sig.slug, todayStart);
+      const maxSameEvent = fund.maxSameEventPositions ?? 1;
+      if (dailyEventCount >= maxSameEvent) {
         skipReasons.push({ fundId: fund.id, code: "MAX_SAME_EVENT_POSITIONS" });
         continue;
       }

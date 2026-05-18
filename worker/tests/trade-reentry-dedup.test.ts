@@ -22,8 +22,9 @@ import { REALIZED_TRADE_STATUSES, REALIZED_TRADE_STATUS_SQL } from "../src/accou
 
 // ─── SQL shape test ───────────────────────────────────────────────────────────
 
-test("REALIZED_TRADE_STATUS_SQL covers all 6 expected closed statuses", () => {
-  const expected = ["RESOLVED", "STOPPED", "EXPIRED", "PROFIT_TAKEN", "TRAILING_STOPPED", "REVERSED"];
+test("REALIZED_TRADE_STATUS_SQL covers all expected closed statuses", () => {
+  // 7 statuses: the original 6 + FORCE_CLOSED (admin void, 2026-05-18)
+  const expected = ["RESOLVED", "STOPPED", "EXPIRED", "PROFIT_TAKEN", "TRAILING_STOPPED", "REVERSED", "FORCE_CLOSED"];
   for (const s of expected) {
     assert.ok(
       REALIZED_TRADE_STATUS_SQL.includes(`'${s}'`),
@@ -31,7 +32,7 @@ test("REALIZED_TRADE_STATUS_SQL covers all 6 expected closed statuses", () => {
     );
   }
   assert.equal(REALIZED_TRADE_STATUSES.length, expected.length,
-    "REALIZED_TRADE_STATUSES should have exactly 6 entries; add new statuses to both lists");
+    "REALIZED_TRADE_STATUSES should have exactly 7 entries; add new statuses to both lists");
 });
 
 // ─── isDuplicate SQL query shape ──────────────────────────────────────────────
@@ -965,21 +966,22 @@ test("INSERT failing with D1DatabaseError-style object (no instanceof Error) is 
 // protect against this because each candidate has a distinct market_id.
 // Fix: getSameEventOpenCount(db, fundId, slug) count-based cap in paperTrade().
 //
-// Tests use a mock DB where `getSameEventOpenCount` returns a configurable value.
+// Tests use a mock DB where `getDailyEventEntryCount` returns a configurable value.
+// v2 semantics: counts ALL entries today (any status), not just OPEN.
 // Distinguishing the three COUNT(*) queries:
-//   isDuplicate:          sql.includes("closed_at >= ?")
-//   getSameEventOpenCount: sql.includes("slug")   (AND slug = ?)
-//   getOpenPositionCount:  neither of the above
+//   isDuplicate:              sql.includes("closed_at")   (closed_at >= ?)
+//   getDailyEventEntryCount:  sql.includes("opened_at")   (opened_at >= todayStart)
+//   getOpenPositionCount:     neither closed_at nor opened_at
 
-function makeSameEventDb(sameEventCount: number, insertCountRef: { n: number }) {
+function makeSameEventDb(dailyCount: number, insertCountRef: { n: number }) {
   class SameEventDb {
     prepare(sql: string) {
       return {
         bind: (..._args: unknown[]) => ({
           first: async (_col?: string) => {
-            if (sql.includes("closed_at >= ?")) return { cnt: 0 };          // isDuplicate → no cooldown
-            if (sql.includes("COUNT(*) as cnt") && sql.includes("slug"))
-              return { cnt: sameEventCount };                                // getSameEventOpenCount
+            if (sql.includes("closed_at")) return { cnt: 0 };               // isDuplicate → no cooldown
+            if (sql.includes("opened_at") && sql.includes("slug"))
+              return { cnt: dailyCount };                                    // getDailyEventEntryCount
             if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };         // getOpenPositionCount
             if (sql.includes("SUM(amount)")) return { total: 0 };           // getEventExposure / getBalance
             if (sql.includes("frozen_until")) return null;
@@ -1025,11 +1027,11 @@ const BOND_SIG = {
   timestamp: new Date().toISOString(),
 };
 
-test("MAX_SAME_EVENT_POSITIONS blocks entry when same-event open count reaches cap", async () => {
+test("MAX_SAME_EVENT_POSITIONS blocks entry when daily event entry count reaches cap", async () => {
   const { paperTrade } = await import("../src/trade");
 
   const insertCountRef = { n: 0 };
-  // Simulate 2 positions already open in the bond event (cap = 2)
+  // Simulate 2 entries already today in the bond event (cap = 2, v2 daily-quota semantics)
   const db = makeSameEventDb(2, insertCountRef);
 
   const fund = { ...BASE_FUND, maxSameEventPositions: 2 };
@@ -1038,7 +1040,7 @@ test("MAX_SAME_EVENT_POSITIONS blocks entry when same-event open count reaches c
 
   const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
   assert.equal(capSkips.length, 1,
-    "Should produce exactly 1 MAX_SAME_EVENT_POSITIONS skip when count equals cap");
+    "Should produce exactly 1 MAX_SAME_EVENT_POSITIONS skip when daily count equals cap");
   assert.equal(result.trades.length, 0, "No trade should be opened when cap is reached");
   assert.equal(insertCountRef.n, 0, "No INSERT should be issued");
 });
@@ -1046,17 +1048,17 @@ test("MAX_SAME_EVENT_POSITIONS blocks entry when same-event open count reaches c
 test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event slug", async () => {
   const { paperTrade } = await import("../src/trade");
 
-  // DB says bond event is at cap (2), but we send a signal for a different slug
+  // DB says bond event is at cap (2) daily entries, but we send a signal for a different slug
   let sameEventCallCount = 0;
   class CrossEventDb {
     prepare(sql: string) {
       return {
         bind: (...args: unknown[]) => ({
           first: async (_col?: string) => {
-            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
-            if (sql.includes("COUNT(*) as cnt") && sql.includes("slug")) {
+            if (sql.includes("closed_at")) return { cnt: 0 };
+            if (sql.includes("opened_at") && sql.includes("slug")) {
               sameEventCallCount++;
-              // Return cap-busting count only for bond slug, 0 for anything else
+              // v2: args are (fundId, slug, todayStart) — slug is args[1]
               const slug = args[1] as string;
               return { cnt: slug === "next-james-bond-actor-635" ? 99 : 0 };
             }
@@ -1100,15 +1102,15 @@ test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event slug",
   assert.equal(result.trades.length, 1,
     "NBA West signal (different slug, cnt=0) must pass through and trade");
   assert.ok(sameEventCallCount >= 2,
-    "getSameEventOpenCount should be queried for both slugs");
+    "getDailyEventEntryCount should be queried for both slugs");
 });
 
-test("MAX_SAME_EVENT_POSITIONS uses default cap 3 when fund.maxSameEventPositions is not set", async () => {
+test("MAX_SAME_EVENT_POSITIONS uses default cap 1 when fund.maxSameEventPositions is not set", async () => {
   const { paperTrade } = await import("../src/trade");
 
-  // Fund without explicit maxSameEventPositions — default is 3
+  // Fund without explicit maxSameEventPositions — default is now 1 (v2, daily-quota semantics)
   const insertCountRef = { n: 0 };
-  const db = makeSameEventDb(3, insertCountRef); // same-event count = 3 = default cap
+  const db = makeSameEventDb(1, insertCountRef); // daily count = 1 = default cap
 
   // Strip maxSameEventPositions from fund to confirm default is applied
   const { maxMarketImpactRatio, ...fundWithoutCap } = BASE_FUND as any;
@@ -1120,6 +1122,6 @@ test("MAX_SAME_EVENT_POSITIONS uses default cap 3 when fund.maxSameEventPosition
 
   const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
   assert.equal(capSkips.length, 1,
-    "Default cap of 3 must fire when sameEventCount (3) >= default (3) and fund has no maxSameEventPositions");
+    "Default cap of 1 must fire when dailyCount (1) >= default (1) and fund has no maxSameEventPositions");
   assert.equal(insertCountRef.n, 0, "No INSERT when default cap is reached");
 });

@@ -61,11 +61,12 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   // Market Impact Gate: 5%–50% of market liquidity per order.
   // Conservative funds should tend lower (≤10%); aggressive funds may go higher.
   maxMarketImpactRatio:  { min: 0.05, max: 0.50 },
-  // Same-event horizontal cap: max OPEN positions per fund per event.
-  // Default 3 (when fund.maxSameEventPositions is unset). Conservative funds
-  // tend toward 2 (海龟); aggressive multi-outcome chasers may evolve up to 8.
-  // Caps the multi-outcome arb fan-out (邦德演员 / NBA 东部 type events).
-  maxSameEventPositions: { min: 2,    max: 8,    integer: true },
+  // Same-event daily quota: max entries per fund per event per UTC calendar day.
+  // v2 semantics (2026-05-18 evening fix): counts ALL entries regardless of
+  // status — prevents "stop → count resets → re-enter" cycle (James Bond bypass).
+  // Default 1: one entry per day is sufficient for correlated multi-outcome events.
+  // Conservative funds stay at 1; exploratory funds may evolve to 3-5.
+  maxSameEventPositions: { min: 1,    max: 5,    integer: true },
 };
 
 export const EVOLVABLE_PARAMS: string[] = [

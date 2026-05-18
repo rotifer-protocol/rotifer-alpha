@@ -9,6 +9,10 @@ export const REALIZED_TRADE_STATUSES = [
   "PROFIT_TAKEN",
   "TRAILING_STOPPED",
   "REVERSED",
+  // Admin-voided concentration positions (2026-05-18). pnl = 0 at close.
+  // Listed here so isDuplicate() applies the 4h re-entry cooldown to the
+  // same market_id after force-close, preventing immediate re-entry.
+  "FORCE_CLOSED",
 ] as const;
 
 export const REALIZED_TRADE_STATUS_SQL = REALIZED_TRADE_STATUSES
