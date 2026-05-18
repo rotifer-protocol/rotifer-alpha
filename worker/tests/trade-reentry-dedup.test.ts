@@ -600,3 +600,199 @@ test("isDuplicate cooldown MISS (cnt=0) → INSERT proceeds + trade record produ
   assert.equal(dupSkips.length, 0,
     `No DUPLICATE_MARKET skip should appear when cnt=0; got skipReasons: ${JSON.stringify(result.skipReasons)}`);
 });
+
+// ─── freshlyClosedThisRun in-pipeline cooldown (Problem B fix) ────────────
+//
+// Root cause: within the same runGenomePipeline tick, monitor closes a trade
+// then trader calls isDuplicate() via D1 — but D1 replicas haven't synced the
+// UPDATE yet (M15, ADR-280 §D6). Fix: genome.ts builds freshlyClosedThisRun
+// Set from monitorOut.actions and passes it to paperTrade, which checks it
+// BEFORE the DB query.
+
+test("freshlyClosedThisRun blocks re-entry without DB query (in-pipeline cooldown)", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let isDuplicateQueryCount = 0;
+  class TrackingDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) {
+              isDuplicateQueryCount++;
+              return { cnt: 0 }; // DB says "no cooldown" — but in-memory set should win
+            }
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => ({ success: true, results: [] }),
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const marketId = "market-freshly-closed";
+  const fundId = "shark";
+  const sig = {
+    signalId: "SIG-FRESH-CLOSE",
+    type: "MISPRICING" as const,
+    marketId,
+    slug: "freshly-closed-market",
+    question: "Freshly closed?",
+    description: "test",
+    edge: 2.5,
+    confidence: 0.7,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 50000 },
+    timestamp: new Date().toISOString(),
+  };
+  const fund = {
+    id: fundId,
+    name: "鲨鱼·S",
+    emoji: "🦈",
+    initialBalance: 10000,
+    maxOpenPositions: 5,
+    maxPerEvent: 10000,
+    minEdge: 1.0,
+    minConfidence: 0.3,
+    minVolume: 1000,
+    minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61,
+    trailingStopPercent: 0,
+    probReversalThreshold: 0,
+    stopLossPercent: 0,
+    maxHoldDays: 21,
+    sizingScale: 0.1,
+    tier: "S" as const,
+    allowOtmBuys: true,
+    baseSizingUsd: 100,
+    referenceSizingEquity: 10000,
+  };
+
+  // Simulate: monitor just closed fundId:marketId in this same pipeline tick
+  const freshlyClosedThisRun = new Set([`${fundId}:${marketId}`]);
+
+  const result = await paperTrade(
+    new TrackingDb() as unknown as D1Database,
+    [sig],
+    [],
+    [fund as any],
+    new Date().toISOString(),
+    freshlyClosedThisRun,
+  );
+
+  const dupSkips = result.skipReasons.filter(r => r.code === "DUPLICATE_MARKET");
+  assert.equal(dupSkips.length, 1,
+    "freshlyClosedThisRun hit must produce DUPLICATE_MARKET skip");
+  assert.equal(result.trades.length, 0,
+    "No trade should be opened for a freshly-closed market");
+  assert.equal(isDuplicateQueryCount, 0,
+    "isDuplicate DB query must NOT be reached when freshlyClosedThisRun hits first (short-circuit)");
+});
+
+// ─── D1DatabaseError (non-Error instanceof) catch path ────────────────────
+//
+// Production Cloudflare D1 throws D1DatabaseError which has a .message property
+// but does NOT extend the standard JS Error class (instanceof Error = false).
+// The original catch used `e instanceof Error ? e.message : String(e)` which
+// hit `String(e)` → "[object Object]" → UNIQUE check missed → error propagated
+// to genome.ts storeError() → noisy pipeline_errors entries even after v3 deploy.
+//
+// Fix (trade.ts): `String((e as any)?.message ?? e)` — reads .message directly.
+// This test verifies the fix by throwing a plain object (no instanceof Error).
+
+test("INSERT failing with D1DatabaseError-style object (no instanceof Error) is caught and skipped", async () => {
+  const { paperTrade } = await import("../src/trade");
+
+  let duplicateSkips = 0;
+
+  class D1StyleDb {
+    prepare(sql: string) {
+      return {
+        bind: (..._args: unknown[]) => ({
+          first: async (_col?: string) => {
+            if (sql.includes("closed_at >= ?")) return { cnt: 0 };
+            if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
+            if (sql.includes("SUM(amount)")) return { total: 0 };
+            if (sql.includes("frozen_until")) return null;
+            if (sql.includes("execution_mode")) return null;
+            return null;
+          },
+          run: async () => {
+            if (sql.trim().startsWith("INSERT INTO paper_trades")) {
+              // Simulate a D1DatabaseError: plain object with .message, NOT instanceof Error.
+              // This is the class of error the real Cloudflare D1 binding throws in production.
+              const d1Error = { message: "D1_ERROR: UNIQUE constraint failed: paper_trades.fund_id, paper_trades.market_id: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)" };
+              throw d1Error;
+            }
+            return { success: true, results: [] };
+          },
+          all: async () => ({ results: [] }),
+        }),
+        first: async () => null,
+        all: async () => ({ results: [] }),
+        run: async () => ({ success: true, results: [] }),
+      };
+    }
+  }
+
+  const sig = {
+    signalId: "SIG-D1ERR",
+    type: "MISPRICING" as const,
+    marketId: "market-d1-style-err",
+    slug: "d1-style-err",
+    question: "D1 style error?",
+    description: "test",
+    edge: 2.5,
+    confidence: 0.7,
+    direction: "BUY_BOTH" as const,
+    prices: { "Yes": 0.4, "No": 0.62, sum: 1.02, volume24hr: 50000 },
+    timestamp: new Date().toISOString(),
+  };
+  const fund = {
+    id: "shark",
+    name: "鲨鱼·S",
+    emoji: "🦈",
+    initialBalance: 10000,
+    maxOpenPositions: 5,
+    maxPerEvent: 10000,
+    minEdge: 1.0,
+    minConfidence: 0.3,
+    minVolume: 1000,
+    minLiquidity: 1000,
+    allowedTypes: ["MISPRICING"] as const,
+    takeProfitPercent: 0.61,
+    trailingStopPercent: 0,
+    probReversalThreshold: 0,
+    stopLossPercent: 0,
+    maxHoldDays: 21,
+    sizingScale: 0.1,
+    tier: "S" as const,
+    allowOtmBuys: true,
+    baseSizingUsd: 100,
+    referenceSizingEquity: 10000,
+  };
+
+  const result = await paperTrade(
+    new D1StyleDb() as unknown as D1Database,
+    [sig],
+    [],
+    [fund as any],
+    new Date().toISOString(),
+  );
+
+  duplicateSkips = result.skipReasons.filter(r => r.code === "DUPLICATE_MARKET").length;
+
+  assert.equal(duplicateSkips, 1,
+    "D1DatabaseError-style object (non-Error instanceof) must be caught and translated to DUPLICATE_MARKET skip");
+  assert.equal(result.trades.length, 0,
+    "No trade should be recorded when D1DatabaseError-style UNIQUE violation is thrown");
+});

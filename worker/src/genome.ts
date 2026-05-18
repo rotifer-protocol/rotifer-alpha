@@ -137,9 +137,10 @@ async function runTraderGene(
   ts: string,
   strategyKey = "baseline",
   variantConfig?: Record<string, unknown>,
+  freshlyClosedThisRun?: ReadonlySet<string>,
 ): Promise<import("./trade").PaperTradeResult> {
   const strategy = getTraderStrategy(strategyKey);
-  return strategy(db, signals, markets, funds, ts, variantConfig);
+  return strategy(db, signals, markets, funds, ts, variantConfig, freshlyClosedThisRun);
 }
 
 // ─── Gene Step: Micro-Evolver ───────────────────────────
@@ -412,8 +413,15 @@ export async function runGenomePipeline(
     });
   }
 
+  // Build in-pipeline closed set: positions closed by monitor THIS tick.
+  // Passed to the trader so it can skip these markets WITHOUT a D1 query —
+  // D1 read replicas may not yet reflect monitor's UPDATE (M15: ADR-280 §D6).
+  const freshlyClosedThisRun = new Set(
+    monitorOut.actions.map(a => `${a.fundId}:${a.marketId}`),
+  );
+
   // Step 5: Trader
-  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts, traderKey, traderVariant?.config ?? undefined).catch(async (e): Promise<import("./trade").PaperTradeResult> => {
+  const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts, traderKey, traderVariant?.config ?? undefined, freshlyClosedThisRun).catch(async (e): Promise<import("./trade").PaperTradeResult> => {
     console.error("[Genome] Trader gene failed:", e);
     await storeError(env.DB, "trader", e);
     return { trades: [], skipReasons: [] };

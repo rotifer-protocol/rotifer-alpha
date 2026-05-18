@@ -237,6 +237,7 @@ export type TraderStrategy = (
   funds: FundConfig[],
   ts: string,
   variantConfig?: Record<string, unknown>,
+  freshlyClosedThisRun?: ReadonlySet<string>,
 ) => Promise<PaperTradeResult>;
 
 const traderStrategies = new Map<string, TraderStrategy>();
@@ -248,24 +249,26 @@ export function getTraderStrategy(key: string): TraderStrategy {
 // baseline: pass signals as-is (sorted by edge desc from scanner)
 async function traderBaseline(
   db: D1Database, signals: ArbSignal[], markets: MarketSnapshot[], funds: FundConfig[], ts: string,
+  _variantConfig?: Record<string, unknown>, freshlyClosedThisRun?: ReadonlySet<string>,
 ): Promise<PaperTradeResult> {
-  return paperTrade(db, signals, markets, funds, ts);
+  return paperTrade(db, signals, markets, funds, ts, freshlyClosedThisRun);
 }
 traderStrategies.set("baseline", traderBaseline);
 
 // high-edge: require edge >= 2× fund minEdge before trading
 async function traderHighEdge(
   db: D1Database, signals: ArbSignal[], markets: MarketSnapshot[], funds: FundConfig[], ts: string,
+  _variantConfig?: Record<string, unknown>, freshlyClosedThisRun?: ReadonlySet<string>,
 ): Promise<PaperTradeResult> {
   const filtered = signals.filter(s => s.edge >= (funds[0]?.minEdge ?? 0) * 2);
-  return paperTrade(db, filtered, markets, funds, ts);
+  return paperTrade(db, filtered, markets, funds, ts, freshlyClosedThisRun);
 }
 traderStrategies.set("high-edge", traderHighEdge);
 
 // llm-config: edge multiplier + sort mode + cap from LLM-generated config
 async function traderLLMConfig(
   db: D1Database, signals: ArbSignal[], markets: MarketSnapshot[], funds: FundConfig[], ts: string,
-  variantConfig?: Record<string, unknown>,
+  variantConfig?: Record<string, unknown>, freshlyClosedThisRun?: ReadonlySet<string>,
 ): Promise<PaperTradeResult> {
   const cfg = variantConfig ?? {};
   const edgeMul = typeof cfg.edgeMultiplier === "number" ? cfg.edgeMultiplier : 1.0;
@@ -278,7 +281,7 @@ async function traderLLMConfig(
   else if (sortMode === "combined") sorted = sorted.sort((a, b) => (b.edge * b.confidence) - (a.edge * a.confidence));
   else sorted = sorted.sort((a, b) => b.edge - a.edge);
 
-  return paperTrade(db, sorted.slice(0, maxSigs), markets, funds, ts);
+  return paperTrade(db, sorted.slice(0, maxSigs), markets, funds, ts, freshlyClosedThisRun);
 }
 traderStrategies.set("llm-config", traderLLMConfig);
 

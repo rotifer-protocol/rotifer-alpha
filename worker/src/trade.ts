@@ -143,6 +143,7 @@ export async function paperTrade(
   markets: MarketSnapshot[],
   funds: FundConfig[],
   ts: string,
+  freshlyClosedThisRun?: ReadonlySet<string>,
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
@@ -223,7 +224,15 @@ export async function paperTrade(
 
       const effectiveMarketId = sig.resolvedMarketId ?? sig.marketId;
       const runKey = `${fund.id}:${effectiveMarketId}`;
-      if (openedThisRun.has(runKey) || await isDuplicate(db, fund.id, effectiveMarketId)) {
+      // freshlyClosedThisRun: in-pipeline memory set populated by monitor gene for
+      // positions closed earlier in THIS pipeline tick. Checked BEFORE the DB
+      // isDuplicate query because D1 read replicas may not yet reflect the monitor's
+      // UPDATE (M15: distributed read-after-write is untrustworthy — ADR-280 §D6).
+      if (
+        openedThisRun.has(runKey)
+        || freshlyClosedThisRun?.has(runKey)
+        || await isDuplicate(db, fund.id, effectiveMarketId)
+      ) {
         skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
         continue;
       }
@@ -304,7 +313,10 @@ export async function paperTrade(
           tokenId, price, ts,
         ).run();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        // D1DatabaseError in Workers production does not extend Error (instanceof = false),
+        // but still carries a .message property. Access it directly to avoid String(e)
+        // returning "[object Object]" and causing the UNIQUE check to silently miss.
+        const msg = String((e as any)?.message ?? e);
         if (msg.includes("UNIQUE constraint failed") && msg.includes("paper_trades")) {
           skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
           continue;
