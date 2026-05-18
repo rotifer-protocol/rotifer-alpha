@@ -392,6 +392,26 @@ export async function runGenomePipeline(
     });
   }
 
+  // ─── KV cross-tick cooldown pre-fetch (M15: ADR-280 §D6) ──
+  // Reads keys written by PREVIOUS pipeline ticks (TTL = 4 h, auto-expires).
+  // Protects against the edge case where D1 read-replica lag > 5-min cron window,
+  // causing a re-entry into a market that was just closed by a prior tick's monitor.
+  // Non-fatal: if KV is unavailable, falls back to same-tick in-memory Set only.
+  let kvCooldowns = new Set<string>();
+  if (env.COOLDOWN_KV) {
+    try {
+      const kvList = await env.COOLDOWN_KV.list({ prefix: "cooldown:" });
+      for (const k of kvList.keys) {
+        kvCooldowns.add(k.name.slice("cooldown:".length)); // "fund_id:market_id"
+      }
+      if (kvCooldowns.size > 0) {
+        console.log(`[Genome] KV cooldowns: ${kvCooldowns.size} cross-tick pair(s) active`);
+      }
+    } catch (e) {
+      console.error("[Genome] KV cooldown pre-fetch failed (non-fatal):", e);
+    }
+  }
+
   // Step 4: Monitor (active selling)
   const monitorOut = await runMonitorGene(env.DB, funds, monitorKey, monitorVariant?.config ?? undefined).catch(async (e): Promise<MonitorOutput> => {
     console.error("[Genome] Monitor gene failed:", e);
@@ -413,12 +433,24 @@ export async function runGenomePipeline(
     });
   }
 
-  // Build in-pipeline closed set: positions closed by monitor THIS tick.
+  // Write this tick's closures to KV for next-tick protection (non-blocking).
+  // expirationTtl = 14400 s = 4 h; KV auto-deletes expired keys.
+  if (env.COOLDOWN_KV && monitorOut.actions.length > 0) {
+    const COOLDOWN_TTL = 4 * 60 * 60;
+    Promise.all(
+      monitorOut.actions.map(a =>
+        env.COOLDOWN_KV!.put(`cooldown:${a.fundId}:${a.marketId}`, "1", { expirationTtl: COOLDOWN_TTL }),
+      ),
+    ).catch(e => console.error("[Genome] KV cooldown write failed (non-fatal):", e));
+  }
+
+  // Build combined cooldown set: KV cross-tick pairs ∪ same-tick monitor closures.
   // Passed to the trader so it can skip these markets WITHOUT a D1 query —
   // D1 read replicas may not yet reflect monitor's UPDATE (M15: ADR-280 §D6).
-  const freshlyClosedThisRun = new Set(
-    monitorOut.actions.map(a => `${a.fundId}:${a.marketId}`),
-  );
+  const freshlyClosedThisRun = new Set([
+    ...kvCooldowns,
+    ...monitorOut.actions.map(a => `${a.fundId}:${a.marketId}`),
+  ]);
 
   // Step 5: Trader
   const traderResult = await runTraderGene(env.DB, scanner.signals, scanner.filtered, funds, ts, traderKey, traderVariant?.config ?? undefined, freshlyClosedThisRun).catch(async (e): Promise<import("./trade").PaperTradeResult> => {

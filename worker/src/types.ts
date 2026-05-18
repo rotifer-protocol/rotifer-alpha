@@ -1,5 +1,9 @@
 export interface Env {
   DB: D1Database;
+  /** Cross-tick cooldown cache. Keys: "cooldown:{fund_id}:{market_id}", TTL 4 h.
+   *  Optional so local-dev / test environments without a KV binding gracefully degrade
+   *  to same-tick in-memory Set protection only. */
+  COOLDOWN_KV?: KVNamespace;
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
   API_TOKEN: string;

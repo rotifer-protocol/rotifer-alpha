@@ -51,6 +51,13 @@ crons = ["*/5 * * * *", "0 1 * * *", "0 0 * * *"]
 [ai]
 binding = "AI"
 
+[[kv_namespaces]]
+# Cross-tick trade cooldown cache — prevents re-entry into a market closed in
+# the last 4 h even when D1 read-replica lag exceeds the 5-minute cron window.
+# TTL is enforced at the KV level (expirationTtl = 14400 s = 4 h).
+binding = "COOLDOWN_KV"
+id = "9de2d623eb58404dac3f2cf30ddc7b51"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "polymarket-signals"
