@@ -10,6 +10,7 @@ class FakeStatement {
       scans: Record<string, unknown>[];
       trades: Record<string, unknown>[];
       signals: Record<string, unknown>[];
+      evolution: Record<string, unknown>[];
     },
   ) {}
 
@@ -24,6 +25,9 @@ class FakeStatement {
         }
         if (this.sql.includes("FROM signals")) {
           return { results: this.rows.signals };
+        }
+        if (this.sql.includes("FROM evolution_log")) {
+          return { results: this.rows.evolution };
         }
         throw new Error(`Unexpected all() query: ${this.sql}`);
       },
@@ -43,6 +47,7 @@ class FakeDb {
       scans: Record<string, unknown>[];
       trades: Record<string, unknown>[];
       signals: Record<string, unknown>[];
+      evolution: Record<string, unknown>[];
     },
   ) {}
 
@@ -93,6 +98,7 @@ test("api events expose detailed trade-opened and signal payloads", async () => 
         created_at: "2026-04-04T15:30:16.173Z",
       },
     ],
+    evolution: [],
   });
 
   const response = await handleApi(

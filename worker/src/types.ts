@@ -143,6 +143,8 @@ export interface TradeAction {
 }
 
 export interface Settlement {
+  tradeId?: string;
+  marketId?: string;
   fundId: string;
   fundEmoji: string;
   slug: string;

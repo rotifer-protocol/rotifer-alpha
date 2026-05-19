@@ -88,6 +88,8 @@ export async function checkRiskLimits(
       }
 
       expired.push({
+        tradeId: trade.id,
+        marketId: trade.market_id,
         fundId: trade.fund_id,
         fundEmoji: fund.emoji,
         slug: trade.slug ?? "",
@@ -122,6 +124,8 @@ export async function checkRiskLimits(
       }
 
       stopped.push({
+        tradeId: trade.id,
+        marketId: trade.market_id,
         fundId: trade.fund_id,
         fundEmoji: fund.emoji,
         slug: trade.slug ?? "",
@@ -198,6 +202,8 @@ export async function piggybackRiskCheck(
       }
 
       stopped.push({
+        tradeId: trade.id,
+        marketId: trade.market_id,
         fundId: trade.fund_id,
         fundEmoji: fund.emoji,
         slug: trade.slug ?? "",

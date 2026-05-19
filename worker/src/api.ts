@@ -20,7 +20,14 @@ import {
   SYSTEM_INVALIDATION_MONITOR_REASON_SQL,
   toDisplayTradeStatus,
 } from "./trade-semantics";
-import { getSystemConfig, getHeartbeat, getPipelineErrors, getSkipByFund } from "./execution";
+import {
+  getSystemConfig,
+  getHeartbeat,
+  getPipelineErrors,
+  getSkipByFund,
+  getGuardrailEventCount,
+  trimGuardrailEvents,
+} from "./execution";
 import { piggybackRiskCheck } from "./risk";
 
 /**
@@ -93,14 +100,17 @@ export async function handleApi(
 
   // ─── Diagnostics (read-only) ────────────────────────────
   if (path === "/api/diagnostics") {
-    const [errors, config, heartbeat, skipByFund] = await Promise.all([
+    const [errors, config, heartbeat, skipByFund, guardrailEvents] = await Promise.all([
       getPipelineErrors(env.DB, 50),
       getSystemConfig(env.DB),
       getHeartbeat(env.DB),
       getSkipByFund(env.DB),
+      getGuardrailEventCount(env.DB),
     ]);
+    await trimGuardrailEvents(env.DB).catch(() => {});
     return Response.json({
       errors,
+      guardrailEvents,
       killSwitch: config.KILL_SWITCH === "true",
       executionMode: config.EXECUTION_MODE || "paper",
       skipByFund,
@@ -783,20 +793,54 @@ async function apiShadow(
   const url = new URL(req.url);
   const fundId = url.searchParams.get("fund");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+  const includeInvalidated = url.searchParams.get("includeInvalidated") === "1";
 
   try {
-    let query = "SELECT * FROM shadow_orders";
+    let query = `
+      SELECT so.*
+      FROM shadow_orders so
+      LEFT JOIN paper_trades pt ON pt.id = so.paper_trade_id`;
     const bindings: any[] = [];
+    const where: string[] = [];
 
     if (fundId) {
-      query += " WHERE fund_id = ?";
+      where.push("so.fund_id = ?");
       bindings.push(fundId);
     }
-    query += " ORDER BY created_at DESC LIMIT ?";
+    if (!includeInvalidated) {
+      where.push(`(
+        pt.id IS NULL OR (
+          (pt.monitor_reason IS NULL OR pt.monitor_reason NOT LIKE 'MIGRATED:%')
+          AND lower(COALESCE(so.question, pt.question, '')) NOT LIKE '%james bond%'
+          AND lower(COALESCE(so.slug, pt.slug, '')) NOT LIKE '%james-bond%'
+        )
+      )`);
+    }
+    if (where.length > 0) query += ` WHERE ${where.join(" AND ")}`;
+    query += " ORDER BY so.created_at DESC LIMIT ?";
     bindings.push(limit);
 
     const result = await db.prepare(query).bind(...bindings).all();
     const orders = result.results || [];
+    const excludedBindings: any[] = [];
+    let excludedWhere = `
+      (
+        pt.monitor_reason LIKE 'MIGRATED:%'
+        OR lower(COALESCE(so.question, pt.question, '')) LIKE '%james bond%'
+        OR lower(COALESCE(so.slug, pt.slug, '')) LIKE '%james-bond%'
+      )`;
+    if (fundId) {
+      excludedWhere = `so.fund_id = ? AND ${excludedWhere}`;
+      excludedBindings.push(fundId);
+    }
+    const excludedSummary = await db.prepare(
+      `SELECT COUNT(*) AS count,
+              COALESCE(SUM(so.paper_pnl), 0) AS paper_pnl,
+              COALESCE(SUM(so.shadow_pnl), 0) AS shadow_pnl
+       FROM shadow_orders so
+       LEFT JOIN paper_trades pt ON pt.id = so.paper_trade_id
+       WHERE ${excludedWhere}`,
+    ).bind(...excludedBindings).first();
 
     const wouldFill = orders.filter((o: any) => o.status === "WOULD_FILL").length;
     const wouldReject = orders.filter((o: any) => o.status === "WOULD_REJECT").length;
@@ -820,6 +864,7 @@ async function apiShadow(
         totalShadowPnl: Math.round(totalShadowPnl * 100) / 100,
         pnlDivergence: Math.round((totalPaperPnl - totalShadowPnl) * 100) / 100,
       },
+      excludedSummary,
     }, { headers });
   } catch {
     return Response.json({ orders: [], total: 0, summary: null }, { headers });
@@ -886,6 +931,21 @@ async function apiGeneVariants(
   await Promise.all(GENE_REGISTRY.map(g => ensureSaneActiveVariant(db, g.id).catch(() => null)));
   const variants = await listVariants(db, geneId);
   const active = await getAllActiveVariants(db);
+  let adjustmentSummary = null;
+  try {
+    adjustmentSummary = await db.prepare(
+      `SELECT COUNT(*) AS count,
+              COALESCE(SUM(pnl_delta), 0) AS pnl_delta,
+              COALESCE(SUM(trade_delta), 0) AS trade_delta,
+              COALESCE(SUM(win_delta), 0) AS win_delta,
+              COALESCE(SUM(loss_delta), 0) AS loss_delta,
+              SUM(CASE WHEN confidence = 'unattributed' THEN 1 ELSE 0 END) AS unattributed_count
+       FROM gene_variant_adjustments
+       WHERE adjustment_type = 'SYSTEM_INVALIDATED_LEGACY'`,
+    ).first();
+  } catch {
+    adjustmentSummary = null;
+  }
 
   const localizedVariants = lang === "zh"
     ? variants.map(v => ({
@@ -898,6 +958,7 @@ async function apiGeneVariants(
     variants: localizedVariants,
     activeConfig: Object.fromEntries(active),
     registry: localizeRegistry(GENE_REGISTRY, lang),
+    adjustmentSummary: adjustmentSummary ?? null,
   }, { headers });
 }
 

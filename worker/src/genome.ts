@@ -493,16 +493,27 @@ export async function runGenomePipeline(
   // actions also credit trader and micro-evolver as pipeline-level contributors
   // until per-trade Gene provenance is available.
   try {
-    const riskOutcomes = [...risk.stopped, ...risk.expired].map(x => ({ pnl: x.pnl }));
-    const settlementOutcomes = settler.settlements.map(x => ({ pnl: x.pnl }));
-    const monitorOutcomes = monitorOut.actions.map(x => ({ pnl: x.pnl }));
+    const riskStopOutcomes = risk.stopped.map(x => ({
+      pnl: x.pnl, tradeId: x.tradeId, fundId: x.fundId, marketId: x.marketId, status: x.status,
+    }));
+    const riskExpireOutcomes = risk.expired.map(x => ({
+      pnl: x.pnl, tradeId: x.tradeId, fundId: x.fundId, marketId: x.marketId, status: x.status,
+    }));
+    const riskOutcomes = [...riskStopOutcomes, ...riskExpireOutcomes];
+    const settlementOutcomes = settler.settlements.map(x => ({
+      pnl: x.pnl, tradeId: x.tradeId, fundId: x.fundId, marketId: x.marketId, status: x.status,
+    }));
+    const monitorOutcomes = monitorOut.actions.map(x => ({
+      pnl: x.pnl, tradeId: x.tradeId, fundId: x.fundId, marketId: x.marketId, status: x.newStatus,
+    }));
     const closedOutcomes = [...riskOutcomes, ...settlementOutcomes, ...monitorOutcomes];
 
-    await recordVariantOutcomes(env.DB, riskVariant, riskOutcomes);
-    await recordVariantOutcomes(env.DB, scannerVariant, settlementOutcomes);
-    await recordVariantOutcomes(env.DB, monitorVariant, monitorOutcomes);
-    await recordVariantOutcomes(env.DB, traderVariant, closedOutcomes);
-    await recordVariantOutcomes(env.DB, microEvolverVariant, closedOutcomes);
+    await recordVariantOutcomes(env.DB, riskVariant, riskStopOutcomes, "risk_stop");
+    await recordVariantOutcomes(env.DB, riskVariant, riskExpireOutcomes, "risk_expire");
+    await recordVariantOutcomes(env.DB, scannerVariant, settlementOutcomes, "settlement");
+    await recordVariantOutcomes(env.DB, monitorVariant, monitorOutcomes, "monitor");
+    await recordVariantOutcomes(env.DB, traderVariant, closedOutcomes, "trader_pipeline");
+    await recordVariantOutcomes(env.DB, microEvolverVariant, closedOutcomes, "micro_evolver_pipeline");
   } catch {
     // non-critical
   }

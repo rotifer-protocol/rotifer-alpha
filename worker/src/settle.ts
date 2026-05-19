@@ -162,6 +162,8 @@ export async function settle(
 
     const fund = funds.find(f => f.id === trade.fund_id);
     settlements.push({
+      tradeId: trade.id,
+      marketId: trade.market_id,
       fundId: trade.fund_id,
       fundEmoji: fund?.emoji ?? "",
       slug: trade.slug ?? "",

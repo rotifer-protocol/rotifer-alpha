@@ -231,6 +231,9 @@ export interface PipelineError {
   details: string | null;
 }
 
+export const DUPLICATE_OPEN_GUARDRAIL_MESSAGE =
+  "UNIQUE constraint failed: paper_trades.fund_id, paper_trades.market_id";
+
 export async function storeError(
   db: D1Database,
   stage: string,
@@ -263,11 +266,45 @@ export async function getPipelineErrors(
 ): Promise<PipelineError[]> {
   try {
     const r = await db.prepare(
-      "SELECT * FROM pipeline_errors ORDER BY occurred_at DESC LIMIT ?",
-    ).bind(limit).all();
+      `SELECT * FROM pipeline_errors
+       WHERE instr(message, ?) = 0
+       ORDER BY occurred_at DESC LIMIT ?`,
+    ).bind(DUPLICATE_OPEN_GUARDRAIL_MESSAGE, limit).all();
     return (r.results ?? []) as PipelineError[];
   } catch {
     return [];
+  }
+}
+
+export async function getGuardrailEventCount(db: D1Database): Promise<number> {
+  try {
+    const r = await db.prepare(
+      "SELECT COUNT(*) AS n FROM pipeline_errors WHERE instr(message, ?) > 0",
+    ).bind(DUPLICATE_OPEN_GUARDRAIL_MESSAGE).first<{ n: number }>();
+    return r?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function trimGuardrailEvents(db: D1Database, keep = 20): Promise<void> {
+  try {
+    await db.prepare(
+      `DELETE FROM pipeline_errors
+       WHERE instr(message, ?) > 0
+         AND id NOT IN (
+           SELECT id FROM pipeline_errors
+           WHERE instr(message, ?) > 0
+           ORDER BY occurred_at DESC
+           LIMIT ?
+         )`,
+    ).bind(
+      DUPLICATE_OPEN_GUARDRAIL_MESSAGE,
+      DUPLICATE_OPEN_GUARDRAIL_MESSAGE,
+      keep,
+    ).run();
+  } catch {
+    // non-critical
   }
 }
 

@@ -966,12 +966,10 @@ test("INSERT failing with D1DatabaseError-style object (no instanceof Error) is 
 // protect against this because each candidate has a distinct market_id.
 // Fix: getSameEventOpenCount(db, fundId, slug) count-based cap in paperTrade().
 //
-// Tests use a mock DB where `getDailyEventEntryCount` returns a configurable value.
+// Tests use a mock DB where daily event-family history returns a configurable count.
 // v2 semantics: counts ALL entries today (any status), not just OPEN.
-// Distinguishing the three COUNT(*) queries:
-//   isDuplicate:              sql.includes("closed_at")   (closed_at >= ?)
-//   getDailyEventEntryCount:  sql.includes("opened_at")   (opened_at >= todayStart)
-//   getOpenPositionCount:     neither closed_at nor opened_at
+// v3 semantics: slug/question are normalized through eventFamilyKey(), so nearby
+// Polymarket slugs/questions can still be treated as one correlated event family.
 
 function makeSameEventDb(dailyCount: number, insertCountRef: { n: number }) {
   class SameEventDb {
@@ -980,10 +978,8 @@ function makeSameEventDb(dailyCount: number, insertCountRef: { n: number }) {
         bind: (..._args: unknown[]) => ({
           first: async (_col?: string) => {
             if (sql.includes("closed_at")) return { cnt: 0 };               // isDuplicate → no cooldown
-            if (sql.includes("opened_at") && sql.includes("slug"))
-              return { cnt: dailyCount };                                    // getDailyEventEntryCount
             if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };         // getOpenPositionCount
-            if (sql.includes("SUM(amount)")) return { total: 0 };           // getEventExposure / getBalance
+            if (sql.includes("SUM(amount)")) return { total: 0 };           // getBalance
             if (sql.includes("frozen_until")) return null;
             return null;
           },
@@ -991,7 +987,17 @@ function makeSameEventDb(dailyCount: number, insertCountRef: { n: number }) {
             if (sql.trim().startsWith("INSERT INTO paper_trades")) insertCountRef.n++;
             return { success: true, results: [] };
           },
-          all: async () => ({ results: [] }),
+          all: async () => {
+            if (sql.includes("opened_at >=")) {
+              return {
+                results: Array.from({ length: dailyCount }, () => ({
+                  slug: BOND_SIG.slug,
+                  question: BOND_SIG.question,
+                })),
+              };
+            }
+            return { results: [] };
+          },
         }),
         first: async () => null,
         all: async () => ({ results: [] }),
@@ -1045,30 +1051,34 @@ test("MAX_SAME_EVENT_POSITIONS blocks entry when daily event entry count reaches
   assert.equal(insertCountRef.n, 0, "No INSERT should be issued");
 });
 
-test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event slug", async () => {
+test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event family", async () => {
   const { paperTrade } = await import("../src/trade");
 
-  // DB says bond event is at cap (2) daily entries, but we send a signal for a different slug
-  let sameEventCallCount = 0;
+  // DB says the bond event family is at cap (2) daily entries, but we send a
+  // signal for a different event family.
   class CrossEventDb {
     prepare(sql: string) {
       return {
-        bind: (...args: unknown[]) => ({
+        bind: (..._args: unknown[]) => ({
           first: async (_col?: string) => {
             if (sql.includes("closed_at")) return { cnt: 0 };
-            if (sql.includes("opened_at") && sql.includes("slug")) {
-              sameEventCallCount++;
-              // v2: args are (fundId, slug, todayStart) — slug is args[1]
-              const slug = args[1] as string;
-              return { cnt: slug === "next-james-bond-actor-635" ? 99 : 0 };
-            }
             if (sql.includes("COUNT(*) as cnt")) return { cnt: 0 };
             if (sql.includes("SUM(amount)")) return { total: 0 };
             if (sql.includes("frozen_until")) return null;
             return null;
           },
           run: async () => ({ success: true, results: [] }),
-          all: async () => ({ results: [] }),
+          all: async () => {
+            if (sql.includes("opened_at >=")) {
+              return {
+                results: [
+                  { slug: "next-james-bond-actor-635", question: "Next James Bond actor?" },
+                  { slug: "james-norton-announced-as-next-james-bond", question: "James Norton announced as next James Bond?" },
+                ],
+              };
+            }
+            return { results: [] };
+          },
         }),
         first: async () => null,
         all: async () => ({ results: [] }),
@@ -1098,11 +1108,9 @@ test("MAX_SAME_EVENT_POSITIONS does not block entry for a different event slug",
 
   const capSkips = result.skipReasons.filter(r => r.code === "MAX_SAME_EVENT_POSITIONS");
   assert.equal(capSkips.length, 1,
-    "Bond signal (same-event cnt=99 >= cap 2) should be blocked");
+    "Bond signal (same-family count 2 >= cap 2) should be blocked");
   assert.equal(result.trades.length, 1,
-    "NBA West signal (different slug, cnt=0) must pass through and trade");
-  assert.ok(sameEventCallCount >= 2,
-    "getDailyEventEntryCount should be queried for both slugs");
+    "NBA West signal (different event family) must pass through and trade");
 });
 
 test("MAX_SAME_EVENT_POSITIONS uses default cap 1 when fund.maxSameEventPositions is not set", async () => {

@@ -212,7 +212,35 @@ export async function recordTradeResult(
   variantId: string,
   pnl: number,
   won: boolean,
+  provenance?: {
+    source?: string;
+    tradeId?: string;
+    fundId?: string;
+    marketId?: string;
+    status?: string;
+  },
 ): Promise<void> {
+  const variant = await getVariant(db, variantId);
+  if (!variant) return;
+
+  await db.prepare(
+    `INSERT INTO gene_variant_outcomes
+     (id, variant_id, gene_id, source, paper_trade_id, fund_id, market_id, status, pnl, won, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    crypto.randomUUID(),
+    variantId,
+    variant.geneId,
+    provenance?.source ?? "legacy",
+    provenance?.tradeId ?? null,
+    provenance?.fundId ?? null,
+    provenance?.marketId ?? null,
+    provenance?.status ?? null,
+    pnl,
+    won ? 1 : 0,
+    new Date().toISOString(),
+  ).run();
+
   await db.prepare(
     `UPDATE gene_variants SET
        trades_evaluated = trades_evaluated + 1,

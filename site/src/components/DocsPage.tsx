@@ -18,10 +18,14 @@ const SECTIONS = [
 function Section({ id, zh, en, children }: {
   id: string; zh: string; en: string; children: React.ReactNode;
 }) {
+  const { locale } = useI18n();
+  const isZh = locale === "zh";
+  const primary   = isZh ? zh : en;
+  const secondary = isZh ? en : zh;
   return (
     <section id={id} className="scroll-mt-28">
       <h2 className="text-lg font-bold mb-4 pb-2 border-b border-[var(--r-border)]">
-        {zh}<span className="ml-2 text-xs font-normal text-[var(--r-text-faint)]">{en}</span>
+        {primary}<span className="ml-2 text-xs font-normal text-[var(--r-text-faint)]">{secondary}</span>
       </h2>
       <div className="space-y-3 text-sm text-[var(--r-text-muted)] leading-relaxed">
         {children}
@@ -221,6 +225,14 @@ export function DocsPage() {
               <>
                 <p>实验室采用 <strong className="text-[var(--r-text)]">PBT（Population-Based Training，种群训练）</strong>算法驱动基金进化。PBT 是一种无需人工干预的超参数优化方法，通过淘汰-变异-继承循环让种群自发寻优。</p>
                 <p><strong className="text-[var(--r-text)]">世代机制</strong>：每隔固定笔数（EPOCH_TRADE_THRESHOLD）完成一次世代迭代。每个世代结束后，适应度最低的基金进入变异流程。</p>
+                <p><strong className="text-[var(--r-text)]">生产主路径公式</strong>：每个资本层级（S / M / L）内独立选择冠军与最弱基金，最弱基金继承冠军参数后加入小幅随机扰动。</p>
+                <FormulaBlock>
+                  <div>g_best = argmax F(g)</div>
+                  <div>g_worst = argmin F(g)</div>
+                  <div>theta_worst ← clamp(theta_best + epsilon)</div>
+                  <div>epsilon ~ N(0, 0.05 × parameter_range)</div>
+                </FormulaBlock>
+                <p className="text-xs text-[var(--r-text-faint)]">若同层基金全部 F(g) &gt; 0.6，则跳过本轮变异；若全部 F(g) &lt; 0.2，则触发全局重置。</p>
                 <p><strong className="text-[var(--r-text)]">变异类型</strong>：</p>
                 <div className="space-y-1.5 pl-3">
                   {[
@@ -241,6 +253,14 @@ export function DocsPage() {
               <>
                 <p>The lab uses <strong className="text-[var(--r-text)]">PBT (Population-Based Training)</strong> to drive fund evolution. PBT is a hyperparameter optimization method that requires no human intervention — a population of agents self-optimizes via an exploit-explore loop.</p>
                 <p><strong className="text-[var(--r-text)]">Epoch mechanism</strong>: One evolution cycle completes after a fixed number of trades (EPOCH_TRADE_THRESHOLD). After each epoch, the lowest-fitness fund enters the mutation pipeline.</p>
+                <p><strong className="text-[var(--r-text)]">Production-path formula</strong>: within each capital tier (S / M / L), the system selects the champion and weakest fund independently. The weakest fund inherits the champion's parameters plus a small random perturbation.</p>
+                <FormulaBlock>
+                  <div>g_best = argmax F(g)</div>
+                  <div>g_worst = argmin F(g)</div>
+                  <div>theta_worst ← clamp(theta_best + epsilon)</div>
+                  <div>epsilon ~ N(0, 0.05 × parameter_range)</div>
+                </FormulaBlock>
+                <p className="text-xs text-[var(--r-text-faint)]">If all funds in a tier have F(g) &gt; 0.6, mutation is skipped. If all have F(g) &lt; 0.2, the tier enters global reset.</p>
                 <p><strong className="text-[var(--r-text)]">Mutation types</strong>:</p>
                 <div className="space-y-1.5 pl-3">
                   {[

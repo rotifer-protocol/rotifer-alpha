@@ -28,6 +28,18 @@ interface Props {
   externalHoveredId?: string | null;
 }
 
+function logPriority(log: EvolutionLog): number {
+  if (log.fitness_after != null) return 0;
+  if (log.action === "PBT_INHERIT_MUTATE" && log.fitness_before != null) return 1;
+  if (log.fitness_before != null) return 2;
+  return 3;
+}
+
+function pickFitnessLog(candidates: EvolutionLog[]): EvolutionLog | null {
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => logPriority(a) - logPriority(b))[0];
+}
+
 // ─── Custom Tooltip (excludes _min/_bandSize from display) ──────────────────
 function ChartTooltip({
   active,
@@ -37,7 +49,12 @@ function ChartTooltip({
   inheritAtEpoch,
 }: {
   active?: boolean;
-  payload?: { dataKey?: string; value?: unknown; stroke?: string }[];
+  payload?: {
+    dataKey?: string;
+    value?: unknown;
+    stroke?: string;
+    payload?: Record<string, unknown>;
+  }[];
   label?: string;
   t: (k: TranslationKey) => string;
   inheritAtEpoch?: { fundId: string; from: string }[];
@@ -67,15 +84,43 @@ function ChartTooltip({
         const baseFid = isAfter ? k.slice(0, -6) : k.slice(0, -7);
         const suffix = isAfter ? t("evoFitnessAfter") : t("evoFitnessBefore");
         const color = entry.stroke || "#a1a1aa";
+        const value = Number(entry.value);
+        const peakRaw = entry.payload?.[`${baseFid}_peak`];
+        const peak = typeof peakRaw === "number" ? peakRaw : null;
+        const deltaFromPeak = isAfter && peak != null && Number.isFinite(value)
+          ? value - peak
+          : null;
+        const deltaPct = deltaFromPeak != null && peak != null && peak !== 0
+          ? (deltaFromPeak / Math.abs(peak)) * 100
+          : null;
         return (
-          <div
-            key={k}
-            style={{ display: "flex", justifyContent: "space-between", gap: 16, color }}
-          >
-            <span>{fundDisplayName(baseFid, t)} ({suffix})</span>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>
-              {Number(entry.value).toFixed(4)}
-            </span>
+          <div key={k} style={{ color }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+              <span>{fundDisplayName(baseFid, t)} ({suffix})</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {value.toFixed(4)}
+              </span>
+            </div>
+            {isAfter && peak != null && deltaFromPeak != null && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  color: "#a1a1aa",
+                  fontSize: 11,
+                  marginTop: 2,
+                }}
+              >
+                <span>{t("fitnessTooltipPeak")}: {peak.toFixed(4)}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {deltaFromPeak === 0
+                    ? t("fitnessAtPeak")
+                    : `${deltaFromPeak > 0 ? "+" : ""}${deltaFromPeak.toFixed(4)}`
+                      + (deltaPct != null ? ` (${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%)` : "")}
+                </span>
+              </div>
+            )}
           </div>
         );
       })}
@@ -132,6 +177,7 @@ function ThresholdLabel({
 export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, externalHoveredId }: Props) {
   const { t, locale } = useI18n();
   const [showBefore, setShowBefore] = useState(false);
+  const [showPeak, setShowPeak] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(
@@ -171,9 +217,21 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
     logs.filter(l => l.fitness_after != null).map(l => l.fund_id)
   );
   const epochs = [...new Set(logs.map(l => l.epoch))].sort((a, b) => a - b);
+  // Old scheduled Workers once wrote duplicate rows for the same epoch+fund
+  // (e.g. E9 scored UNCHANGED followed by duplicate VARIANT_INSUFFICIENT/null).
+  // Normalize defensively so charting never lets a later null row erase a valid
+  // fitness point. Backend also dedupes, but the UI should be robust to dirty data.
+  const canonicalByKey = new Map<string, EvolutionLog>();
+  for (const key of new Set(logs.map(l => `${l.epoch}:${l.fund_id}`))) {
+    const [epochRaw, fundId] = key.split(":");
+    const epoch = Number(epochRaw);
+    const picked = pickFitnessLog(logs.filter(l => l.epoch === epoch && l.fund_id === fundId));
+    if (picked) canonicalByKey.set(key, picked);
+  }
+  const canonicalLogs = [...canonicalByKey.values()];
 
   // ── Inherit events: PBT_INHERIT_MUTATE (fitness_after=null, fitness_before=last known) ──
-  const inheritEvents = logs.filter(
+  const inheritEvents = canonicalLogs.filter(
     l => l.action === "PBT_INHERIT_MUTATE" && l.fitness_before != null,
   );
   // Map: epochLabel ("E5") → [{fundId, from}]
@@ -213,6 +271,7 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
   // When a fund has no fitness_after for an epoch (SKIP_INSUFFICIENT), we carry
   // forward the most recent known value so the line extends instead of truncating.
   const lastKnownFitness = new Map<string, number>();
+  const runningPeakFitness = new Map<string, number>();
 
   const data = epochs.map(epoch => {
     const point: Record<string, number | string> = { epoch: `E${epoch}` };
@@ -223,13 +282,13 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
       let beforeVal: number | null = null;
 
       if (effectiveExpanded) {
-        const log = logs.find(l => l.epoch === epoch && l.fund_id === did);
+        const log = pickFitnessLog(canonicalLogs.filter(l => l.epoch === epoch && l.fund_id === did));
         afterVal = log?.fitness_after ?? null;
         beforeVal = log?.fitness_before ?? null;
       } else {
         // Family representative: best (max) fitness across variants
         const varLogs = (familyMap[did] ?? [])
-          .map(vid => logs.find(l => l.epoch === epoch && l.fund_id === vid))
+          .map(vid => pickFitnessLog(canonicalLogs.filter(l => l.epoch === epoch && l.fund_id === vid)))
           .filter(Boolean) as EvolutionLog[];
         afterVal = varLogs.reduce<number | null>((best, l) => {
           if (l.fitness_after === null) return best;
@@ -256,6 +315,13 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
       }
       if (showBefore && beforeVal !== null) {
         point[`${did}_before`] = beforeVal;
+      }
+      const plottedAfter = point[`${did}_after`];
+      if (typeof plottedAfter === "number") {
+        const prevPeak = runningPeakFitness.get(did);
+        const peak = prevPeak === undefined ? plottedAfter : Math.max(prevPeak, plottedAfter);
+        runningPeakFitness.set(did, peak);
+        point[`${did}_peak`] = peak;
       }
     }
 
@@ -290,6 +356,10 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
       bestId = did;
     }
   }
+  const bestPeakVal = bestId ? lastPt?.[`${bestId}_peak`] : null;
+  const bestPeakDelta = bestId && typeof bestPeakVal === "number" && Number.isFinite(bestVal)
+    ? bestVal - bestPeakVal
+    : null;
 
   // ── End-of-line label stagger (prevents overlap when values are close) ────────
   // Sort displayIds by their last fitness_after value (descending = top→bottom)
@@ -314,9 +384,9 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
 
   // ── Latest epoch health summary ──────────────────────────────────────────────
   const latestEpoch = epochs[epochs.length - 1];
-  const latestLogs  = logs.filter(l => l.epoch === latestEpoch && l.fitness_after != null);
+  const latestLogs  = canonicalLogs.filter(l => l.epoch === latestEpoch && l.fitness_after != null);
   const prevLogs    = epochs.length > 1
-    ? logs.filter(l => l.epoch === epochs[epochs.length - 2] && l.fitness_after != null)
+    ? canonicalLogs.filter(l => l.epoch === epochs[epochs.length - 2] && l.fitness_after != null)
     : [];
   const latestParticipants = new Set(latestLogs.map(l => l.fund_id)).size;
   const bestLatestLog = latestLogs.reduce<EvolutionLog | null>((best, l) => {
@@ -416,6 +486,17 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
             {t("fitnessToggleBefore")}
           </button>
           <button
+            onClick={() => setShowPeak(v => !v)}
+            className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+              showPeak
+                ? "border-[var(--r-accent)] text-[var(--r-accent)] bg-[var(--r-accent)]/10"
+                : "border-[var(--r-border)] text-[var(--r-text-muted)] hover:border-[var(--r-text-muted)]"
+            }`}
+            title={t("fitnessTogglePeakTip")}
+          >
+            {t("fitnessTogglePeak")}
+          </button>
+          <button
               onClick={() => setExpanded(v => !v)}
               className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
                 expanded
@@ -443,6 +524,20 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
             <span className="text-[var(--r-text-faint)]">{t("fitnessSummaryBest")}</span>{" "}
             <span className="font-mono">({bestLatestLog.fitness_after!.toFixed(3)})</span>
           </span>
+          {bestPeakDelta != null && typeof bestPeakVal === "number" && (
+            <>
+              <span className="text-[var(--r-text-faint)]">·</span>
+              <span className="text-[var(--r-text-muted)]">
+                {t("fitnessSummaryPeak")}{" "}
+                <span className="font-mono">{bestPeakVal.toFixed(3)}</span>{" "}
+                <span className={bestPeakDelta < 0 ? "pnl-negative" : "text-[var(--r-text-faint)]"}>
+                  ({bestPeakDelta === 0
+                    ? t("fitnessAtPeak")
+                    : `${bestPeakDelta.toFixed(3)}`})
+                </span>
+              </span>
+            </>
+          )}
           {trend && (
             <>
               <span className="text-[var(--r-text-faint)]">·</span>
@@ -563,6 +658,25 @@ export function FitnessChart({ logs, allFundIds: allFundIdsProp, activeEpoch, ex
                 connectNulls
                 legendType="none"
                 activeDot={false}
+              />
+            ))}
+
+          {/* Best-so-far lines — optional, off by default to keep the chart simple */}
+          {showPeak &&
+            displayIds.map(did => (
+              <Line
+                key={`${did}_peak`}
+                type="stepAfter"
+                dataKey={`${did}_peak`}
+                stroke={getColor(did)}
+                strokeWidth={1}
+                strokeDasharray="2 4"
+                strokeOpacity={getOpacity(did) * 0.45}
+                dot={false}
+                connectNulls
+                legendType="none"
+                activeDot={false}
+                isAnimationActive={false}
               />
             ))}
 

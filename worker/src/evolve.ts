@@ -394,7 +394,7 @@ async function logEvolution(
   reason: string,
 ): Promise<void> {
   await db.prepare(
-    `INSERT INTO evolution_log
+    `INSERT OR IGNORE INTO evolution_log
      (id, epoch, executed_at, action, fund_id, params_before, params_after, fitness_before, fitness_after, reason)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
@@ -823,7 +823,27 @@ export async function apiEvolution(
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 500);
 
   const logs = await db.prepare(
-    "SELECT * FROM evolution_log ORDER BY epoch DESC, executed_at DESC LIMIT ?",
+    `WITH ranked AS (
+       SELECT *,
+              ROW_NUMBER() OVER (
+                PARTITION BY epoch, fund_id
+                ORDER BY
+                  CASE
+                    WHEN fitness_after IS NOT NULL THEN 0
+                    WHEN action = 'PBT_INHERIT_MUTATE' AND fitness_before IS NOT NULL THEN 1
+                    WHEN fitness_before IS NOT NULL THEN 2
+                    ELSE 3
+                  END,
+                  executed_at ASC
+              ) AS row_rank
+       FROM evolution_log
+     )
+     SELECT id, epoch, executed_at, action, fund_id, params_before, params_after,
+            fitness_before, fitness_after, reason
+     FROM ranked
+     WHERE row_rank = 1
+     ORDER BY epoch DESC, executed_at DESC
+     LIMIT ?`,
   ).bind(limit).all();
 
   const epochStats = await db.prepare(

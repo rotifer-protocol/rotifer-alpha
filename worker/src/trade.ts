@@ -33,6 +33,12 @@ import {
 import { fetchClobTokenIds } from "./price";
 import { getExecutionMode, recordShadowOpen } from "./execution";
 import { isOTMPosition, calcOTMCap, isUnsafeSellEntry } from "./risk-policy";
+import { eventFamilyKey } from "./event-family";
+import {
+  checkPortfolioConcentration,
+  getPortfolioEventExposureMap,
+  PORTFOLIO_MAX_EVENT_USDC,
+} from "./portfolio-coordinator";
 
 export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
@@ -118,35 +124,52 @@ async function getBalance(db: D1Database, fundId: string, initial: number): Prom
   return calculateCashBalance(initial, invested?.total ?? 0, realized?.total ?? 0);
 }
 
-async function getDailyEventEntryCount(
+interface EventFamilyRow {
+  slug: string | null;
+  question: string | null;
+  amount?: number | null;
+}
+
+function incrementMap(map: Map<string, number>, key: string, delta: number): void {
+  map.set(key, (map.get(key) ?? 0) + delta);
+}
+
+async function getDailyEventFamilyEntryCounts(
   db: D1Database,
   fundId: string,
-  eventSlug: string,
   todayStart: string,
-): Promise<number> {
-  // "Daily quota" semantics — counts ALL entries (any status) for fund+slug
+): Promise<Map<string, number>> {
+  // "Daily quota" semantics — counts ALL entries (any status) for fund+event family
   // opened since UTC midnight, regardless of whether they are still OPEN.
   //
   // Root cause of 2026-05-18 James Bond fan-out bypass: the original version
   // only counted OPEN positions. As each position was stopped out the count
   // dropped to 0, allowing unlimited same-day re-entries by cycling through
-  // different market_ids (candidates) in the same event.
+  // different market_ids / slugs (candidates) in the same event family.
   //
   // Using a daily total prevents the "stop → count resets → re-enter" loop.
   // The cap is intentionally low (default 1) for multi-outcome events where
   // each candidate is correlated — one entry per day is sufficient signal
   // for the event; excess entries only amplify concentration risk.
   const r = await db.prepare(
-    "SELECT COUNT(*) as cnt FROM paper_trades WHERE fund_id = ? AND slug = ? AND opened_at >= ?",
-  ).bind(fundId, eventSlug, todayStart).first<{ cnt: number }>();
-  return r?.cnt ?? 0;
+    "SELECT slug, question FROM paper_trades WHERE fund_id = ? AND opened_at >= ?",
+  ).bind(fundId, todayStart).all<EventFamilyRow>();
+  const counts = new Map<string, number>();
+  for (const row of r.results ?? []) {
+    incrementMap(counts, eventFamilyKey(row.slug, row.question), 1);
+  }
+  return counts;
 }
 
-async function getEventExposure(db: D1Database, fundId: string, eventSlug: string): Promise<number> {
+async function getOpenEventFamilyExposure(db: D1Database, fundId: string): Promise<Map<string, number>> {
   const r = await db.prepare(
-    "SELECT COALESCE(SUM(amount), 0) as total FROM paper_trades WHERE fund_id = ? AND status = 'OPEN' AND slug = ?",
-  ).bind(fundId, eventSlug).first<{ total: number }>();
-  return r?.total ?? 0;
+    "SELECT slug, question, amount FROM paper_trades WHERE fund_id = ? AND status = 'OPEN'",
+  ).bind(fundId).all<EventFamilyRow>();
+  const exposure = new Map<string, number>();
+  for (const row of r.results ?? []) {
+    incrementMap(exposure, eventFamilyKey(row.slug, row.question), Number(row.amount ?? 0));
+  }
+  return exposure;
 }
 
 async function isFrozen(db: D1Database, fundId: string): Promise<boolean> {
@@ -204,6 +227,23 @@ export async function paperTrade(
   // Derive today's UTC midnight from ts for getDailyEventEntryCount.
   // ts is guaranteed ISO format (e.g. "2026-05-18T13:00:01.000Z").
   const todayStart = ts.slice(0, 10) + "T00:00:00.000Z";
+  // Execution mode — read once here (was previously read per-INSERT for shadow
+  // recording). Cached to avoid N DB round-trips in the signal loop and to
+  // derive the portfolio concentration limit below.
+  const executionMode = await getExecutionMode(db);
+  // Portfolio-level event family exposure — loaded once per invocation to
+  // avoid N×M DB queries (15 funds × 20 signals = 300 queries without this).
+  // Updated in-memory as positions are opened so subsequent fund+signal pairs
+  // in the same invocation see accurate cross-fund totals.
+  // See: ALPHA-001 §8 / portfolio-coordinator.ts
+  //
+  // Mode-aware limit: the $200 cap is for Phase 2 Live Small (real money).
+  // In paper/shadow mode per-fund daily-quota guards are sufficient; a strict
+  // portfolio cap would incorrectly block M/L-tier paper fund positions.
+  const portfolioLimit = executionMode === "live"
+    ? PORTFOLIO_MAX_EVENT_USDC
+    : Number.POSITIVE_INFINITY;
+  const portfolioEventExposure = await getPortfolioEventExposureMap(db);
   // In-run dedup: tracks (fundId, marketId) pairs opened in THIS invocation.
   // First line of defense — eliminates same-invocation duplicates (sigs[] containing
   // multiple signals for the same effectiveMarketId).
@@ -242,6 +282,10 @@ export async function paperTrade(
     const realizedPnl = cash + openStats.invested - fund.initialBalance;
     const currentEquity = calculateTotalValue(fund.initialBalance, realizedPnl, openStats.unrealizedPnl);
     const currentDrawdown = calculateDrawdownPct(fund.initialBalance, currentEquity);
+    const dailyEventFamilyCounts = await getDailyEventFamilyEntryCounts(db, fund.id, todayStart);
+    const openEventFamilyExposure = await getOpenEventFamilyExposure(db, fund.id);
+    const openedFamilyCounts = new Map<string, number>();
+    const openedFamilyExposure = new Map<string, number>();
 
     for (const sig of sigs) {
       if (openCount + positionsOpened >= fund.maxOpenPositions) {
@@ -305,14 +349,19 @@ export async function paperTrade(
       // Default cap 1: for multi-outcome correlated events one entry per day
       // is sufficient; additional entries only amplify concentration risk.
       // Evolvable via PARAM_BOUNDS_INVARIANT (min: 1, max: 5).
-      const dailyEventCount = await getDailyEventEntryCount(db, fund.id, sig.slug, todayStart);
+      const familyKey = eventFamilyKey(sig.slug, sig.question);
+      const dailyEventCount =
+        (dailyEventFamilyCounts.get(familyKey) ?? 0)
+        + (openedFamilyCounts.get(familyKey) ?? 0);
       const maxSameEvent = fund.maxSameEventPositions ?? 1;
       if (dailyEventCount >= maxSameEvent) {
         skipReasons.push({ fundId: fund.id, code: "MAX_SAME_EVENT_POSITIONS" });
         continue;
       }
 
-      const exposure = await getEventExposure(db, fund.id, sig.slug);
+      const exposure =
+        (openEventFamilyExposure.get(familyKey) ?? 0)
+        + (openedFamilyExposure.get(familyKey) ?? 0);
       if (exposure >= fund.maxPerEvent) {
         skipReasons.push({ fundId: fund.id, code: "MAX_EVENT_EXPOSURE" });
         continue;
@@ -335,6 +384,23 @@ export async function paperTrade(
       const amount = Math.min(adjustedSize, cash, fund.maxPerEvent - exposure);
       if (amount < 50) {
         skipReasons.push({ fundId: fund.id, code: "INSUFFICIENT_CASH" });
+        continue;
+      }
+
+      // Portfolio-level concentration gate (ALPHA-001 §8):
+      // Blocks entry if the cross-fund total for this event family would exceed
+      // portfolioLimit. Prevents the James Bond fan-out pattern where multiple
+      // funds each pass their per-fund gate but collectively pile into the same
+      // correlated event.
+      // portfolioLimit = PORTFOLIO_MAX_EVENT_USDC ($200) in live mode;
+      //                 = Infinity in paper/shadow mode (per-fund quota sufficient).
+      const portConcentration = checkPortfolioConcentration(
+        portfolioEventExposure.get(familyKey) ?? 0,
+        amount,
+        portfolioLimit,
+      );
+      if (!portConcentration.allowed) {
+        skipReasons.push({ fundId: fund.id, code: "PORTFOLIO_CONCENTRATION" });
         continue;
       }
 
@@ -413,12 +479,19 @@ export async function paperTrade(
         throw e;
       }
 
-      const mode = await getExecutionMode(db);
-      if (mode === "shadow") {
+      if (executionMode === "shadow") {
         await recordShadowOpen(db, tradeId, fund.id, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount);
       }
 
       openedThisRun.add(runKey);
+      incrementMap(openedFamilyCounts, familyKey, 1);
+      incrementMap(openedFamilyExposure, familyKey, amount);
+      // Keep portfolio exposure map current so later fund+signal pairs in this
+      // invocation see the accurate cross-fund total (ALPHA-001 §8).
+      portfolioEventExposure.set(
+        familyKey,
+        (portfolioEventExposure.get(familyKey) ?? 0) + amount,
+      );
       cash -= amount;
       positionsOpened++;
       trades.push({

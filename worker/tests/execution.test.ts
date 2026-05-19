@@ -7,6 +7,9 @@ import {
   setKillSwitch,
   setExecutionMode,
   getSystemConfig,
+  getPipelineErrors,
+  getGuardrailEventCount,
+  DUPLICATE_OPEN_GUARDRAIL_MESSAGE,
   recordShadowOpen,
   recordShadowClose,
 } from "../src/execution";
@@ -17,6 +20,7 @@ class FakeStatement {
     private readonly sql: string,
     private readonly store: Map<string, string>,
     private readonly inserts: Array<{ sql: string; args: unknown[] }>,
+    private readonly pipelineErrors: Array<Record<string, unknown>>,
   ) {}
 
   private resolveKey(): string | undefined {
@@ -52,6 +56,12 @@ class FakeStatement {
       const val = this.store.get(key);
       return val !== undefined ? { value: val } as unknown as T : null;
     }
+    if (this.sql.includes("COUNT(*) AS n FROM pipeline_errors")) {
+      const needle = this.boundArgs[0] as string;
+      return {
+        n: this.pipelineErrors.filter(e => String(e.message ?? "").includes(needle)).length,
+      } as unknown as T;
+    }
     return null;
   }
 
@@ -61,6 +71,12 @@ class FakeStatement {
         results: Array.from(this.store.entries()).map(([key, value]) => ({ key, value })),
       };
     }
+    if (this.sql.includes("FROM pipeline_errors")) {
+      const needle = this.boundArgs[0] as string;
+      return {
+        results: this.pipelineErrors.filter(e => !String(e.message ?? "").includes(needle)),
+      };
+    }
     return { results: [] };
   }
 }
@@ -68,17 +84,19 @@ class FakeStatement {
 class FakeDb {
   private store = new Map<string, string>();
   public inserts: Array<{ sql: string; args: unknown[] }> = [];
+  public pipelineErrors: Array<Record<string, unknown>> = [];
 
-  constructor(initial?: Record<string, string>) {
+  constructor(initial?: Record<string, string>, pipelineErrors?: Array<Record<string, unknown>>) {
     if (initial) {
       for (const [k, v] of Object.entries(initial)) {
         this.store.set(k, v);
       }
     }
+    this.pipelineErrors = pipelineErrors ?? [];
   }
 
   prepare(sql: string) {
-    return new FakeStatement(sql, this.store, this.inserts);
+    return new FakeStatement(sql, this.store, this.inserts, this.pipelineErrors);
   }
 }
 
@@ -116,6 +134,17 @@ test("getSystemConfig returns all config values", async () => {
   const config = await getSystemConfig(db as unknown as D1Database);
   assert.equal(config.KILL_SWITCH, "false");
   assert.equal(config.EXECUTION_MODE, "shadow");
+});
+
+test("getPipelineErrors hides duplicate-open guardrail noise", async () => {
+  const db = new FakeDb({}, [
+    { id: "guardrail", message: DUPLICATE_OPEN_GUARDRAIL_MESSAGE },
+    { id: "real", message: "Scanner failed" },
+  ]);
+
+  const errors = await getPipelineErrors(db as unknown as D1Database);
+  assert.deepEqual(errors.map(e => e.id), ["real"]);
+  assert.equal(await getGuardrailEventCount(db as unknown as D1Database), 1);
 });
 
 test("recordShadowOpen inserts a shadow order", async () => {

@@ -49,6 +49,11 @@ interface ShadowResponse {
   orders: ShadowOrder[];
   total: number;
   summary: ShadowSummary | null;
+  excludedSummary?: {
+    count: number;
+    paper_pnl: number;
+    shadow_pnl: number;
+  } | null;
 }
 
 interface SystemResponse {
@@ -666,6 +671,7 @@ export function ShadowPanel() {
 
   // All hooks before conditional returns
   const rawOrders = shadowData?.orders ?? [];
+  const excludedSummary = shadowData?.excludedSummary ?? null;
   // Deduplicate by paper_trade_id: each paper trade may have multiple shadow
   // evaluations (one per cron tick); keep only the most-recent per trade.
   const orders = useMemo(() => {
@@ -735,6 +741,16 @@ export function ShadowPanel() {
   return (
     <div>
       <SystemStatusBanner system={system} />
+
+      {excludedSummary && excludedSummary.count > 0 && (
+        <div className="glass-card p-3 mb-4 border border-amber-500/20 bg-amber-500/[0.04] text-xs text-[var(--r-text-muted)]">
+          <span className="font-semibold text-amber-300">{t("shadowInvalidatedExcluded")}</span>{" "}
+          {t("shadowInvalidatedExcludedBody")
+            .replace("{count}", String(excludedSummary.count))
+            .replace("{paper}", `${excludedSummary.paper_pnl >= 0 ? "+" : "-"}$${Math.abs(excludedSummary.paper_pnl).toFixed(2)}`)
+            .replace("{shadow}", `${excludedSummary.shadow_pnl >= 0 ? "+" : "-"}$${Math.abs(excludedSummary.shadow_pnl).toFixed(2)}`)}
+        </div>
+      )}
 
       {summary && orders.length > 0 ? (
         <>

@@ -5,7 +5,19 @@ const DEFAULT_BUCKET_MS = 5 * 60 * 1000;
 
 export interface VariantOutcome {
   pnl: number;
+  tradeId?: string;
+  fundId?: string;
+  marketId?: string;
+  status?: string;
 }
+
+export type VariantOutcomeSource =
+  | "risk_stop"
+  | "risk_expire"
+  | "settlement"
+  | "monitor"
+  | "trader_pipeline"
+  | "micro_evolver_pipeline";
 
 export interface ExplorationOptions {
   /**
@@ -60,9 +72,16 @@ export async function recordVariantOutcomes(
   db: D1Database,
   variant: GeneVariant | null,
   outcomes: VariantOutcome[],
+  source: VariantOutcomeSource,
 ): Promise<void> {
   if (!variant || outcomes.length === 0) return;
   for (const outcome of outcomes) {
-    await recordTradeResult(db, variant.id, outcome.pnl, outcome.pnl > 0);
+    await recordTradeResult(db, variant.id, outcome.pnl, outcome.pnl > 0, {
+      source,
+      tradeId: outcome.tradeId,
+      fundId: outcome.fundId,
+      marketId: outcome.marketId,
+      status: outcome.status,
+    });
   }
 }

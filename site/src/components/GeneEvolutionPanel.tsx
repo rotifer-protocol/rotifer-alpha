@@ -51,6 +51,14 @@ interface VariantsResponse {
   variants: GeneVariant[];
   activeConfig: Record<string, string>;
   registry: GeneRegistryEntry[];
+  adjustmentSummary?: {
+    count: number;
+    pnl_delta: number;
+    trade_delta: number;
+    win_delta: number;
+    loss_delta: number;
+    unattributed_count: number;
+  } | null;
 }
 
 interface EvolutionResponse {
@@ -151,17 +159,25 @@ function pnlStr(v: number): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Mini horizontal PBT score bar + number. Shows — when insufficient data or score is exactly 0 (clamped). */
-function ScoreBar({ score, evaluated }: { score: number; evaluated: number }) {
+/** Mini horizontal PBT score bar + number. Separates "not enough data" from a real zero score. */
+function ScoreBar({
+  score,
+  evaluated,
+  t,
+}: {
+  score: number;
+  evaluated: number;
+  t: (key: TranslationKey) => string;
+}) {
   if (evaluated < 3) {
-    return <span className="text-[var(--r-text-faint)] text-xs font-mono">—</span>;
+    return <span className="text-[var(--r-text-faint)] text-[11px]">{t("geneAwaitingEval")}</span>;
   }
   if (score === 0) {
     return (
       <span
-        className="text-[var(--r-text-faint)] text-xs font-mono"
-        title="PBT 评分为 0：此基因类型的适应度公式以交易收益为基准，部分内置模块（如风控）的特性导致评分为 0，属正常情况。"
-      >—</span>
+        className="text-rose-400/80 text-xs font-mono tabular-nums"
+        title={t("geneZeroScoreTip")}
+      >0.0</span>
     );
   }
   const color =
@@ -246,7 +262,7 @@ function VariantRow({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowProp
         )}
       </td>
       <td className="text-right py-1.5 px-2">
-        <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} />
+        <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} t={t} />
       </td>
       <td className="text-right py-1.5 px-2 font-mono text-xs">{v.tradesEvaluated}</td>
       <td className="text-right py-1.5 px-2">
@@ -289,7 +305,7 @@ function VariantCard({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowPro
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-[var(--r-text-faint)]">{t("geneScoreLabel")}</span>
-          <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} />
+          <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} t={t} />
         </div>
         <div className="flex items-center gap-1.5 justify-end">
           <span className="text-[10px] text-[var(--r-text-faint)]">{t("geneTradesEvaluated")}</span>
@@ -392,6 +408,7 @@ export function GeneEvolutionPanel() {
 
   const variants    = varData?.variants    ?? [];
   const activeConfig= varData?.activeConfig ?? {};
+  const adjustmentSummary = varData?.adjustmentSummary ?? null;
   const log         = evoData?.log         ?? [];
   const epoch       = evoData?.epoch       ?? 0;
   const registry    = varData?.registry    ?? [];
@@ -489,6 +506,24 @@ export function GeneEvolutionPanel() {
         ))}
       </div>
 
+      {adjustmentSummary && adjustmentSummary.count > 0 && (
+        <div className="glass-card px-4 py-3 text-xs text-[var(--r-text-muted)] border border-amber-500/20 bg-amber-500/[0.04]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-semibold text-amber-300">{t("geneLegacyAdjustment")}</span>
+            <span>
+              {t("geneLegacyAdjustmentBody")
+                .replace("{count}", String(adjustmentSummary.count))
+                .replace("{pnl}", pnlStr(adjustmentSummary.pnl_delta))}
+            </span>
+          </div>
+          {adjustmentSummary.unattributed_count > 0 && (
+            <p className="mt-1 text-[10px] text-[var(--r-text-faint)]">
+              {t("geneLegacyAdjustmentUnattributed")}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Gene groups ───────────────────────────────────────────────────── */}
       <div className="space-y-4">
         {geneOrder.map((geneId, gIdx) => {
@@ -532,13 +567,19 @@ export function GeneEvolutionPanel() {
               {/* ── Champion hero card ────────────────────────────────────── */}
               {champion && (
                 <div className={`mx-4 mb-3 rounded-lg ${color.bg} border border-[var(--r-border)] p-3`}>
+                  {(() => {
+                    const credibleChampion = champion.petriScore > 0 && champion.totalPnl >= 0;
+                    return (
+                  <>
                   <div className="flex items-start justify-between gap-3 mb-2.5">
                     {/* Left: identity + description */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <Trophy className={`w-3.5 h-3.5 ${color.accent} shrink-0`} />
+                        {credibleChampion
+                          ? <Trophy className={`w-3.5 h-3.5 ${color.accent} shrink-0`} />
+                          : <Activity className={`w-3.5 h-3.5 ${color.accent} shrink-0`} />}
                         <span className="text-[10px] font-semibold text-[var(--r-text-muted)] uppercase tracking-widest">
-                          {t("geneChampion")}
+                          {credibleChampion ? t("geneChampion") : t("geneCurrentActive")}
                         </span>
                         <span className="w-1.5 h-1.5 rounded-full bg-[var(--r-green)] animate-pulse shrink-0" />
                       </div>
@@ -567,9 +608,9 @@ export function GeneEvolutionPanel() {
                       {champion.tradesEvaluated >= 3 ? (
                         champion.petriScore === 0 ? (
                           <span
-                            className="text-sm text-[var(--r-text-faint)] italic"
-                            title="PBT 评分为 0：适应度公式以交易收益为基准，风控类内置模块的特性导致评分为 0，属正常情况，不代表模块故障。"
-                          >—</span>
+                            className="font-mono text-lg font-bold tabular-nums text-rose-400/80"
+                            title={t("geneZeroScoreTip")}
+                          >0.0</span>
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
@@ -603,6 +644,14 @@ export function GeneEvolutionPanel() {
                       {pnlStr(champion.totalPnl)}
                     </span>
                   </div>
+                  {!credibleChampion && champion.tradesEvaluated >= 3 && (
+                    <div className="mt-2 text-[10px] text-[var(--r-text-faint)]">
+                      {t("geneActiveNotChampionHint")}
+                    </div>
+                  )}
+                  </>
+                    );
+                  })()}
                 </div>
               )}
 

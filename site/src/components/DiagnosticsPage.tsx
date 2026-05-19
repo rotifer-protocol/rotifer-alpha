@@ -21,6 +21,7 @@ interface PipelineError {
 
 interface DiagnosticsData {
   errors: PipelineError[];
+  guardrailEvents?: number;
   killSwitch: boolean;
   executionMode: string;
   skipByFund: Record<string, Record<string, number>>;
@@ -504,6 +505,24 @@ function ErrorLogSection({ errors }: { errors: PipelineError[] }) {
   );
 }
 
+function GuardrailEventSection({ count }: { count: number }) {
+  const { t } = useI18n();
+  if (count <= 0) return null;
+  return (
+    <div className="glass-card p-3 border border-blue-500/20 bg-blue-500/[0.04]">
+      <div className="flex items-start gap-2 text-xs text-[var(--r-text-muted)]">
+        <Shield className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-semibold text-blue-300">{t("diagGuardrailTitle")}</p>
+          <p className="mt-0.5">
+            {t("diagGuardrailBody").replace("{count}", String(count))}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin section (P0-② + P1-④) ────────────────────────
 
 function AdminSection({ initial }: { initial: { killSwitch: boolean; executionMode: string } }) {
@@ -705,6 +724,8 @@ export function DiagnosticsPage() {
 
           {/* P1-①③: Error log (reordered above skip, higher priority) */}
           <ErrorLogSection errors={data.errors ?? []} />
+
+          <GuardrailEventSection count={data.guardrailEvents ?? 0} />
 
           {/* P1-②, P2-②: Skip analysis */}
           <SkipByFundSection skipByFund={data.skipByFund ?? {}} pipelineRunning={data.pipelineRunning ?? false} />
