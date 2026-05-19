@@ -1,20 +1,38 @@
 /**
- * PolymarketVenue — Phase 1 Shadow Implementation (ALPHA-001 §7)
+ * PolymarketVenue — Polymarket CLOB V2 Execution Venue (ALPHA-001 §7)
  *
- * Shadow mode: fetches real CLOB V2 orderbook, walks depth to estimate fill
- * price, records to shadow_orders. Does NOT submit real orders.
+ * Shadow mode (Phase 1):
+ *   quote() fetches real CLOB V2 orderbook, walks depth to estimate fill price.
+ *   submit() records to shadow_orders — no real orders submitted.
  *
- * Live mode (Phase 2, not yet implemented): EIP-712 signing + CLOB V2 submission
- * via Deposit Wallet (POLY_1271 signatureType = 3).
+ * Live mode (Phase 2):
+ *   submit() builds + EIP-712 signs an order, posts to CLOB V2 as FOK.
+ *   Uses EOA signing (signatureType=0), records outcome to live_orders.
+ *   Requires OWNER_PRIVATE_KEY Worker secret.
  *
  * Design principles:
  *  - walkClobFill() is a pure function (no I/O) for testability
- *  - All async I/O is isolated in fetchOrderbook() and submit()
- *  - Fees use Polymarket's published taker fee (2% default, 0% for makers)
- *    Conservative: use taker rate for all shadow estimates
+ *  - All async I/O is isolated in fetchOrderbook(), submit(), and live helpers
+ *  - Slippage guard: pre-flight check before live order submission
+ *  - Fees: 0% currently (Polymarket removed fees); constant POLYMARKET_TAKER_FEE_BPS
+ *    is kept for future-proofing and explicit modeling
  */
 
-import type { ExecutionVenue, OrderIntent, QuoteResult, OrderResult } from "./venue";
+import type { ExecutionVenue, OrderIntent, QuoteResult, OrderResult } from "./venue.js";
+import {
+  buildOrderAmounts,
+  buildSignedOrderV2,
+  privateKeyToWalletAddress,
+  CTF_EXCHANGE_V2,
+} from "./polymarket-signer.js";
+import {
+  loadOrDeriveApiCreds,
+  buildL2Headers,
+} from "./polymarket-api-creds.js";
+import {
+  createLiveOrder,
+  updateLiveOrderStatus,
+} from "./order-lifecycle.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -214,22 +232,33 @@ export async function fetchPolymarketOrderbook(tokenId: string): Promise<ClobOrd
  *
  * Phase 1 (Shadow): quote() fetches real orderbook + walks depth.
  *                   submit() simulates fill, records to shadow_orders.
- * Phase 2 (Live):   submit() signs EIP-712 order + POSTs to CLOB V2 API.
- *                   Not yet implemented — throws if mode="live".
+ * Phase 2 (Live):   submit() builds EIP-712 signed FOK order, posts to CLOB V2.
+ *                   Requires ownerPrivateKey + walletAddress.
+ *                   Uses signatureType=0 (EOA), no heartbeat (FOK is immediate).
  */
 export class PolymarketVenue implements ExecutionVenue {
   readonly name = "polymarket-v2";
 
+  /** Resolved wallet address — lazily derived from ownerPrivateKey if not provided. */
+  private readonly resolvedWalletAddress: string | undefined;
+
   constructor(
     readonly mode: "shadow" | "live",
     private readonly db?: D1Database,
+    private readonly ownerPrivateKey?: string,
+    walletAddress?: string,
   ) {
     if (mode === "live") {
-      // Safety guard: live mode not implemented yet (Phase 2)
-      throw new Error(
-        "PolymarketVenue live mode is not yet implemented (ALPHA-001 Phase 2). " +
-        "Use mode='shadow' for Phase 1.",
-      );
+      if (!ownerPrivateKey) {
+        throw new Error(
+          "PolymarketVenue live mode requires ownerPrivateKey. " +
+          "Set OWNER_PRIVATE_KEY Worker secret and pass it to the constructor.",
+        );
+      }
+      if (!db) {
+        throw new Error("PolymarketVenue live mode requires D1 database binding.");
+      }
+      this.resolvedWalletAddress = walletAddress ?? privateKeyToWalletAddress(ownerPrivateKey);
     }
   }
 
@@ -276,11 +305,14 @@ export class PolymarketVenue implements ExecutionVenue {
 
   async submit(intent: OrderIntent): Promise<OrderResult> {
     if (this.mode === "live") {
-      // Phase 2 placeholder
-      throw new Error("live mode not implemented — ALPHA-001 Phase 2");
+      return this.submitLive(intent);
     }
+    return this.submitShadow(intent);
+  }
 
-    // Shadow mode: get real quote, record to shadow_orders (if db available)
+  // ─── Shadow submit ──────────────────────────────────────────────────────────
+
+  private async submitShadow(intent: OrderIntent): Promise<OrderResult> {
     const venueQuote = await this.quote(intent);
     const orderId = crypto.randomUUID();
 
@@ -306,6 +338,165 @@ export class PolymarketVenue implements ExecutionVenue {
         source: venueQuote.source,
       },
     };
+  }
+
+  // ─── Live submit (Phase 2 · P2.5) ──────────────────────────────────────────
+
+  /**
+   * Submit a live FOK order to Polymarket CLOB V2.
+   *
+   * Flow:
+   *   1. Pre-flight slippage check via real orderbook quote
+   *   2. Build + EIP-712 sign V2 order (EOA, signatureType=0)
+   *   3. Derive/load API credentials from D1 (L1 auth, cached 72h)
+   *   4. Build L2 HMAC auth headers
+   *   5. POST /order as FOK (Fill-Or-Kill, no resting order, no heartbeat needed)
+   *   6. Parse CLOB response → FILLED / REJECTED
+   *   7. Persist to live_orders D1 table
+   *
+   * Phase 2 constraints:
+   *   - FOK only (no GTC/GTD heartbeat — Durable Object path is Phase 3)
+   *   - EOA signing only (signatureType=0; POLY_1271 deposit wallet = Phase 3)
+   *   - Neg Risk markets are skipped with REJECTED (untested contract path)
+   *   - tokenId required; orders without token_id are skipped
+   */
+  private async submitLive(intent: OrderIntent): Promise<OrderResult> {
+    const db = this.db!;
+    const privateKey = this.ownerPrivateKey!;
+    const walletAddress = this.resolvedWalletAddress!;
+    const localOrderId = crypto.randomUUID();
+
+    // Phase 2: skip Neg Risk markets (multi-outcome, different exchange contract)
+    if (intent.negRisk) {
+      await this.recordLiveRejection(db, localOrderId, intent, 0, "neg_risk_not_supported_phase2");
+      return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+    }
+
+    // tokenId is required to sign the order
+    if (!intent.tokenId) {
+      await this.recordLiveRejection(db, localOrderId, intent, 0, "missing_token_id");
+      return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+    }
+
+    // ── 1. Pre-flight: check orderbook quote + slippage ─────────────────────
+    const quote = await this.quote(intent);
+    if (!quote.available || quote.estimatedSlippage > intent.maxSlippageBps) {
+      const reason = quote.available ? "slippage_exceeded" : "insufficient_depth";
+      await this.recordLiveRejection(db, localOrderId, intent, 0, reason);
+      return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+    }
+
+    // ── 2. Build order amounts ──────────────────────────────────────────────
+    const amounts = buildOrderAmounts(intent.side, intent.sizeUsdc, intent.priceCents);
+
+    // ── 3. Sign EIP-712 V2 order ────────────────────────────────────────────
+    let signedOrder;
+    try {
+      signedOrder = await buildSignedOrderV2(privateKey, intent.tokenId, amounts, CTF_EXCHANGE_V2);
+    } catch {
+      await this.recordLiveRejection(db, localOrderId, intent, amounts.sharesHuman, "sign_failed");
+      return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+    }
+
+    // ── 4. Load API credentials (L1 derive → D1 cache) ─────────────────────
+    let creds;
+    try {
+      creds = await loadOrDeriveApiCreds(db, privateKey, walletAddress);
+    } catch {
+      await this.recordLiveRejection(db, localOrderId, intent, amounts.sharesHuman, "creds_unavailable");
+      return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+    }
+
+    // ── 5. POST /order (FOK) ────────────────────────────────────────────────
+    const postBody = JSON.stringify({
+      order:     signedOrder,
+      owner:     creds.apiKey,
+      orderType: "FOK",
+    });
+
+    let clobOrderId: string | undefined;
+    let clobStatus: string | undefined;
+    let httpStatus = 0;
+
+    try {
+      const headers = await buildL2Headers(walletAddress, creds, "POST", "/order", postBody);
+      const res = await fetch(`${CLOB_API}/order`, {
+        method:  "POST",
+        headers,
+        body:    postBody,
+        signal:  AbortSignal.timeout(CLOB_TIMEOUT_MS),
+      });
+      httpStatus = res.status;
+      if (res.ok) {
+        const json = await res.json() as { orderID?: string; status?: string };
+        clobOrderId = json.orderID;
+        clobStatus  = json.status; // "matched" | "live" | "delayed" | "unmatched"
+      }
+    } catch {
+      // Network error or timeout — fall through to rejection path
+    }
+
+    // ── 6. Persist to live_orders ───────────────────────────────────────────
+    await createLiveOrder(db, {
+      id:           localOrderId,
+      paperTradeId: "",  // caller links to paper trade after this returns
+      fundId:       intent.fundId,
+      marketId:     intent.marketId,
+      tokenId:      intent.tokenId,
+      side:         intent.side === "YES" ? "BUY" : "SELL",
+      sizeUsdc:     intent.sizeUsdc,
+      limitPrice:   intent.priceCents / 100,
+      shares:       amounts.sharesHuman,
+    });
+
+    // FOK "matched" or "live" → consider filled; everything else → rejected
+    const filled =
+      httpStatus >= 200 && httpStatus < 300 &&
+      (clobStatus === "matched" || clobStatus === "live");
+
+    if (filled) {
+      const fillPrice  = quote.estimatedFillPrice;
+      const fillShares = amounts.sharesHuman;
+      await updateLiveOrderStatus(db, localOrderId, {
+        status:       "FILLED",
+        filledUsdc:   intent.sizeUsdc,
+        filledShares: fillShares,
+        avgFillPrice: fillPrice,
+        feeUsdc:      0,
+        clobOrderId,
+        filledAt:     new Date().toISOString(),
+      });
+      return { orderId: localOrderId, status: "FILLED", fillPrice, fillShares, fees: 0 };
+    }
+
+    await updateLiveOrderStatus(db, localOrderId, {
+      status:       "REJECTED",
+      clobOrderId,
+      cancelReason: clobStatus ? `clob:${clobStatus}` : `http:${httpStatus}`,
+    });
+    return { orderId: localOrderId, status: "REJECTED", fillPrice: 0, fillShares: 0, fees: 0 };
+  }
+
+  /** Record a pre-submission rejection to live_orders without hitting the API. */
+  private async recordLiveRejection(
+    db: D1Database,
+    orderId: string,
+    intent: OrderIntent,
+    sharesHuman: number,
+    reason: string,
+  ): Promise<void> {
+    await createLiveOrder(db, {
+      id:           orderId,
+      paperTradeId: "",
+      fundId:       intent.fundId,
+      marketId:     intent.marketId,
+      tokenId:      intent.tokenId,
+      side:         intent.side === "YES" ? "BUY" : "SELL",
+      sizeUsdc:     intent.sizeUsdc,
+      limitPrice:   intent.priceCents / 100,
+      shares:       sharesHuman,
+    });
+    await updateLiveOrderStatus(db, orderId, { status: "REJECTED", cancelReason: reason });
   }
 }
 

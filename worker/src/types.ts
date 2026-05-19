@@ -31,6 +31,18 @@ export interface Env {
     tag?: string;
     timestamp?: string;
   };
+  /**
+   * Owner EOA private key for live Polymarket order signing (Phase 2).
+   * Set via `wrangler secret put OWNER_PRIVATE_KEY`.
+   * Never log, never expose in API responses, never include in bundles.
+   */
+  OWNER_PRIVATE_KEY?: string;
+  /**
+   * Checksummed Polygon address of the Owner EOA wallet.
+   * Can be derived from OWNER_PRIVATE_KEY at runtime but caching it here
+   * avoids repeated derivation. Set via `wrangler secret put POLYMARKET_WALLET_ADDRESS`.
+   */
+  POLYMARKET_WALLET_ADDRESS?: string;
   /** Cloudflare Workers AI binding — used for Phase 3.5 LLM variant config generation. */
   AI?: {
     run(

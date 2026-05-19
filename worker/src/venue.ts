@@ -23,7 +23,9 @@ export interface OrderIntent {
   sizeUsdc: number;      // notional in USDC
   priceCents: number;    // entry price as integer cents 0–100 (e.g. 45 = $0.45)
   maxSlippageBps: number; // max acceptable slippage in basis points (100 = 1%)
-  expiresAt?: number;    // Unix timestamp for GTC; absent = immediate or cancel
+  expiresAt?: number;    // Unix timestamp for GTC; absent = immediate or cancel (FOK)
+  /** true = Neg Risk CTF Exchange (3+ outcome markets); false = standard binary market */
+  negRisk?: boolean;
 }
 
 // ─── QuoteResult — what the venue expects will happen ───────────────────────

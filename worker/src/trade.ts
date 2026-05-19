@@ -40,6 +40,7 @@ import {
   PORTFOLIO_MAX_EVENT_USDC,
 } from "./portfolio-coordinator";
 import { PolymarketVenue } from "./polymarket-venue";
+import { updateLiveOrderStatus } from "./order-lifecycle";
 import {
   loadCircuitBreakerState,
   checkCircuitBreaker,
@@ -221,6 +222,13 @@ export interface PaperTradeResult {
   skipReasons: SkipReasonEntry[];
 }
 
+/** Credentials injected for Phase 2 live order submission. */
+export interface LiveTradeOpts {
+  ownerPrivateKey: string;
+  /** Checksummed Polygon address — if omitted, derived from ownerPrivateKey. */
+  walletAddress?: string;
+}
+
 export async function paperTrade(
   db: D1Database,
   sigs: ArbSignal[],
@@ -228,6 +236,7 @@ export async function paperTrade(
   funds: FundConfig[],
   ts: string,
   freshlyClosedThisRun?: ReadonlySet<string>,
+  liveOpts?: LiveTradeOpts,
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
@@ -529,6 +538,45 @@ export async function paperTrade(
           }
         }
         await recordShadowOpen(db, tradeId, fund.id, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount, venueQuote);
+      }
+
+      if (executionMode === "live" && liveOpts && tokenId) {
+        // Phase 2 Live: submit FOK order via Polymarket CLOB V2.
+        // Non-fatal — a live order failure does NOT roll back the paper trade.
+        // The paper trade remains as the P&L record; live_orders tracks real fills.
+        try {
+          const venue = new PolymarketVenue(
+            "live",
+            db,
+            liveOpts.ownerPrivateKey,
+            liveOpts.walletAddress,
+          );
+          const result = await venue.submit({
+            fundId:        fund.id,
+            marketId:      effectiveMarketId,
+            tokenId,
+            side:          dir === "BUY_YES" ? "YES" : "NO",
+            sizeUsdc:      amount,
+            priceCents:    Math.round(price * 100),
+            maxSlippageBps: 300, // 3% max slippage for Phase 2 small
+          });
+          // Back-link the live order to the paper trade for reconciliation (P2.6)
+          if (result.status !== "REJECTED") {
+            await updateLiveOrderStatus(db, result.orderId, {
+              status:    result.status as "FILLED" | "PARTIAL" | "OPEN",
+              clobOrderId: result.orderId, // already set internally; this is a no-op unless status changed
+            });
+            // Update paper_trade_id linkage in live_orders
+            await db
+              .prepare("UPDATE live_orders SET paper_trade_id = ? WHERE id = ?")
+              .bind(tradeId, result.orderId)
+              .run()
+              .catch(() => {}); // non-fatal
+          }
+        } catch {
+          // Live order failure is non-fatal: paper trade is already recorded.
+          // Monitoring dashboard will show the REJECTED entry in live_orders.
+        }
       }
 
       openedThisRun.add(runKey);

@@ -322,7 +322,10 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
     });
   }
 
-  const tradeResult = await paperTrade(env.DB, sigs, filtered, funds, ts);
+  const liveOpts = env.OWNER_PRIVATE_KEY
+    ? { ownerPrivateKey: env.OWNER_PRIVATE_KEY, walletAddress: env.POLYMARKET_WALLET_ADDRESS }
+    : undefined;
+  const tradeResult = await paperTrade(env.DB, sigs, filtered, funds, ts, undefined, liveOpts);
   const trades = tradeResult.trades;
     for (const t of trades) {
     await broadcast(env, {
