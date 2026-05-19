@@ -310,6 +310,18 @@ export async function trimGuardrailEvents(db: D1Database, keep = 20): Promise<vo
 
 // ─── Shadow Trading ─────────────────────────────────────
 
+/**
+ * Optional override from a real venue quote (PolymarketVenue Phase 1 shadow).
+ * When provided, replaces the simplified simulateClob() estimate with real
+ * CLOB orderbook-derived fill price and slippage.
+ */
+export interface VenueQuoteOverride {
+  fillPrice: number;      // venue-estimated fill price (0–1)
+  slippageBps: number;    // signed bps vs mid
+  wouldFill: boolean;
+  source: "clob_orderbook" | "simulated";
+}
+
 export async function recordShadowOpen(
   db: D1Database,
   paperTradeId: string,
@@ -321,9 +333,25 @@ export async function recordShadowOpen(
   price: number,
   shares: number,
   amount: number,
+  venueQuote?: VenueQuoteOverride,
 ): Promise<string> {
   const side: "BUY" | "SELL" = direction.startsWith("BUY") ? "BUY" : "SELL";
-  const sim = simulateClob(side, price, shares, amount);
+  let fillPrice: number;
+  let slippage: number;
+  let wouldFill: boolean;
+
+  if (venueQuote) {
+    // Phase 1 shadow: use real CLOB orderbook estimate
+    fillPrice = venueQuote.fillPrice;
+    slippage = venueQuote.slippageBps / 10000; // store as fraction for DB compat
+    wouldFill = venueQuote.wouldFill;
+  } else {
+    // Legacy: simplified model (pre-Phase 1 fallback)
+    const sim = simulateClob(side, price, shares, amount);
+    fillPrice = sim.fillPrice;
+    slippage = sim.slippage;
+    wouldFill = sim.wouldFill;
+  }
 
   const id = crypto.randomUUID();
   await db.prepare(
@@ -333,8 +361,8 @@ export async function recordShadowOpen(
   ).bind(
     id, paperTradeId, fundId, marketId, slug, question,
     direction, side, shares, price,
-    sim.wouldFill ? "WOULD_FILL" : "WOULD_REJECT",
-    sim.fillPrice, sim.slippage,
+    wouldFill ? "WOULD_FILL" : "WOULD_REJECT",
+    fillPrice, slippage,
     new Date().toISOString(),
   ).run();
 

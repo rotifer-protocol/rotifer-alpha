@@ -31,7 +31,7 @@ import {
   REALIZED_TRADE_STATUS_SQL,
 } from "./accounting";
 import { fetchClobTokenIds } from "./price";
-import { getExecutionMode, recordShadowOpen } from "./execution";
+import { getExecutionMode, recordShadowOpen, type VenueQuoteOverride } from "./execution";
 import { isOTMPosition, calcOTMCap, isUnsafeSellEntry } from "./risk-policy";
 import { eventFamilyKey } from "./event-family";
 import {
@@ -39,6 +39,7 @@ import {
   getPortfolioEventExposureMap,
   PORTFOLIO_MAX_EVENT_USDC,
 } from "./portfolio-coordinator";
+import { PolymarketVenue } from "./polymarket-venue";
 
 export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
@@ -480,7 +481,32 @@ export async function paperTrade(
       }
 
       if (executionMode === "shadow") {
-        await recordShadowOpen(db, tradeId, fund.id, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount);
+        // Phase 1 Shadow Live: use real CLOB orderbook for fill estimation when
+        // token_id is available. Falls back to simplified simulateClob() otherwise.
+        let venueQuote: VenueQuoteOverride | undefined;
+        if (tokenId) {
+          try {
+            const venue = new PolymarketVenue("shadow");
+            const q = await venue.quote({
+              fundId: fund.id,
+              marketId: effectiveMarketId,
+              tokenId,
+              side: dir === "BUY_YES" ? "YES" : "NO",
+              sizeUsdc: amount,
+              priceCents: Math.round(price * 100),
+              maxSlippageBps: 200,
+            });
+            venueQuote = {
+              fillPrice: q.estimatedFillPrice,
+              slippageBps: q.estimatedSlippage,
+              wouldFill: q.available,
+              source: q.source,
+            };
+          } catch {
+            // non-fatal: fall back to legacy simulation
+          }
+        }
+        await recordShadowOpen(db, tradeId, fund.id, effectiveMarketId, sig.slug, sig.question, dir, price, shares, amount, venueQuote);
       }
 
       openedThisRun.add(runKey);
