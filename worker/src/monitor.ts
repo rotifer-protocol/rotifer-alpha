@@ -20,6 +20,7 @@ import { calcUnrealizedPnl, isStale } from "./price";
 import { isUnreasonableLoss } from "./risk-policy";
 import { getExecutionMode, recordShadowClose } from "./execution";
 import { settleShadowOrderForTrade } from "./order-lifecycle";
+import { recordCircuitBreakerLoss } from "./circuit-breaker";
 
 export interface MonitorAction {
   tradeId: string;
@@ -234,6 +235,11 @@ export async function executeMonitorActions(
       await recordShadowClose(db, action.tradeId, action.fundId, action.marketId, action.slug, action.question, action.direction, action.currentPrice, action.shares, action.pnl);
       // Phase 1 accuracy: record actual exit price on linked shadow orders
       await settleShadowOrderForTrade(db, action.tradeId, action.currentPrice);
+    }
+
+    // Circuit Breaker loss tracking (all modes including shadow for pre-live validation)
+    if (action.pnl < 0) {
+      await recordCircuitBreakerLoss(db, action.fundId, Math.abs(action.pnl));
     }
   }
 }

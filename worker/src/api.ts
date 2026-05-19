@@ -29,6 +29,11 @@ import {
   trimGuardrailEvents,
 } from "./execution";
 import { piggybackRiskCheck } from "./risk";
+import {
+  loadAllCircuitBreakerStates,
+  resetFundCircuitBreaker,
+  DEFAULT_CB_THRESHOLD_PCT,
+} from "./circuit-breaker";
 
 /**
  * Read-only GET endpoints for the frontend.
@@ -70,6 +75,20 @@ export async function handleApi(
   }
   if (path === "/api/shadow-metrics") {
     return await apiShadowMetrics(env.DB, headers);
+  }
+  if (path === "/api/circuit-breaker") {
+    if (req.method === "POST") {
+      // Operator reset: POST /api/circuit-breaker { fundId: "..." }
+      // Requires API_TOKEN authentication (enforced in auth layer before handleApi).
+      const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+      const fundId = typeof body.fundId === "string" ? body.fundId : null;
+      if (!fundId) {
+        return Response.json({ error: "fundId required" }, { status: 400, headers });
+      }
+      await resetFundCircuitBreaker(env.DB, fundId);
+      return Response.json({ ok: true, fundId, resetAt: new Date().toISOString() }, { headers });
+    }
+    return await apiCircuitBreaker(env.DB, headers);
   }
   if (path === "/api/system") {
     return await apiSystem(env.DB, headers);
@@ -1130,4 +1149,40 @@ async function apiGeneEvolution(
   const log = await getEvolutionLog(db, limit);
   const epoch = await getCurrentEpoch(db);
   return Response.json({ epoch, log }, { headers });
+}
+
+async function apiCircuitBreaker(
+  db: D1Database,
+  headers: HeadersInit,
+): Promise<Response> {
+  try {
+    const states = await loadAllCircuitBreakerStates(db);
+
+    const enriched = states.map(s => ({
+      fundId: s.fundId,
+      epochStartUsdc: s.epochStartUsdc,
+      epochLossUsdc: s.epochLossUsdc,
+      epochLossPct: s.epochStartUsdc > 0
+        ? Math.round((s.epochLossUsdc / s.epochStartUsdc) * 10000) / 100
+        : 0,
+      thresholdPct: DEFAULT_CB_THRESHOLD_PCT,
+      tripped: s.tripped,
+      trippedAt: s.trippedAt ?? null,
+    }));
+
+    const trippedCount = enriched.filter(s => s.tripped).length;
+
+    return Response.json({
+      thresholdPct: DEFAULT_CB_THRESHOLD_PCT,
+      trippedCount,
+      totalFunds: enriched.length,
+      allClear: trippedCount === 0,
+      funds: enriched,
+    }, { headers });
+  } catch (err) {
+    return Response.json({
+      error: "circuit_breaker_query_failed",
+      detail: String(err),
+    }, { status: 500, headers });
+  }
 }

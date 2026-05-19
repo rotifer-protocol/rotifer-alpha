@@ -1,0 +1,41 @@
+{
+  "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
+  "gene": "polymarket-circuit-breaker",
+  "version": "0.1.0",
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Per-fund, per-epoch loss circuit breaker (ALPHA-001 §9). Tracks cumulative realized losses and blocks new trades if a fund loses ≥20% of epoch-start capital. Pure decision logic; DB tracking functions are side-effect isolated. Epoch resets daily at 01:00 UTC.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "fundId":           { "type": "string" },
+      "epochStartUsdc":   { "type": "number", "description": "Fund capital at epoch start" },
+      "epochLossUsdc":    { "type": "number", "description": "Cumulative realized loss this epoch" },
+      "tripped":          { "type": "boolean" },
+      "newLossUsdc":      { "type": "number", "description": "Optional: additional loss to include in threshold check" },
+      "thresholdPct":     { "type": "number", "description": "Loss % that trips the breaker. Hard safety floor — NOT evolvable." }
+    },
+    "required": ["fundId", "epochStartUsdc", "epochLossUsdc", "tripped", "thresholdPct"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "blocked":      { "type": "boolean" },
+      "reason":       { "type": "string" },
+      "epochLossPct": { "type": "number" },
+      "thresholdPct": { "type": "number" }
+    },
+    "required": ["blocked", "epochLossPct", "thresholdPct"]
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "database_writes",
+    "stateAccess": "D1:circuit_breaker_state",
+    "note": "checkCircuitBreaker() is pure. thresholdPct is a HARD SAFETY FLOOR — funds must not self-tune their own safety limits via evolution. Epoch reset at 01:00 UTC daily cron."
+  }
+}

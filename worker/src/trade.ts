@@ -40,6 +40,12 @@ import {
   PORTFOLIO_MAX_EVENT_USDC,
 } from "./portfolio-coordinator";
 import { PolymarketVenue } from "./polymarket-venue";
+import {
+  loadCircuitBreakerState,
+  checkCircuitBreaker,
+  ensureCircuitBreakerState,
+  DEFAULT_CB_THRESHOLD_PCT,
+} from "./circuit-breaker";
 
 export function entryDirection(sig: ArbSignal): string {
   if (sig.type === "MISPRICING") return sig.direction === "BUY_BOTH" ? "BUY_YES" : "SELL_YES";
@@ -269,6 +275,22 @@ export async function paperTrade(
     }
 
     let cash = await getBalance(db, fund.id, fund.initialBalance);
+
+    // Circuit Breaker (ALPHA-001 §9): In live mode, block new trades if this
+    // fund has lost ≥20% of epoch-start capital in the current 24h epoch.
+    // In shadow/paper mode: tracks state but does NOT block (no real money).
+    if (executionMode === "live") {
+      await ensureCircuitBreakerState(db, fund.id, cash);
+      const cbState = await loadCircuitBreakerState(db, fund.id);
+      if (cbState) {
+        const cbCheck = checkCircuitBreaker(cbState, DEFAULT_CB_THRESHOLD_PCT);
+        if (cbCheck.blocked) {
+          skipReasons.push({ fundId: fund.id, code: "CIRCUIT_BREAKER_TRIPPED" });
+          continue;
+        }
+      }
+    }
+
     // positionsOpened tracks new opens within this invocation so the
     // MAX_POSITIONS gate stays accurate without an extra DB round-trip per signal.
     let positionsOpened = 0;

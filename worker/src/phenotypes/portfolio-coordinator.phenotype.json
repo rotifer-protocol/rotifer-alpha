@@ -1,0 +1,41 @@
+{
+  "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
+  "gene": "polymarket-portfolio-coordinator",
+  "version": "0.1.0",
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "NATIVE",
+  "description": "Cross-fund event family concentration guard (ALPHA-001 §8). Prevents the portfolio from over-concentrating in correlated prediction markets. Pure function: input = OrderIntent + portfolio exposure map, output = allow/deny. The concentration limit (maxEventUsdc) is NOT an evolvable parameter — it is a hard safety floor defined by the operator.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "fundId":         { "type": "string" },
+      "eventFamilyKey": { "type": "string", "description": "Normalized event family identifier (slug + question hash)" },
+      "amount":         { "type": "number", "minimum": 0, "description": "Proposed trade size in USDC" },
+      "exposureMap":    { "type": "object", "description": "eventFamilyKey → totalOpenUsdc across all funds" },
+      "maxEventUsdc":   { "type": "number", "minimum": 0, "description": "Hard ceiling for any single event family" }
+    },
+    "required": ["fundId", "eventFamilyKey", "amount", "exposureMap", "maxEventUsdc"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "allowed":            { "type": "boolean" },
+      "reason":             { "type": "string" },
+      "currentExposure":    { "type": "number" },
+      "projectedExposure":  { "type": "number" },
+      "maxAllowed":         { "type": "number" }
+    },
+    "required": ["allowed", "currentExposure", "projectedExposure", "maxAllowed"]
+  },
+  "network": {
+    "allowedDomains": []
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "none",
+    "stateAccess": "none",
+    "note": "Pure computation gate. The exposure map is loaded once per cron invocation (not per fund) and updated in-memory. maxEventUsdc is a hard operator floor — not evolved by funds."
+  }
+}

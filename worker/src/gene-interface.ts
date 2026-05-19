@@ -77,6 +77,43 @@ export interface SettlerOutput {
   settlements: Array<{ fundId: string; fundEmoji: string; slug: string; question: string; pnl: number; entryPrice: number; exitPrice: number }>;
 }
 
+// ─── Circuit Breaker Gene ────────────────────────────────
+
+export interface CircuitBreakerInput {
+  fundId: string;
+  epochStartUsdc: number;
+  epochLossUsdc: number;
+  tripped: boolean;
+  newLossUsdc?: number;
+  thresholdPct: number;
+}
+
+export interface CircuitBreakerOutput {
+  blocked: boolean;
+  reason?: string;
+  epochLossPct: number;
+  thresholdPct: number;
+}
+
+// ─── Portfolio Coordinator Gene ─────────────────────────
+
+export interface PortfolioCoordinatorInput {
+  fundId: string;
+  eventFamilyKey: string;
+  amount: number;
+  /** Current exposure map: eventFamilyKey → totalOpenUsdc (across ALL funds) */
+  exposureMap: Record<string, number>;
+  maxEventUsdc: number;
+}
+
+export interface PortfolioCoordinatorOutput {
+  allowed: boolean;
+  reason?: string;
+  currentExposure: number;
+  projectedExposure: number;
+  maxAllowed: number;
+}
+
 // ─── Order Lifecycle Gene ────────────────────────────────
 
 export interface OrderLifecycleInput {
@@ -222,6 +259,26 @@ export const GENE_REGISTRY: GeneMeta[] = [
     lifecycleStatus: "embedded",
     inputSchema: "EvolverInput",
     outputSchema: "MicroEvolverOutput | MacroEvolverOutput",
+  },
+  {
+    id: "polymarket-circuit-breaker",
+    name: "Polymarket Circuit Breaker",
+    nameZh: "熔断器",
+    version: "0.1.0",
+    fidelity: "native",
+    lifecycleStatus: "embedded",
+    inputSchema: "CircuitBreakerInput",
+    outputSchema: "CircuitBreakerOutput",
+  },
+  {
+    id: "polymarket-portfolio-coordinator",
+    name: "Polymarket Portfolio Coordinator",
+    nameZh: "组合集中度门控",
+    version: "0.1.0",
+    fidelity: "native",
+    lifecycleStatus: "embedded",
+    inputSchema: "PortfolioCoordinatorInput",
+    outputSchema: "PortfolioCoordinatorOutput",
   },
   {
     id: "polymarket-order-lifecycle",

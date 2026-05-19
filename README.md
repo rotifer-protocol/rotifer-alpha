@@ -4,13 +4,24 @@ AI agent quantitative fund experiment platform — a research experiment by the 
 
 Paper trading on [Polymarket](https://polymarket.com) prediction markets with population-based training (PBT) evolution.
 
-> **Status — Phase 3.5 infrastructure ready, awaiting production switch.**
+> **Status — Phase 1 Shadow Live active. Phase 2 Live Small pending (est. 4 days).**
 >
-> Petri's six trading modules are implemented as Gene-compatible objects with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator (`genome.ts`) manages variant dispatch — routing each pipeline step to the best-performing Gene variant. Two genes (Scanner, Monitor) each have two competing implementations; the PBT evolution loop selects winners every ~50 trades.
+> All nine pipeline stages are implemented as Rotifer Protocol Genes with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator manages variant dispatch via Population-Based Training evolution.
 >
-> **Petri Score boundary**: the "Petri Score" used by this repository is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. Petri Score ≠ F(g). See [ADR-117](https://github.com/rotifer-protocol) three-dimension independence discipline.
+> **Petri Score boundary**: the "Petri Score" used by this repository is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. Petri Score ≠ F(g).
+
+---
+
+> ⚠️ **Live Trading Warning**
 >
-> The Genome orchestrator is deployed but guarded by a feature flag (`ENABLE_GENOME_PIPELINE`). Once a ≥48h dev observation confirms behaviour equivalence, the flag will be set to `true` in production — completing the Rotifer Protocol integration milestone.
+> Petri supports real on-chain trading via Polymarket CLOB V2. **Live mode involves real financial risk.**
+> Before enabling `EXECUTION_MODE=live`:
+> - Read [SECURITY.md](./SECURITY.md) in full
+> - Set `OWNER_PRIVATE_KEY` with a **dedicated** EOA wallet
+> - Fund the wallet with ≤$100 USDC for initial testing
+> - Confirm you understand circuit breaker and kill switch operations
+>
+> The Rotifer Protocol team provides no warranties on trading performance or loss prevention.
 
 ## Live
 

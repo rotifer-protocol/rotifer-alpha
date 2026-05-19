@@ -38,6 +38,7 @@ import {
   type PipelineHeartbeat,
 } from "./execution";
 import type { SkipReasonEntry } from "./trade";
+import { resetCircuitBreakerEpochs } from "./circuit-breaker";
 import { runGenomePipeline } from "./genome";
 export { LiveHub } from "./ws-hub";
 export { RiskMonitor } from "./risk-monitor";
@@ -392,6 +393,17 @@ async function runDailyReport(env: Env, funds: FundConfig[]): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   await takeSnapshot(env.DB, today, funds);
   await sendDailyReport(env, funds);
+
+  // Reset circuit breaker epochs at start of new trading day
+  // (ALPHA-001 §9: epoch = 24h rolling window reset at 01:00 UTC)
+  const balanceMap = new Map<string, number>();
+  for (const fund of funds) {
+    const balRow = await env.DB.prepare(
+      "SELECT balance FROM fund_balances WHERE fund_id = ? LIMIT 1",
+    ).first<{ balance: number }>(fund.id);
+    balanceMap.set(fund.id, balRow?.balance ?? fund.initialBalance);
+  }
+  await resetCircuitBreakerEpochs(env.DB, balanceMap);
 
   const snapPayload: import("./types").SnapshotPayload = { funds: [] };
   for (const fund of funds) {
