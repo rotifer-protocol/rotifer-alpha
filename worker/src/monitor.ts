@@ -19,6 +19,7 @@ import type { FundConfig, TradeStatus } from "./types";
 import { calcUnrealizedPnl, isStale } from "./price";
 import { isUnreasonableLoss } from "./risk-policy";
 import { getExecutionMode, recordShadowClose } from "./execution";
+import { settleShadowOrderForTrade } from "./order-lifecycle";
 
 export interface MonitorAction {
   tradeId: string;
@@ -231,6 +232,8 @@ export async function executeMonitorActions(
 
     if (mode === "shadow") {
       await recordShadowClose(db, action.tradeId, action.fundId, action.marketId, action.slug, action.question, action.direction, action.currentPrice, action.shares, action.pnl);
+      // Phase 1 accuracy: record actual exit price on linked shadow orders
+      await settleShadowOrderForTrade(db, action.tradeId, action.currentPrice);
     }
   }
 }

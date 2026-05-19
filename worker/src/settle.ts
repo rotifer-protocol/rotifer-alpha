@@ -14,6 +14,7 @@
  */
 import type { FundConfig, MarketSnapshot, Settlement } from "./types";
 import { getExecutionMode, recordShadowClose } from "./execution";
+import { settleShadowOrderForTrade } from "./order-lifecycle";
 
 const GAMMA_MARKET_TIMEOUT_MS = 10_000;
 
@@ -158,6 +159,8 @@ export async function settle(
 
     if (mode === "shadow") {
       await recordShadowClose(db, trade.id, trade.fund_id, trade.market_id, trade.slug ?? "", trade.question, trade.direction, exitPrice, trade.shares, pnl);
+      // Phase 1 accuracy: record actual exit price on linked shadow orders
+      await settleShadowOrderForTrade(db, trade.id, exitPrice);
     }
 
     const fund = funds.find(f => f.id === trade.fund_id);

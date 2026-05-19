@@ -77,6 +77,29 @@ export interface SettlerOutput {
   settlements: Array<{ fundId: string; fundEmoji: string; slug: string; question: string; pnl: number; entryPrice: number; exitPrice: number }>;
 }
 
+// ─── Order Lifecycle Gene ────────────────────────────────
+
+export interface OrderLifecycleInput {
+  orderId: string;
+  submittedAt: string;
+  side: "BUY" | "SELL";
+  limitPrice: number;
+  currentMarketPrice: number;
+  sizeUsdc: number;
+  filledUsdc: number;
+  params?: {
+    gtcMaxWaitMinutes?: number;
+    partialFillThresholdPct?: number;
+    priceUpdateThresholdBps?: number;
+  };
+}
+
+export interface OrderLifecycleOutput {
+  action: "HOLD" | "CANCEL" | "ACCEPT_PARTIAL" | "UPDATE_PRICE";
+  reason: string;
+  newLimitPrice?: number;
+}
+
 // ─── Evolver Gene ───────────────────────────────────────
 
 export interface EvolverInput {
@@ -199,5 +222,16 @@ export const GENE_REGISTRY: GeneMeta[] = [
     lifecycleStatus: "embedded",
     inputSchema: "EvolverInput",
     outputSchema: "MicroEvolverOutput | MacroEvolverOutput",
+  },
+  {
+    id: "polymarket-order-lifecycle",
+    name: "Polymarket Order Lifecycle",
+    nameZh: "订单生命周期管理器",
+    version: "0.1.0",
+    fidelity: "hybrid",
+    lifecycleStatus: "embedded",
+    inputSchema: "OrderLifecycleInput",
+    outputSchema: "OrderLifecycleOutput",
+    externalDependencies: ["clob.polymarket.com"],
   },
 ];

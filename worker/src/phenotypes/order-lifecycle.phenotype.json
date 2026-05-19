@@ -1,0 +1,68 @@
+{
+  "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
+  "gene": "polymarket-order-lifecycle",
+  "version": "0.1.0",
+  "author": "rotifer-petri",
+  "domain": "quantitative-trading",
+  "fidelity": "HYBRID",
+  "description": "Manages the lifecycle of limit orders on Polymarket CLOB V2. GTC timeout decisions, partial fill acceptance, and dynamic price updates. Decision logic is pure (Phase 1); wires to real CLOB V2 API in Phase 2 (live).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "orderId":             { "type": "string" },
+      "submittedAt":         { "type": "string", "format": "date-time" },
+      "side":                { "type": "string", "enum": ["BUY", "SELL"] },
+      "limitPrice":          { "type": "number", "minimum": 0, "maximum": 1 },
+      "currentMarketPrice":  { "type": "number", "minimum": 0, "maximum": 1 },
+      "sizeUsdc":            { "type": "number", "minimum": 0 },
+      "filledUsdc":          { "type": "number", "minimum": 0 },
+      "params":              { "type": "object" }
+    },
+    "required": ["orderId", "submittedAt", "side", "limitPrice", "currentMarketPrice", "sizeUsdc", "filledUsdc"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "action":        { "type": "string", "enum": ["HOLD", "CANCEL", "ACCEPT_PARTIAL", "UPDATE_PRICE"] },
+      "reason":        { "type": "string" },
+      "newLimitPrice": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "required": ["action", "reason"]
+  },
+  "evolvableParams": [
+    {
+      "key": "gtcMaxWaitMinutes",
+      "type": "integer",
+      "default": 30,
+      "min": 5,
+      "max": 240,
+      "description": "Cancel a GTC order after this many minutes if not fully filled"
+    },
+    {
+      "key": "partialFillThresholdPct",
+      "type": "float",
+      "default": 80.0,
+      "min": 50.0,
+      "max": 99.0,
+      "description": "Accept order as successful if at least this percentage is filled"
+    },
+    {
+      "key": "priceUpdateThresholdBps",
+      "type": "integer",
+      "default": 50,
+      "min": 10,
+      "max": 300,
+      "description": "Update limit price if market moves this many bps in our favor"
+    }
+  ],
+  "network": {
+    "allowedDomains": ["clob.polymarket.com"]
+  },
+  "dependencies": [],
+  "transparency": {
+    "deterministic": true,
+    "sideEffects": "database_writes",
+    "stateAccess": "D1:shadow_orders,live_orders",
+    "note": "decideOrderLifecycle() is pure with injected nowMs. DB functions are side-effect isolated. Phase 2 will add CLOB V2 polling (clob.polymarket.com)."
+  }
+}

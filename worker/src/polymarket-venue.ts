@@ -127,12 +127,30 @@ export function walkClobFill(
 // ─── Fee model ───────────────────────────────────────────────────────────────
 
 /**
- * Estimate Polymarket trading fees for a given size.
+ * Estimate Polymarket trading fees for a given notional size.
  * Currently 0% (Polymarket removed fees), but modeled explicitly for
  * future-proofing and Phase 2 accuracy.
  */
 export function estimatePolymarketFees(sizeUsdc: number): number {
   return Math.round(sizeUsdc * (POLYMARKET_TAKER_FEE_BPS / 10000) * 100) / 100;
+}
+
+/**
+ * Apply fee to fill price to get the all-in cost per share.
+ *
+ * BUY:  net cost per share = fillPrice × (1 + fee_bps / 10000)
+ * SELL: net proceeds per share = fillPrice × (1 − fee_bps / 10000)
+ *
+ * With POLYMARKET_TAKER_FEE_BPS = 0, returns fillPrice unchanged.
+ * When fees are reinstated, update POLYMARKET_TAKER_FEE_BPS — all
+ * callers automatically reflect accurate all-in pricing.
+ */
+export function applyFeeToCost(fillPrice: number, side: "YES" | "NO", feeBps: number): number {
+  if (feeBps === 0) return Math.round(fillPrice * 10000) / 10000;
+  const feeMultiplier = side === "YES"
+    ? 1 + feeBps / 10000   // BUY: more expensive
+    : 1 - feeBps / 10000;  // SELL: less proceeds
+  return Math.round(fillPrice * feeMultiplier * 10000) / 10000;
 }
 
 // ─── Orderbook fetch ─────────────────────────────────────────────────────────
@@ -236,11 +254,17 @@ export class PolymarketVenue implements ExecutionVenue {
     const fill = walkClobFill(clobSide, intent.sizeUsdc, levels, book.midPrice);
     const fees = estimatePolymarketFees(intent.sizeUsdc);
 
+    // All-in fill price: raw fill price + fee spread (cost to trader)
+    // BUY: net cost per share = avgFillPrice * (1 + fee_bps/10000)
+    // SELL: net proceeds per share = avgFillPrice * (1 - fee_bps/10000)
+    // Currently fee = 0%, so no numeric change — interface ready for non-zero fees.
+    const allInFillPrice = applyFeeToCost(fill.avgFillPrice, intent.side, POLYMARKET_TAKER_FEE_BPS);
+
     return {
       fundId: intent.fundId,
       marketId: intent.marketId,
       side: intent.side,
-      estimatedFillPrice: fill.avgFillPrice,
+      estimatedFillPrice: allInFillPrice,
       estimatedSlippage: fill.slippageBps,
       estimatedFees: fees,
       available: fill.available,
@@ -302,7 +326,7 @@ function simulatedQuote(intent: OrderIntent): QuoteResult {
     fundId: intent.fundId,
     marketId: intent.marketId,
     side: intent.side,
-    estimatedFillPrice: Math.round(fillPrice * 10000) / 10000,
+    estimatedFillPrice: applyFeeToCost(fillPrice, intent.side, POLYMARKET_TAKER_FEE_BPS),
     estimatedSlippage: slippageBps,
     estimatedFees: estimatePolymarketFees(intent.sizeUsdc),
     available: true,
