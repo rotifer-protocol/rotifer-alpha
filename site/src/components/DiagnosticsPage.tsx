@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Shield, AlertTriangle, Activity, Lock, LockOpen, ChevronDown, ChevronUp,
-  CheckCircle, XCircle, ChevronRight, BarChart2,
+  CheckCircle, XCircle, ChevronRight, BarChart2, TrendingUp,
 } from "lucide-react";
 import { useFetch } from "../hooks/useApi";
 import { useI18n } from "../i18n/context";
@@ -26,6 +26,26 @@ interface DiagnosticsData {
   executionMode: string;
   skipByFund: Record<string, Record<string, number>>;
   pipelineRunning: boolean;
+}
+
+interface Phase1Metrics {
+  phase1StartDate: string;
+  windowDays: number;
+  daysSincePhase1Start: number;
+  totalOrders: number;
+  filledOrders: number;
+  fillRatePct: number;
+  fillRateTarget: number;
+  fillRateMet: boolean;
+  medianDeviationPct: number;
+  avgDeviationPct: number;
+  priceDevTarget: number;
+  priceDevMet: boolean;
+  consecutiveDaysMet: number;
+  consecutiveDaysRequired: number;
+  exitConditionMet: boolean;
+  status: "PASSED" | "IN_PROGRESS" | "NO_DATA" | "ERROR";
+  deviationSampleSize: number;
 }
 
 interface HeartbeatData {
@@ -683,12 +703,148 @@ function AdminSection({ initial }: { initial: { killSwitch: boolean; executionMo
   );
 }
 
+// ─── Phase 1 Shadow Live Monitor ─────────────────────────
+
+function MetricBar({
+  value, target, isGood, label, unit = "%",
+}: {
+  value: number;
+  target: number;
+  /** isGood: value >= target (fill rate) or value <= target (deviation) */
+  isGood: boolean;
+  label: string;
+  unit?: string;
+}) {
+  const pct = Math.min(100, Math.max(0, value));
+  const barColor = isGood ? "bg-[var(--r-accent)]" : "bg-amber-400";
+  const textColor = isGood ? "text-[var(--r-accent)]" : "text-amber-400";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-[var(--r-text-muted)]">{label}</span>
+        <span className={`font-mono font-semibold ${textColor}`}>
+          {value.toFixed(1)}{unit}
+          <span className="text-[var(--r-text-faint)] font-normal ml-1">/ {target}{unit}</span>
+        </span>
+      </div>
+      <div className="relative h-1.5 rounded-full bg-[var(--r-surface)] overflow-visible">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+        {/* Target marker */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-px h-3 bg-[var(--r-text-faint)] rounded-full"
+          style={{ left: `${target}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Phase1MetricsPanel({ metrics }: { metrics: Phase1Metrics | null }) {
+  const { t } = useI18n();
+
+  const noData = !metrics || metrics.status === "NO_DATA" || metrics.totalOrders === 0;
+  const isPassed = metrics?.exitConditionMet;
+
+  const statusBadge = isPassed
+    ? { label: t("phase1StatusPassed"),    bg: "bg-[var(--r-accent)]/15 text-[var(--r-accent)] border-[var(--r-accent)]/30" }
+    : noData
+      ? { label: t("phase1StatusNoData"),  bg: "bg-zinc-800/60 text-zinc-400 border-zinc-700" }
+      : { label: t("phase1StatusInProgress"), bg: "bg-amber-900/20 text-amber-400 border-amber-500/30" };
+
+  return (
+    <div className="glass-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[var(--r-accent)] shrink-0" />
+          <div>
+            <h3 className="text-sm font-semibold">{t("phase1ShadowTitle")}</h3>
+            <p className="text-xs text-[var(--r-text-muted)] mt-0.5">{t("phase1ShadowDesc")}</p>
+          </div>
+        </div>
+        <span className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge.bg}`}>
+          {statusBadge.label}
+        </span>
+      </div>
+
+      {noData ? (
+        <p className="text-xs text-[var(--r-text-faint)] py-2 text-center">
+          {t("phase1StatusNoData")} — {t("phase1StartedLabel")} {metrics?.phase1StartDate ?? "2026-05-19"}
+        </p>
+      ) : (
+        <>
+          {/* Metric bars */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <MetricBar
+                value={metrics!.fillRatePct}
+                target={metrics!.fillRateTarget}
+                isGood={metrics!.fillRateMet}
+                label={t("phase1FillRateLabel")}
+              />
+            </div>
+            {/* Price deviation: invert the bar — smaller is better */}
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-[var(--r-text-muted)]">{t("phase1PriceDevLabel")}</span>
+                <span className={`font-mono font-semibold ${metrics!.priceDevMet ? "text-[var(--r-accent)]" : "text-amber-400"}`}>
+                  {metrics!.medianDeviationPct.toFixed(2)}%
+                  <span className="text-[var(--r-text-faint)] font-normal ml-1">/ ≤{metrics!.priceDevTarget}%</span>
+                </span>
+              </div>
+              <div className="relative h-1.5 rounded-full bg-[var(--r-surface)]">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${metrics!.priceDevMet ? "bg-[var(--r-accent)]" : "bg-amber-400"}`}
+                  style={{ width: `${Math.min(100, (metrics!.medianDeviationPct / 10) * 100)}%` }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-px h-3 bg-[var(--r-text-faint)] rounded-full"
+                  style={{ left: `${(metrics!.priceDevTarget / 10) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="text-center">
+              <p className="text-[11px] font-mono font-semibold">
+                {metrics!.consecutiveDaysMet}
+                <span className="text-[var(--r-text-faint)] font-normal">/{metrics!.consecutiveDaysRequired}</span>
+              </p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("phase1ConsecDaysLabel")}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[11px] font-mono font-semibold">{metrics!.totalOrders}</p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("phase1OrdersLabel")}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[11px] font-mono font-semibold">{metrics!.daysSincePhase1Start}{t("phase1DayLabel")}</p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("phase1StartedLabel")}</p>
+            </div>
+          </div>
+
+          {/* Target note */}
+          <p className="text-[10px] text-[var(--r-text-faint)] border-t border-[var(--r-border)] pt-2">
+            {t("phase1TargetNote")}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────
 
 export function DiagnosticsPage() {
   const { t } = useI18n();
   const { data, loading, error }   = useFetch<DiagnosticsData>("/api/diagnostics", 30_000);
   const { data: hbData }           = useFetch<HeartbeatData>("/api/heartbeat", 60_000);
+  const { data: phase1Data }       = useFetch<Phase1Metrics>("/api/shadow-metrics", 120_000);
 
   const heartbeat = hbData?.heartbeat ?? null;
 
@@ -721,6 +877,9 @@ export function DiagnosticsPage() {
 
           {/* P2-①: Pipeline KPI strip */}
           <PipelineKpiStrip hb={heartbeat} />
+
+          {/* Phase 1 Shadow Live monitor */}
+          <Phase1MetricsPanel metrics={phase1Data ?? null} />
 
           {/* P1-①③: Error log (reordered above skip, higher priority) */}
           <ErrorLogSection errors={data.errors ?? []} />

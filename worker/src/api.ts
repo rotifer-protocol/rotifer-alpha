@@ -68,6 +68,9 @@ export async function handleApi(
   if (path === "/api/shadow") {
     return await apiShadow(env.DB, req, headers);
   }
+  if (path === "/api/shadow-metrics") {
+    return await apiShadowMetrics(env.DB, headers);
+  }
   if (path === "/api/system") {
     return await apiSystem(env.DB, headers);
   }
@@ -881,6 +884,148 @@ async function apiSystem(
     executionMode: config.EXECUTION_MODE || "paper",
     config,
   }, { headers });
+}
+
+// ─── Phase 1 Shadow Metrics ─────────────────────────────
+//
+// Computes Phase 1 Shadow Live exit conditions (ALPHA-001 §11 Phase 1):
+//   - Fill rate ≥ 85% (shadow orders WOULD_FILL / total, rolling 14d)
+//   - Median price deviation ≤ 5% (|simulated_fill_price - entry_price| / entry_price)
+//
+// "Who monitors Phase 1 exit?" — this endpoint is the answer.
+// Called by the Diagnostics page to render the Phase 1 health panel.
+
+// Phase 1 started 2026-05-19 when PolymarketVenue shadow mode deployed.
+const PHASE1_START_DATE = "2026-05-19";
+const PHASE1_FILL_RATE_TARGET = 85;   // %
+const PHASE1_PRICE_DEV_TARGET = 5.0;  // %
+const PHASE1_WINDOW_DAYS = 14;
+
+interface ShadowRow {
+  simulated_fill_price: number | null;
+  price: number;
+  status: string;
+  created_at: string;
+}
+
+function computeMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+async function apiShadowMetrics(
+  db: D1Database,
+  headers: HeadersInit,
+): Promise<Response> {
+  try {
+    const windowStart = new Date(Date.now() - PHASE1_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10) + "T00:00:00.000Z";
+
+    // Fetch shadow orders created in Phase 1 window
+    const result = await db.prepare(
+      `SELECT simulated_fill_price, price, status, created_at
+       FROM shadow_orders
+       WHERE created_at >= ?
+       ORDER BY created_at DESC`,
+    ).bind(windowStart).all<ShadowRow>();
+
+    const rows = result.results ?? [];
+    const total = rows.length;
+    const filled = rows.filter(r => r.status === "WOULD_FILL").length;
+    const rejected = rows.filter(r => r.status === "WOULD_REJECT").length;
+
+    const fillRatePct = total > 0 ? Math.round((filled / total) * 100 * 10) / 10 : 0;
+
+    // Price deviation: only for WOULD_FILL rows with valid fill price
+    const deviations = rows
+      .filter(r => r.status === "WOULD_FILL" &&
+        r.simulated_fill_price !== null &&
+        r.price > 0 &&
+        Number.isFinite(r.simulated_fill_price))
+      .map(r => Math.abs((r.simulated_fill_price! - r.price) / r.price) * 100);
+
+    const medianDeviationPct = Math.round(computeMedian(deviations) * 100) / 100;
+    const avgDeviationPct = deviations.length > 0
+      ? Math.round((deviations.reduce((s, v) => s + v, 0) / deviations.length) * 100) / 100
+      : 0;
+    const maxDeviationPct = deviations.length > 0
+      ? Math.round(Math.max(...deviations) * 100) / 100
+      : 0;
+
+    // Consecutive-days calculation: how many trailing days have data
+    const dayBuckets = new Map<string, { total: number; filled: number }>();
+    for (const row of rows) {
+      const day = row.created_at.slice(0, 10);
+      const bucket = dayBuckets.get(day) ?? { total: 0, filled: 0 };
+      bucket.total++;
+      if (row.status === "WOULD_FILL") bucket.filled++;
+      dayBuckets.set(day, bucket);
+    }
+
+    // Count trailing consecutive days (from today backward) with ≥ 85% fill rate
+    let consecutiveDaysMet = 0;
+    const today = new Date();
+    for (let i = 0; i < PHASE1_WINDOW_DAYS; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const bucket = dayBuckets.get(key);
+      if (!bucket || bucket.total === 0) break;
+      const dayFillRate = (bucket.filled / bucket.total) * 100;
+      if (dayFillRate < PHASE1_FILL_RATE_TARGET) break;
+      consecutiveDaysMet++;
+    }
+
+    const fillRateMet = fillRatePct >= PHASE1_FILL_RATE_TARGET;
+    const priceDevMet = medianDeviationPct <= PHASE1_PRICE_DEV_TARGET;
+    const consecutiveDaysRequired = PHASE1_WINDOW_DAYS;
+    const exitConditionMet = fillRateMet && priceDevMet && consecutiveDaysMet >= consecutiveDaysRequired;
+
+    // Days since Phase 1 start
+    const phase1StartMs = new Date(PHASE1_START_DATE).getTime();
+    const daysSincePhase1Start = Math.floor((Date.now() - phase1StartMs) / (24 * 60 * 60 * 1000));
+
+    return Response.json({
+      phase1StartDate: PHASE1_START_DATE,
+      windowDays: PHASE1_WINDOW_DAYS,
+      daysSincePhase1Start,
+      windowStart,
+      // Counts
+      totalOrders: total,
+      filledOrders: filled,
+      rejectedOrders: rejected,
+      deviationSampleSize: deviations.length,
+      // Fill rate
+      fillRatePct,
+      fillRateTarget: PHASE1_FILL_RATE_TARGET,
+      fillRateMet,
+      // Price deviation
+      medianDeviationPct,
+      avgDeviationPct,
+      maxDeviationPct,
+      priceDevTarget: PHASE1_PRICE_DEV_TARGET,
+      priceDevMet,
+      // Consecutive days
+      consecutiveDaysMet,
+      consecutiveDaysRequired,
+      // Overall status
+      exitConditionMet,
+      status: exitConditionMet
+        ? "PASSED"
+        : (total === 0 ? "NO_DATA" : "IN_PROGRESS"),
+    }, { headers });
+  } catch (e) {
+    return Response.json({
+      error: String(e),
+      status: "ERROR",
+      exitConditionMet: false,
+    }, { headers });
+  }
 }
 
 // ─── Gene Evolution APIs ────────────────────────────────
