@@ -17,9 +17,13 @@ Petri is experimental software. Live trading involves real financial risk. The R
 
 The `OWNER_PRIVATE_KEY` Worker secret controls the Deposit Wallet — the on-chain account that holds funds for live trading. This key must be treated with maximum security.
 
+**Where does the key go?**
+
+`OWNER_PRIVATE_KEY` is stored in **your own Cloudflare account's Secret Store** — not on Rotifer Protocol's servers. When you run `wrangler secret put`, Cloudflare encrypts and stores the value under your account. The Rotifer Protocol team has no access to your secrets.
+
 **Storage**:
 ```bash
-# Set via Wrangler (stored encrypted in Cloudflare Secret Store)
+# Set via Wrangler (stored encrypted in your Cloudflare Secret Store)
 npx wrangler secret put OWNER_PRIVATE_KEY
 # Paste the hex private key when prompted. It will NOT be stored in wrangler.toml.
 ```
@@ -27,11 +31,13 @@ npx wrangler secret put OWNER_PRIVATE_KEY
 **Constraints**:
 - **Never commit** `OWNER_PRIVATE_KEY` to any file or environment variable
 - **Never log** this value; Cloudflare Worker logs are not private
-- Use a dedicated EOA — do not reuse a hot wallet used elsewhere
+- Use a **dedicated EOA** — create a new wallet specifically for Petri, do not reuse any wallet used elsewhere
 - Fund the wallet with only the amount you are willing to lose in full
 - Rotate the key if you suspect exposure
 
 **Minimum balance**: Start with ≤$50 USDC for Phase 2 Small testing.
+
+**Phase 3 upgrade path**: For production deployments handling larger amounts, we plan to support migration to a **Gnosis Safe** setup, where the Worker holds only a low-privilege "signer" EOA and the Safe contract holds actual funds with multi-signature protection. See `internal/products/rotifer-alpha/prd/ALPHA-PRD-001-live-trading.md` §3.3 for the technical roadmap.
 
 ---
 
