@@ -142,26 +142,34 @@ function incrementMap(map: Map<string, number>, key: string, delta: number): voi
   map.set(key, (map.get(key) ?? 0) + delta);
 }
 
-async function getDailyEventFamilyEntryCounts(
+async function getRecentEventFamilyEntryCounts(
   db: D1Database,
   fundId: string,
-  todayStart: string,
+  since: string,
 ): Promise<Map<string, number>> {
-  // "Daily quota" semantics — counts ALL entries (any status) for fund+event family
-  // opened since UTC midnight, regardless of whether they are still OPEN.
+  // Rolling-window quota semantics (2026-05-19, v3 → replaces calendar-day v2):
   //
-  // Root cause of 2026-05-18 James Bond fan-out bypass: the original version
-  // only counted OPEN positions. As each position was stopped out the count
-  // dropped to 0, allowing unlimited same-day re-entries by cycling through
-  // different market_ids / slugs (candidates) in the same event family.
+  // Counts ALL entries (any status) for fund+event family opened within the
+  // last `eventFamilyCooldownHours` hours, regardless of whether they are
+  // still OPEN.  The window anchor is the current cron timestamp — not UTC
+  // midnight — so the gate is time-based rather than calendar-day based.
   //
-  // Using a daily total prevents the "stop → count resets → re-enter" loop.
-  // The cap is intentionally low (default 1) for multi-outcome events where
-  // each candidate is correlated — one entry per day is sufficient signal
-  // for the event; excess entries only amplify concentration risk.
+  // Why v3 over v2 (daily quota)?
+  //   v2 (2026-05-18 fix): used UTC midnight as boundary.  Correct for the
+  //   James Bond bypass, but over-restrictive on high-signal days (e.g. NBA
+  //   playoff dates) where legitimate new signals emerge hours after the first
+  //   entry — each fund could only enter once regardless of signal quality.
+  //
+  //   v3: "at most N entries in the last H hours" (rolling).  Still prevents
+  //   the bypass (stop → re-enter within cooldown is still blocked) while
+  //   allowing re-entry after the window has elapsed if a strong new signal
+  //   arrives (e.g., 9:45am entry → re-entry allowed after 3:45pm).
+  //
+  // The `since` parameter = ts - fund.eventFamilyCooldownHours * 3600 * 1000,
+  // computed per-fund in paperTrade() to support per-fund evolution.
   const r = await db.prepare(
     "SELECT slug, question FROM paper_trades WHERE fund_id = ? AND opened_at >= ?",
-  ).bind(fundId, todayStart).all<EventFamilyRow>();
+  ).bind(fundId, since).all<EventFamilyRow>();
   const counts = new Map<string, number>();
   for (const row of r.results ?? []) {
     incrementMap(counts, eventFamilyKey(row.slug, row.question), 1);
@@ -240,9 +248,9 @@ export async function paperTrade(
 ): Promise<PaperTradeResult> {
   const trades: TradeAction[] = [];
   const skipReasons: SkipReasonEntry[] = [];
-  // Derive today's UTC midnight from ts for getDailyEventEntryCount.
+  // Base timestamp in ms — used to derive per-fund rolling cooldown windows.
   // ts is guaranteed ISO format (e.g. "2026-05-18T13:00:01.000Z").
-  const todayStart = ts.slice(0, 10) + "T00:00:00.000Z";
+  const nowMs = new Date(ts).getTime();
   // Execution mode — read once here (was previously read per-INSERT for shadow
   // recording). Cached to avoid N DB round-trips in the signal loop and to
   // derive the portfolio concentration limit below.
@@ -314,7 +322,11 @@ export async function paperTrade(
     const realizedPnl = cash + openStats.invested - fund.initialBalance;
     const currentEquity = calculateTotalValue(fund.initialBalance, realizedPnl, openStats.unrealizedPnl);
     const currentDrawdown = calculateDrawdownPct(fund.initialBalance, currentEquity);
-    const dailyEventFamilyCounts = await getDailyEventFamilyEntryCounts(db, fund.id, todayStart);
+    // Rolling cooldown window: entries in the last N hours per event family.
+    // Per-fund parameter (default 6h) replaces the old UTC-midnight boundary.
+    const cooldownHours = fund.eventFamilyCooldownHours ?? 6;
+    const cooldownSince = new Date(nowMs - cooldownHours * 3_600_000).toISOString();
+    const dailyEventFamilyCounts = await getRecentEventFamilyEntryCounts(db, fund.id, cooldownSince);
     const openEventFamilyExposure = await getOpenEventFamilyExposure(db, fund.id);
     const openedFamilyCounts = new Map<string, number>();
     const openedFamilyExposure = new Map<string, number>();
@@ -369,24 +381,28 @@ export async function paperTrade(
         skipReasons.push({ fundId: fund.id, code: "DUPLICATE_MARKET" });
         continue;
       }
-      // Same-event daily quota (2026-05-18, 1a 圆桌 6:0 → v2 fix 2026-05-18 晚):
-      // Limit how many times a fund may enter the same event per calendar day
-      // (UTC), counting ALL positions regardless of current status.
+      // Same-event rolling-window quota (v3, 2026-05-19):
       //
-      // v1 design flaw: counted only OPEN positions → cycling through different
-      // market_ids (candidates) in the same event after stops brought count
-      // back to 0 bypassed the cap entirely (James Bond 7-entry fan-out).
-      // v2 fix: daily total count — "stop → count resets" loop is impossible.
+      // At most fund.maxSameEventPositions entries per event family within
+      // the last fund.eventFamilyCooldownHours hours (default: 1 per 6h).
       //
-      // Default cap 1: for multi-outcome correlated events one entry per day
-      // is sufficient; additional entries only amplify concentration risk.
-      // Evolvable via PARAM_BOUNDS_INVARIANT (min: 1, max: 5).
+      // History:
+      //   v1: counted only OPEN positions → James Bond bypass (7-entry fan-out
+      //       as each stop-loss reset the count).
+      //   v2: switched to calendar-day total (UTC midnight boundary) — fixed
+      //       the bypass but too restrictive on high-signal days (NBA playoffs:
+      //       all funds blocked after first NBA entry even when new strong
+      //       signals emerged hours later in the same day).
+      //   v3: rolling window anchored to last N hours — preserves bypass
+      //       protection while allowing re-entry after cooldown elapses.
+      //       Both `maxSameEventPositions` and `eventFamilyCooldownHours` are
+      //       evolvable per fund via PARAM_BOUNDS_INVARIANT.
       const familyKey = eventFamilyKey(sig.slug, sig.question);
-      const dailyEventCount =
+      const recentEventCount =
         (dailyEventFamilyCounts.get(familyKey) ?? 0)
         + (openedFamilyCounts.get(familyKey) ?? 0);
       const maxSameEvent = fund.maxSameEventPositions ?? 1;
-      if (dailyEventCount >= maxSameEvent) {
+      if (recentEventCount >= maxSameEvent) {
         skipReasons.push({ fundId: fund.id, code: "MAX_SAME_EVENT_POSITIONS" });
         continue;
       }

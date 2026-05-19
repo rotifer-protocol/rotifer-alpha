@@ -61,12 +61,15 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   // Market Impact Gate: 5%–50% of market liquidity per order.
   // Conservative funds should tend lower (≤10%); aggressive funds may go higher.
   maxMarketImpactRatio:  { min: 0.05, max: 0.50 },
-  // Same-event daily quota: max entries per fund per event per UTC calendar day.
-  // v2 semantics (2026-05-18 evening fix): counts ALL entries regardless of
-  // status — prevents "stop → count resets → re-enter" cycle (James Bond bypass).
-  // Default 1: one entry per day is sufficient for correlated multi-outcome events.
-  // Conservative funds stay at 1; exploratory funds may evolve to 3-5.
+  // Same-event rolling-window count cap (v3, 2026-05-19).
+  // Max entries per fund per event family within the last eventFamilyCooldownHours.
+  // Default 1; conservative funds stay at 1, exploratory funds may evolve to 3-5.
   maxSameEventPositions: { min: 1,    max: 5,    integer: true },
+  // Cooldown window for the same-event count gate (hours).
+  // Replaces UTC-midnight boundary with a rolling window anchored to the
+  // cron timestamp. Default 6h: conservative funds may evolve toward 12-24h
+  // (effectively once-per-day); aggressive funds toward 2-4h (faster re-entry).
+  eventFamilyCooldownHours: { min: 2,  max: 24,   integer: true },
 };
 
 export const EVOLVABLE_PARAMS: string[] = [

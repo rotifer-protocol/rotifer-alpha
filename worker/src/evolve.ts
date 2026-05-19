@@ -263,6 +263,8 @@ function fundToRow(fund: FundConfig): Record<string, unknown> {
     take_profit_percent: fund.takeProfitPercent,
     trailing_stop_percent: fund.trailingStopPercent,
     prob_reversal_threshold: fund.probReversalThreshold,
+    max_same_event_positions: fund.maxSameEventPositions ?? 1,
+    event_family_cooldown_hours: fund.eventFamilyCooldownHours ?? 6,
   };
 }
 
@@ -291,6 +293,8 @@ function rowToFund(row: any): FundConfig {
     sizingMode: row.sizing_mode,
     sizingBase: row.sizing_base,
     sizingScale: row.sizing_scale,
+    maxSameEventPositions: row.max_same_event_positions ?? 1,
+    eventFamilyCooldownHours: row.event_family_cooldown_hours ?? 6,
   };
 }
 
@@ -314,8 +318,9 @@ export async function initializeFunds(db: D1Database): Promise<void> {
         max_per_event, max_open_positions, stop_loss_percent,
         max_hold_days, sizing_mode, sizing_base, sizing_scale,
         take_profit_percent, trailing_stop_percent, prob_reversal_threshold,
+        max_same_event_positions, event_family_cooldown_hours,
         generation, parent_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
     ).bind(
       row.id, row.name, row.emoji, row.motto, row.initial_balance,
       row.monthly_target, row.drawdown_limit, row.drawdown_soft_limit,
@@ -324,6 +329,7 @@ export async function initializeFunds(db: D1Database): Promise<void> {
       row.max_open_positions, row.stop_loss_percent, row.max_hold_days,
       row.sizing_mode, row.sizing_base, row.sizing_scale,
       row.take_profit_percent, row.trailing_stop_percent, row.prob_reversal_threshold,
+      row.max_same_event_positions, row.event_family_cooldown_hours,
       ts, ts,
     ).run();
   }
@@ -364,6 +370,8 @@ async function updateFundParams(
     takeProfitPercent: "take_profit_percent",
     trailingStopPercent: "trailing_stop_percent",
     probReversalThreshold: "prob_reversal_threshold",
+    maxSameEventPositions: "max_same_event_positions",
+    eventFamilyCooldownHours: "event_family_cooldown_hours",
   };
 
   for (const [key, column] of Object.entries(fieldMap)) {

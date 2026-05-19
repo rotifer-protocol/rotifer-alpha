@@ -108,6 +108,8 @@ export async function checkAndRunMicroEvolution(
         probReversalThreshold: "prob_reversal_threshold",
         sizingBase: "sizing_base",
         sizingScale: "sizing_scale",
+        maxSameEventPositions: "max_same_event_positions",
+        eventFamilyCooldownHours: "event_family_cooldown_hours",
       };
 
       for (const adj of adjustments) {

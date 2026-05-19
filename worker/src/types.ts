@@ -124,11 +124,16 @@ export interface FundConfig {
   // may consume. Prevents trading in thin markets where our order causes price impact.
   // Optional — defaults to 0.15 (15%) if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
   maxMarketImpactRatio?: number;
-  // Same-event horizontal cap (2026-05-18, 1a 圆桌 6:0): max OPEN positions a fund
-  // may hold concurrently in the same event (multi-outcome arb fan-out limit).
+  // Same-event rolling-window count cap (v3, 2026-05-19):
+  // Max entries per fund per event family within the last eventFamilyCooldownHours.
   // Distinct from maxPerEvent (amount-based); both gates apply.
-  // Optional — defaults to 3 if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
+  // Optional — defaults to 1 if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
   maxSameEventPositions?: number;
+  // Rolling cooldown window for the same-event count gate (hours).
+  // Replaces the old calendar-day (UTC midnight) boundary — entries within
+  // the last N hours count toward maxSameEventPositions.
+  // Optional — defaults to 6h if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
+  eventFamilyCooldownHours?: number;
 }
 
 export type TradeStatus =

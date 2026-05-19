@@ -385,6 +385,8 @@ async function apiFundDetail(
     takeProfitPercent: (configRow as any).take_profit_percent,
     trailingStopPercent: (configRow as any).trailing_stop_percent,
     probReversalThreshold: (configRow as any).prob_reversal_threshold,
+    maxSameEventPositions: (configRow as any).max_same_event_positions ?? 1,
+    eventFamilyCooldownHours: (configRow as any).event_family_cooldown_hours ?? 6,
     generation: (configRow as any).generation,
     parentId: (configRow as any).parent_id,
   } : {
@@ -401,6 +403,8 @@ async function apiFundDetail(
     takeProfitPercent: fund.takeProfitPercent,
     trailingStopPercent: fund.trailingStopPercent,
     probReversalThreshold: fund.probReversalThreshold,
+    maxSameEventPositions: fund.maxSameEventPositions ?? 1,
+    eventFamilyCooldownHours: fund.eventFamilyCooldownHours ?? 6,
     sizingMode: fund.sizingMode,
     sizingBase: fund.sizingBase,
     sizingScale: fund.sizingScale,
