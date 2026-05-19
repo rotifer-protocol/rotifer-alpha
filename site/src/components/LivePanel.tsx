@@ -12,10 +12,13 @@
 
 import { useFetch } from "../hooks/useApi";
 import { fundDisplayName } from "../lib/fundMeta";
+import { useI18n } from "../i18n/context";
 import {
   Shield, ShieldOff, Wallet, Activity, CheckCircle2, Circle,
-  AlertTriangle, XCircle, Zap,
+  AlertTriangle, XCircle, Zap, TrendingUp, TrendingDown, Minus,
+  DollarSign, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +102,7 @@ function ReadinessRow({ id, item }: { id: string; item: ReadinessItem }) {
 // ─── Circuit Breaker mini heatmap ─────────────────────────────────────────────
 
 function CbFundRow({ state }: { state: CbFundState }) {
+  const { t } = useI18n();
   const pct = Math.min(state.epochLossPct, state.thresholdPct);
   const fillWidth = state.thresholdPct > 0 ? (pct / state.thresholdPct) * 100 : 0;
   const isWarning = fillWidth >= 70 && !state.tripped;
@@ -107,7 +111,7 @@ function CbFundRow({ state }: { state: CbFundState }) {
     <div className="flex items-center gap-3 py-1.5">
       {/* Fund name */}
       <span className="w-36 shrink-0 text-xs text-[var(--r-muted)] truncate">
-        {fundDisplayName(state.fundId)}
+        {fundDisplayName(state.fundId, t)}
       </span>
 
       {/* Progress bar */}
@@ -139,6 +143,205 @@ function CbFundRow({ state }: { state: CbFundState }) {
         : <span className="w-3 shrink-0" />
       }
     </div>
+  );
+}
+
+// ─── P&L types ────────────────────────────────────────────────────────────────
+
+interface FundPnLRow {
+  fundId: string;
+  filledBuys: number;
+  filledSells: number;
+  deployedUsdc: number;
+  receivedUsdc: number;
+  totalOrders: number;
+  rejectedOrders: number;
+}
+
+interface LivePnLResponse {
+  generatedAt: string;
+  walletAddress: string;
+  initialBudgetUsdc: number;
+  walletBalanceUsdc: number | null;
+  balanceApiStatus: "ok" | "error" | "unavailable";
+  totalDeployedUsdc: number;
+  totalReceivedUsdc: number;
+  netDeployedUsdc: number;
+  totalFilledOrders: number;
+  totalRejectedOrders: number;
+  funds: FundPnLRow[];
+}
+
+// ─── P&L Card ─────────────────────────────────────────────────────────────────
+
+function fmt(n: number, decimals = 2): string {
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function DeltaBadge({ delta }: { delta: number }) {
+  if (Math.abs(delta) < 0.005) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs text-[var(--r-muted)]">
+        <Minus size={11} /> $0.00
+      </span>
+    );
+  }
+  const positive = delta > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${
+      positive ? "text-emerald-400" : "text-red-400"
+    }`}>
+      {positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+      {positive ? "+" : "−"}${fmt(Math.abs(delta))}
+    </span>
+  );
+}
+
+function PnLCard() {
+  const { t } = useI18n();
+  const { data, error, loading } = useFetch<LivePnLResponse>("/api/live-pnl");
+  const [expanded, setExpanded] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="glass-card p-5 h-32 animate-pulse bg-[var(--r-border)] rounded-xl opacity-40" />
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <section className="glass-card p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <DollarSign size={15} className="text-[var(--r-accent)]" />
+          <h3 className="text-sm font-semibold text-[var(--r-fg)]">Live P&L</h3>
+        </div>
+        <p className="text-xs text-[var(--r-muted)]">
+          {error?.includes("no_wallet_registered")
+            ? "钱包未注册（P2.4 尚未完成）"
+            : "P&L 数据暂不可用"}
+        </p>
+      </section>
+    );
+  }
+
+  const {
+    initialBudgetUsdc,
+    walletBalanceUsdc,
+    balanceApiStatus,
+    totalDeployedUsdc,
+    netDeployedUsdc,
+    totalFilledOrders,
+    totalRejectedOrders,
+    funds,
+  } = data;
+
+  // True P&L = current balance − initial budget (includes resolved market payouts)
+  const realizedDelta =
+    walletBalanceUsdc !== null ? walletBalanceUsdc - initialBudgetUsdc : null;
+
+  const hasOrders = totalFilledOrders > 0;
+
+  return (
+    <section className="glass-card p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <DollarSign size={15} className="text-[var(--r-accent)]" />
+          <h3 className="text-sm font-semibold text-[var(--r-fg)]">Live P&L</h3>
+        </div>
+        {realizedDelta !== null && (
+          <DeltaBadge delta={realizedDelta} />
+        )}
+      </div>
+
+      {/* Stat grid */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {/* Current balance */}
+        <div className="space-y-0.5">
+          <p className="text-xs text-[var(--r-muted)]">当前余额</p>
+          {walletBalanceUsdc !== null ? (
+            <p className="text-base font-semibold tabular-nums text-[var(--r-fg)]">
+              ${fmt(walletBalanceUsdc)}
+            </p>
+          ) : (
+            <p className="text-base font-semibold text-[var(--r-muted)]">
+              {balanceApiStatus === "unavailable" ? "—" : "获取失败"}
+            </p>
+          )}
+          <p className="text-xs text-[var(--r-muted)]">pUSD</p>
+        </div>
+
+        {/* Initial budget */}
+        <div className="space-y-0.5">
+          <p className="text-xs text-[var(--r-muted)]">初始预算</p>
+          <p className="text-base font-semibold tabular-nums text-[var(--r-fg)]">
+            ${fmt(initialBudgetUsdc)}
+          </p>
+          <p className="text-xs text-[var(--r-muted)]">pUSD</p>
+        </div>
+
+        {/* Net deployed */}
+        <div className="space-y-0.5">
+          <p className="text-xs text-[var(--r-muted)]">净投入</p>
+          <p className={`text-base font-semibold tabular-nums ${
+            netDeployedUsdc > 0 ? "text-amber-400" : "text-[var(--r-fg)]"
+          }`}>
+            {netDeployedUsdc > 0 ? `−$${fmt(netDeployedUsdc)}` : "$0.00"}
+          </p>
+          <p className="text-xs text-[var(--r-muted)]">已部署</p>
+        </div>
+      </div>
+
+      {/* Order stats */}
+      <div className="flex items-center gap-4 text-xs text-[var(--r-muted)] pb-3 border-b border-[var(--r-border)]">
+        <span>
+          <span className="text-emerald-400 font-medium">{totalFilledOrders}</span> 笔成交
+        </span>
+        {totalRejectedOrders > 0 && (
+          <span>
+            <span className="text-red-400 font-medium">{totalRejectedOrders}</span> 笔被拒
+          </span>
+        )}
+        <span>合计 {totalDeployedUsdc > 0 ? `$${fmt(totalDeployedUsdc)} 已花` : "无真实下单"}</span>
+        {!hasOrders && (
+          <span className="text-[var(--r-muted)] italic">Phase 2 启动后自动填充</span>
+        )}
+      </div>
+
+      {/* Per-fund breakdown (collapsible) */}
+      {funds.length > 0 && (
+        <div className="mt-3">
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1 text-xs text-[var(--r-muted)] hover:text-[var(--r-fg)] transition-colors"
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {expanded ? "收起" : "展开"} 基金明细
+          </button>
+
+          {expanded && (
+            <div className="mt-2 space-y-1">
+              {funds.map(f => (
+                <div key={f.fundId} className="flex items-center gap-2 py-1 text-xs">
+                  <span className="w-40 truncate text-[var(--r-muted)]">
+                    {fundDisplayName(f.fundId, t)}
+                  </span>
+                  <span className="flex-1 text-right tabular-nums text-[var(--r-fg)]">
+                    {f.deployedUsdc > 0 ? `−$${fmt(f.deployedUsdc)}` : "$0.00"}
+                  </span>
+                  <span className="w-12 text-right text-[var(--r-muted)]">
+                    {f.filledBuys + f.filledSells} 笔
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -285,6 +488,9 @@ export function LivePanel() {
           </div>
         )}
       </section>
+
+      {/* ── Live P&L ── */}
+      <PnLCard />
 
       {/* ── Live Orders Summary ── */}
       <section className="glass-card p-5">

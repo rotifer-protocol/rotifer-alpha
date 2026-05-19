@@ -38,6 +38,7 @@ import {
   runReconcile,
   getLastReconcileReport,
 } from "./polymarket-reconcile.js";
+import { getLivePnL } from "./polymarket-pnl.js";
 
 /**
  * Read-only GET endpoints for the frontend.
@@ -85,6 +86,9 @@ export async function handleApi(
   }
   if (path === "/api/live-reconcile") {
     return await apiLiveReconcile(env.DB, req, headers);
+  }
+  if (path === "/api/live-pnl") {
+    return await apiLivePnl(env.DB, headers);
   }
   if (path === "/api/circuit-breaker") {
     if (req.method === "POST") {
@@ -1332,6 +1336,33 @@ async function apiLiveReconcile(
   } catch (err) {
     return Response.json(
       { error: "reconcile_query_failed", detail: String(err) },
+      { status: 500, headers },
+    );
+  }
+}
+
+async function apiLivePnl(
+  db: D1Database,
+  headers: HeadersInit,
+): Promise<Response> {
+  try {
+    const walletRow = await db
+      .prepare("SELECT wallet_address FROM fund_wallets LIMIT 1")
+      .first<{ wallet_address: string }>()
+      .catch(() => null);
+
+    if (!walletRow?.wallet_address) {
+      return Response.json(
+        { error: "no_wallet_registered", hint: "Run register-deposit-wallet.sh first (P2.4)" },
+        { status: 409, headers },
+      );
+    }
+
+    const report = await getLivePnL(db, walletRow.wallet_address);
+    return Response.json(report, { headers });
+  } catch (err) {
+    return Response.json(
+      { error: "pnl_error", message: String(err).slice(0, 200) },
       { status: 500, headers },
     );
   }
