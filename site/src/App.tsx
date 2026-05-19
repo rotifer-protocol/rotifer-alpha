@@ -42,6 +42,9 @@ const LazyAnalysisPage = lazy(() =>
 const LazyArenaPage = lazy(() =>
   import("./components/ArenaPage").then(m => ({ default: m.ArenaPageContent }))
 );
+const LazyLivePanel = lazy(() =>
+  import("./components/LivePanel").then(m => ({ default: m.LivePanel }))
+);
 
 // Prefetch on hover — kick off the chunk download before the user clicks the nav link
 const prefetch = {
@@ -50,6 +53,7 @@ const prefetch = {
   gene:        () => import("./components/GeneEvolutionPanel"),
   diagnostics: () => import("./components/DiagnosticsPage"),
   arena:       () => import("./components/ArenaPage"),
+  live:        () => import("./components/LivePanel"),
 };
 import { useI18n } from "./i18n/context";
 import type { TranslationKey } from "./i18n/translations";
@@ -339,6 +343,7 @@ function Layout() {
               <NavLink to="/shadow" className={navClass} onMouseEnter={prefetch.shadow}>{t("shadow")}</NavLink>
               <NavLink to="/gene-evolution" className={navClass} onMouseEnter={prefetch.gene}>{t("navGeneEvolution")}</NavLink>
               <NavLink to="/diagnostics" className={navClass} onMouseEnter={prefetch.diagnostics}>{t("diagnostics")}</NavLink>
+              <NavLink to="/live" className={navClass} onMouseEnter={prefetch.live}>Live</NavLink>
               <NavLink to="/docs" className={navClass}>
                 {t("navDocs")}
               </NavLink>
@@ -432,6 +437,17 @@ function Layout() {
             }
           >
             {t("diagnostics")}
+          </NavLink>
+          <NavLink
+            to="/live"
+            className={({ isActive }) =>
+              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
+              }`
+            }
+            onMouseEnter={prefetch.live}
+          >
+            Live
           </NavLink>
           <NavLink
             to="/docs"
@@ -1186,6 +1202,9 @@ export default function App() {
         } />
         <Route path="diagnostics" element={
           <Suspense fallback={<PageSkeleton />}><LazyDiagnosticsPage /></Suspense>
+        } />
+        <Route path="live" element={
+          <Suspense fallback={<PageSkeleton />}><LazyLivePanel /></Suspense>
         } />
         <Route path="docs" element={
           <Suspense fallback={<PageSkeleton />}><LazyDocsPage /></Suspense>

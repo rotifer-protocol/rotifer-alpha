@@ -76,6 +76,9 @@ export async function handleApi(
   if (path === "/api/shadow-metrics") {
     return await apiShadowMetrics(env.DB, headers);
   }
+  if (path === "/api/live-status") {
+    return await apiLiveStatus(env.DB, headers);
+  }
   if (path === "/api/circuit-breaker") {
     if (req.method === "POST") {
       // Operator reset: POST /api/circuit-breaker { fundId: "..." }
@@ -1149,6 +1152,108 @@ async function apiGeneEvolution(
   const log = await getEvolutionLog(db, limit);
   const epoch = await getCurrentEpoch(db);
   return Response.json({ epoch, log }, { headers });
+}
+
+// ─── Phase 2 Live Status ─────────────────────────────────────────────────────
+//
+// Aggregates everything needed for the Phase 2 monitoring dashboard:
+//   - execution mode + kill switch
+//   - deposit wallet registration status
+//   - circuit breaker state per fund
+//   - live order counts by status
+//   - phase 2 readiness checklist (P2.4–P2.7)
+
+async function apiLiveStatus(
+  db: D1Database,
+  headers: HeadersInit,
+): Promise<Response> {
+  try {
+    const [config, cbStates] = await Promise.all([
+      getSystemConfig(db),
+      loadAllCircuitBreakerStates(db),
+    ]);
+
+    // Deposit wallet: read all registered wallets
+    const walletRows = await db.prepare(
+      "SELECT fund_id, wallet_address, wallet_type, initial_balance_usdc, registered_at FROM fund_wallets ORDER BY fund_id",
+    ).all<{
+      fund_id: string;
+      wallet_address: string;
+      wallet_type: string;
+      initial_balance_usdc: number;
+      registered_at: string;
+    }>().catch(() => ({ results: [] as typeof walletRows.results }));
+
+    const wallets = walletRows.results ?? [];
+    const walletAddress = wallets.length > 0 ? wallets[0].wallet_address : null;
+    const walletRegisteredAt = wallets.length > 0 ? wallets[0].registered_at : null;
+
+    // Live order counts
+    const liveOrderCounts = await db.prepare(
+      `SELECT status, COUNT(*) AS cnt FROM live_orders GROUP BY status`,
+    ).all<{ status: string; cnt: number }>().catch(() => ({ results: [] as { status: string; cnt: number }[] }));
+
+    const orderCountMap: Record<string, number> = {};
+    for (const row of liveOrderCounts.results ?? []) {
+      orderCountMap[row.status] = row.cnt;
+    }
+
+    // CB summary
+    const cbEnriched = cbStates.map(s => ({
+      fundId: s.fundId,
+      epochLossPct: s.epochStartUsdc > 0
+        ? Math.round((s.epochLossUsdc / s.epochStartUsdc) * 10000) / 100
+        : 0,
+      thresholdPct: DEFAULT_CB_THRESHOLD_PCT,
+      tripped: s.tripped,
+      trippedAt: s.trippedAt ?? null,
+    }));
+    const trippedCount = cbEnriched.filter(s => s.tripped).length;
+
+    // Phase 2 readiness checklist
+    const executionMode = config.EXECUTION_MODE || "paper";
+    const p24Done = wallets.length > 0 && walletAddress !== null;
+    const p25Done = executionMode === "live"; // proxy: live mode only enabled after P2.5
+    const p26Done = (orderCountMap["FILLED"] ?? 0) > 0 || (orderCountMap["CANCELLED"] ?? 0) > 0;
+    const p27Done = true; // this endpoint itself is the dashboard — always true once deployed
+
+    return Response.json({
+      executionMode,
+      killSwitch: config.KILL_SWITCH === "true",
+      depositWallet: {
+        address: walletAddress,
+        registeredAt: walletRegisteredAt,
+        fundCount: wallets.length,
+      },
+      circuitBreaker: {
+        thresholdPct: DEFAULT_CB_THRESHOLD_PCT,
+        trippedCount,
+        allClear: trippedCount === 0,
+        funds: cbEnriched,
+      },
+      liveOrders: {
+        pending:   orderCountMap["PENDING"]   ?? 0,
+        open:      orderCountMap["OPEN"]      ?? 0,
+        filled:    orderCountMap["FILLED"]    ?? 0,
+        partial:   orderCountMap["PARTIAL"]   ?? 0,
+        cancelled: orderCountMap["CANCELLED"] ?? 0,
+        expired:   orderCountMap["EXPIRED"]   ?? 0,
+        rejected:  orderCountMap["REJECTED"]  ?? 0,
+      },
+      phase2Readiness: {
+        p24: { done: p24Done, label: "Deposit Wallet registered" },
+        p25: { done: p25Done, label: "PolymarketVenue(live) implemented" },
+        p26: { done: p26Done, label: "live_orders reconcile active" },
+        p27: { done: p27Done, label: "Phase 2 Dashboard deployed" },
+        allReady: p24Done && p25Done && p26Done && p27Done,
+      },
+    }, { headers });
+  } catch (err) {
+    return Response.json({
+      error: "live_status_query_failed",
+      detail: String(err),
+    }, { status: 500, headers });
+  }
 }
 
 async function apiCircuitBreaker(
