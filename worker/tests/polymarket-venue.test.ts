@@ -106,10 +106,17 @@ test("estimatePolymarketFees: returns 0 (Polymarket 0% fee model)", () => {
 
 // ─── PolymarketVenue interface contract ───────────────────
 
-test("PolymarketVenue: throws on live mode (Phase 2 not implemented)", () => {
+test("PolymarketVenue: live mode throws when ownerPrivateKey is missing (P2.5)", () => {
   assert.throws(
     () => new PolymarketVenue("live"),
-    /live mode.*not yet implemented/,
+    /live mode requires ownerPrivateKey/,
+  );
+});
+
+test("PolymarketVenue: live mode throws when D1 db is missing (P2.5)", () => {
+  assert.throws(
+    () => new PolymarketVenue("live", undefined, "0x" + "a".repeat(64)),
+    /live mode requires D1 database/,
   );
 });
 

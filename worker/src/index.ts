@@ -40,6 +40,7 @@ import {
 import type { SkipReasonEntry } from "./trade";
 import { resetCircuitBreakerEpochs } from "./circuit-breaker";
 import { runGenomePipeline } from "./genome";
+import { runReconcile } from "./polymarket-reconcile.js";
 export { LiveHub } from "./ws-hub";
 export { RiskMonitor } from "./risk-monitor";
 
@@ -470,6 +471,34 @@ export default {
       })().catch(e => {
         console.error("Evolution failed:", e);
       }));
+
+      // P2.6: daily live_orders ↔ Polymarket trade history reconciliation.
+      // Only runs when OWNER_PRIVATE_KEY is set (i.e. live mode is configured).
+      // Safe to run in paper/shadow mode — queryD1Filled returns 0 rows → isClean=true.
+      if (env.POLYMARKET_WALLET_ADDRESS) {
+        ctx.waitUntil(
+          runReconcile(env.DB, env.POLYMARKET_WALLET_ADDRESS)
+            .then(report => {
+              if (!report.isClean) {
+                console.warn(
+                  `[Reconcile] DISCREPANCY DETECTED — wallet=${report.walletAddress} ` +
+                  `discrepancy=$${report.usdcDiscrepancy ?? "??"} ` +
+                  `unmatchedD1=${report.unmatchedInD1.length} ` +
+                  `unmatchedChain=${report.unmatchedInChain.length}`,
+                );
+              } else {
+                console.log(
+                  `[Reconcile] Clean — d1_filled=${report.d1.filledCount} ` +
+                  `chain_trades=${report.chain?.tradeCount ?? "N/A"} ` +
+                  `discrepancy=$${report.usdcDiscrepancy ?? "N/A"}`,
+                );
+              }
+            })
+            .catch(e => {
+              console.error("[Reconcile] Failed:", e);
+            }),
+        );
+      }
     } else if (cron === "0 1 * * *") {
       ctx.waitUntil(runDailyReport(env, funds).catch(e => {
         console.error("Daily report failed:", e);

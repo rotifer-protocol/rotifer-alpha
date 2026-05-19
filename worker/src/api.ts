@@ -34,6 +34,10 @@ import {
   resetFundCircuitBreaker,
   DEFAULT_CB_THRESHOLD_PCT,
 } from "./circuit-breaker";
+import {
+  runReconcile,
+  getLastReconcileReport,
+} from "./polymarket-reconcile.js";
 
 /**
  * Read-only GET endpoints for the frontend.
@@ -78,6 +82,9 @@ export async function handleApi(
   }
   if (path === "/api/live-status") {
     return await apiLiveStatus(env.DB, headers);
+  }
+  if (path === "/api/live-reconcile") {
+    return await apiLiveReconcile(env.DB, req, headers);
   }
   if (path === "/api/circuit-breaker") {
     if (req.method === "POST") {
@@ -1214,7 +1221,13 @@ async function apiLiveStatus(
     const executionMode = config.EXECUTION_MODE || "paper";
     const p24Done = wallets.length > 0 && walletAddress !== null;
     const p25Done = executionMode === "live"; // proxy: live mode only enabled after P2.5
-    const p26Done = (orderCountMap["FILLED"] ?? 0) > 0 || (orderCountMap["CANCELLED"] ?? 0) > 0;
+
+    // p26Done: reconcile module deployed + has been run at least once for this wallet
+    const lastReconcile = walletAddress
+      ? await getLastReconcileReport(db, walletAddress).catch(() => null)
+      : null;
+    const p26Done = lastReconcile !== null;
+
     const p27Done = true; // this endpoint itself is the dashboard — always true once deployed
 
     return Response.json({
@@ -1240,6 +1253,15 @@ async function apiLiveStatus(
         expired:   orderCountMap["EXPIRED"]   ?? 0,
         rejected:  orderCountMap["REJECTED"]  ?? 0,
       },
+      reconcile: lastReconcile
+        ? {
+            lastRunAt:       lastReconcile.runAt,
+            isClean:         lastReconcile.isClean,
+            usdcDiscrepancy: lastReconcile.usdcDiscrepancy,
+            d1FilledCount:   lastReconcile.d1FilledCount,
+            apiStatus:       lastReconcile.apiStatus,
+          }
+        : null,
       phase2Readiness: {
         p24: { done: p24Done, label: "Deposit Wallet registered" },
         p25: { done: p25Done, label: "PolymarketVenue(live) implemented" },
@@ -1253,6 +1275,65 @@ async function apiLiveStatus(
       error: "live_status_query_failed",
       detail: String(err),
     }, { status: 500, headers });
+  }
+}
+
+/**
+ * GET /api/live-reconcile
+ *
+ * Returns the last cached reconcile report from D1.
+ * Add query param ?refresh=1 to run a fresh reconcile against the Polymarket API
+ * (makes live network calls — use sparingly, defaults to cached read).
+ *
+ * Phase 2 Exit C2.3: isClean must be true (discrepancy < $0.01, no unmatched).
+ */
+async function apiLiveReconcile(
+  db: D1Database,
+  req: Request,
+  headers: HeadersInit,
+): Promise<Response> {
+  try {
+    // Get registered wallet address (Phase 2: single shared wallet)
+    const walletRow = await db
+      .prepare("SELECT wallet_address FROM fund_wallets LIMIT 1")
+      .first<{ wallet_address: string }>()
+      .catch(() => null);
+
+    if (!walletRow?.wallet_address) {
+      return Response.json(
+        { error: "no_wallet_registered", hint: "Run register-deposit-wallet.sh first (P2.4)" },
+        { status: 409, headers },
+      );
+    }
+
+    const walletAddress = walletRow.wallet_address;
+    const url = new URL(req.url);
+    const refresh = url.searchParams.get("refresh") === "1";
+
+    if (refresh) {
+      // Fresh reconcile — calls Polymarket trade history API
+      const report = await runReconcile(db, walletAddress);
+      return Response.json(report, { headers });
+    }
+
+    // Cached: return last entry from reconcile_log
+    const last = await getLastReconcileReport(db, walletAddress);
+    if (!last) {
+      return Response.json(
+        {
+          message: "No reconcile has been run yet. Call GET /api/live-reconcile?refresh=1 to run the first check.",
+          walletAddress,
+        },
+        { status: 202, headers },
+      );
+    }
+
+    return Response.json({ walletAddress, ...last }, { headers });
+  } catch (err) {
+    return Response.json(
+      { error: "reconcile_query_failed", detail: String(err) },
+      { status: 500, headers },
+    );
   }
 }
 
