@@ -361,7 +361,7 @@ function Layout() {
 
             {/* GitHub icon link */}
             <a
-              href="https://github.com/rotifer-protocol/rotifer-petri"
+              href="https://github.com/rotifer-protocol/rotifer-alpha"
               target="_blank"
               rel="noopener noreferrer"
               title="GitHub"
@@ -488,9 +488,9 @@ function Layout() {
               </div>
               <div className="space-y-2.5">
                 <p className="font-medium text-[var(--r-text-muted)] uppercase tracking-widest text-[10px]">{t("footerOpenSource")}</p>
-                <a href="https://github.com/rotifer-protocol/rotifer-petri" target="_blank" rel="noopener noreferrer"
+                <a href="https://github.com/rotifer-protocol/rotifer-alpha" target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1.5 text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">
-                  <GithubIcon className="w-3 h-3" />petri
+                  <GithubIcon className="w-3 h-3" />alpha
                 </a>
                 <a href="https://github.com/rotifer-protocol/rotifer-spec" target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1.5 text-[var(--r-text-faint)] hover:text-[var(--r-text)] transition-colors">

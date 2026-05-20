@@ -2,7 +2,7 @@
   "$schema": "https://rotifer.dev/schemas/phenotype/v1.json",
   "gene": "polymarket-micro-evolver",
   "version": "0.1.0",
-  "author": "rotifer-petri",
+  "author": "rotifer-alpha",
   "domain": "quantitative-trading",
   "fidelity": "NATIVE",
   "description": "Dual-layer evolution engine: micro-evolution (data-driven per-pipeline parameter adjustment) and macro-evolution (Population-Based Training weekly cycle). Pure computation over historical performance data.",

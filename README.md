@@ -31,7 +31,7 @@ Paper trading on [Polymarket](https://polymarket.com) prediction markets with po
 ## Structure
 
 ```
-rotifer-petri/
+rotifer-alpha/
 ├── site/     — React SPA frontend (Cloudflare Pages)
 └── worker/   — Cloudflare Worker backend (D1 + Durable Objects)
 ```

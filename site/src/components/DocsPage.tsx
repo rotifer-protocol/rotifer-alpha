@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n/context";
 
-const GITHUB_PETRI = "https://github.com/rotifer-protocol/rotifer-petri";
+const GITHUB_PETRI = "https://github.com/rotifer-protocol/rotifer-alpha";
 const GITHUB_SPEC = "https://github.com/rotifer-protocol/rotifer-spec";
 
 const SECTIONS = [

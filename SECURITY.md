@@ -141,7 +141,7 @@ Required secrets:
 
 ## Reporting Vulnerabilities
 
-To report a security vulnerability, open a [GitHub Security Advisory](https://github.com/rotifer-protocol/rotifer-petri/security/advisories) or email the Rotifer Protocol team directly. Do not post vulnerabilities in public issues.
+To report a security vulnerability, open a [GitHub Security Advisory](https://github.com/rotifer-protocol/rotifer-alpha/security/advisories) or email the Rotifer Protocol team directly. Do not post vulnerabilities in public issues.
 
 ---
 

@@ -2,12 +2,11 @@
 -- Phase 3.5+ Schema Migration 010
 -- 2026-05-04 — 海龟参数修正 + 机构型基金接入
 -- ============================================================
--- 来源：rotifer-petri 创始人 review 发现两个产品级问题：
+-- 来源：rotifer-alpha 创始人 review 发现两个产品级问题：
 --   1. 海龟基金从未下单 → 参数过严（minVolume=20000 + allowedTypes=["MISPRICING"] 共同导致）
 --   2. 现有 5 基金均为 $10K 起始资金 → 无法测试产品在大资金量级下的承载能力
 --
--- 决策：见 internal/plan/rotifer-petri/petri-phase-0-5-implementation.md "海龟基金诊断"
---      + "机构型基金（先犯错后修正）" 章节
+-- 决策：见内部 plan "海龟基金诊断" + "机构型基金（先犯错后修正）" 章节（private）
 --
 -- 影响：
 --   - turtle 行参数被 UPDATE（保留 created_at + generation + parent_id 等历史字段）

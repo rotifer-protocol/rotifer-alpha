@@ -292,7 +292,7 @@ export const DEFAULT_FUNDS: FundConfig[] = [
     // - allowedTypes 加入 MULTI_OUTCOME_ARB（多选一套利对保守型基金合适，不引入 SPREAD 流动性风险）
     // - minVolume 20000→10000（仍是 5 小基金中最高，但不再排除中等流动性市场）
     // - minEdge 2→1.5（小幅放宽，仍比猎豹保守）
-    // 详见 internal/plan/rotifer-petri/petri-phase-0-5-implementation.md "海龟基金诊断" 章节。
+    // 详见内部 plan "海龟基金诊断" 章节（private）。
     allowedTypes: ["MISPRICING", "MULTI_OUTCOME_ARB"],
     minEdge: 1.5, minConfidence: 0.5, minVolume: 10000, minLiquidity: 10000,
     maxPerEvent: 200, maxOpenPositions: 5,
