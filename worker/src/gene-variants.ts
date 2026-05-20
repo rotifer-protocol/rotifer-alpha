@@ -18,7 +18,7 @@ export interface GeneVariant {
   parentVariantId: string | null;
   generation: number;
   status: "active" | "eliminated" | "retired";
-  petriScore: number;
+  alphaScore: number;
   tradesEvaluated: number;
   winCount: number;
   lossCount: number;
@@ -43,7 +43,7 @@ export interface EvolutionLogEntry {
   action: string;
   variantId: string | null;
   details: string | null;
-  petriScore: number | null;
+  alphaScore: number | null;
   createdAt: string;
 }
 
@@ -113,7 +113,7 @@ export function selectSaneActiveVariant(
     : null;
 
   const hasSufficientBadSample = configuredActive
-    ? configuredActive.petriScore <= 0 && configuredActive.tradesEvaluated >= minTradesForEval
+    ? configuredActive.alphaScore <= 0 && configuredActive.tradesEvaluated >= minTradesForEval
     : false;
 
   if (configuredActive && !hasSufficientBadSample) return configuredActive;
@@ -122,7 +122,7 @@ export function selectSaneActiveVariant(
   if (candidates.length === 0) return configuredActive ?? active[0];
 
   return candidates.sort((a, b) =>
-    (b.petriScore - a.petriScore) ||
+    (b.alphaScore - a.alphaScore) ||
     (b.totalPnl - a.totalPnl) ||
     (a.tradesEvaluated - b.tradesEvaluated) ||
     (b.generation - a.generation) ||
@@ -200,8 +200,8 @@ export async function eliminateVariant(db: D1Database, variantId: string, epoch:
   const variant = await getVariant(db, variantId);
   if (variant) {
     await logEvolution(db, epoch, variant.geneId, "variant_eliminated", variantId,
-      JSON.stringify({ reason: "Lowest Petri Score in epoch", score: variant.petriScore }),
-      variant.petriScore);
+      JSON.stringify({ reason: "Lowest Alpha Score in epoch", score: variant.alphaScore }),
+      variant.alphaScore);
   }
 }
 
@@ -251,7 +251,7 @@ export async function recordTradeResult(
   ).bind(pnl, won ? 1 : 0, won ? 0 : 1, variantId).run();
 }
 
-export async function computePetriScore(db: D1Database, variantId: string): Promise<number> {
+export async function computeAlphaScore(db: D1Database, variantId: string): Promise<number> {
   const v = await getVariant(db, variantId);
   if (!v || v.tradesEvaluated === 0) return 0;
 
@@ -260,7 +260,7 @@ export async function computePetriScore(db: D1Database, variantId: string): Prom
   const rawScore = (winRate * 0.4 + Math.tanh(avgPnl / 100) * 0.6) * 100;
   const score = Math.max(0, Math.min(100, rawScore));
 
-  await db.prepare("UPDATE gene_variants SET petri_score = ? WHERE id = ?").bind(score, variantId).run();
+  await db.prepare("UPDATE gene_variants SET alpha_score = ? WHERE id = ?").bind(score, variantId).run();
   return score;
 }
 
@@ -304,9 +304,9 @@ export async function ensureStaticG1LineageBackfill(db: D1Database): Promise<voi
   }
 }
 
-export async function ensureNonNegativePetriScores(db: D1Database): Promise<void> {
-  await db.prepare("UPDATE gene_variants SET petri_score = 0 WHERE petri_score < 0").bind().run();
-  await db.prepare("UPDATE gene_evolution_log SET petri_score = 0 WHERE petri_score < 0").bind().run();
+export async function ensureNonNegativeAlphaScores(db: D1Database): Promise<void> {
+  await db.prepare("UPDATE gene_variants SET alpha_score = 0 WHERE alpha_score < 0").bind().run();
+  await db.prepare("UPDATE gene_evolution_log SET alpha_score = 0 WHERE alpha_score < 0").bind().run();
 }
 
 // ─── Evolution Log ──────────────────────────────────────
@@ -318,11 +318,11 @@ export async function logEvolution(
   action: string,
   variantId: string | null,
   details: string | null,
-  petriScore: number | null,
+  alphaScore: number | null,
 ): Promise<void> {
   await db.prepare(
-    "INSERT INTO gene_evolution_log (id, epoch, gene_id, action, variant_id, details, petri_score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  ).bind(crypto.randomUUID(), epoch, geneId, action, variantId, details, petriScore, new Date().toISOString()).run();
+    "INSERT INTO gene_evolution_log (id, epoch, gene_id, action, variant_id, details, alpha_score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  ).bind(crypto.randomUUID(), epoch, geneId, action, variantId, details, alphaScore, new Date().toISOString()).run();
 }
 
 export async function getEvolutionLog(db: D1Database, limit = 50): Promise<EvolutionLogEntry[]> {
@@ -353,7 +353,7 @@ function mapVariantRow(row: any): GeneVariant {
     parentVariantId: row.parent_variant_id,
     generation: row.generation,
     status: row.status,
-    petriScore: row.petri_score ?? 0,
+    alphaScore: row.alpha_score ?? 0,
     tradesEvaluated: row.trades_evaluated ?? 0,
     winCount: row.win_count ?? 0,
     lossCount: row.loss_count ?? 0,
@@ -382,7 +382,7 @@ function mapLogRow(row: any): EvolutionLogEntry {
     action: row.action,
     variantId: row.variant_id,
     details: row.details,
-    petriScore: row.petri_score != null ? Math.max(0, row.petri_score) : null,
+    alphaScore: row.alpha_score != null ? Math.max(0, row.alpha_score) : null,
     createdAt: row.created_at,
   };
 }

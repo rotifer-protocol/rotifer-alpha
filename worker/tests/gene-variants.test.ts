@@ -64,7 +64,7 @@ class FakeDb {
         row.parent_variant_id = args[6]; row.generation = args[7];
         row.status = typeof args[8] === "string" && ["active", "eliminated", "retired"].includes(args[8]) ? args[8] : "active";
         row.created_at = row.status === args[8] ? args[9] : args[8];
-        row.petri_score = 0; row.trades_evaluated = 0;
+        row.alpha_score = 0; row.trades_evaluated = 0;
         row.win_count = 0; row.loss_count = 0; row.total_pnl = 0;
       } else if (table === "gene_lineage") {
         row.id = args[0]; row.parent_id = args[1]; row.child_id = args[2];
@@ -72,7 +72,7 @@ class FakeDb {
       } else if (table === "gene_evolution_log") {
         row.id = args[0]; row.epoch = args[1]; row.gene_id = args[2];
         row.action = args[3]; row.variant_id = args[4]; row.details = args[5];
-        row.petri_score = args[6]; row.created_at = args[7];
+        row.alpha_score = args[6]; row.created_at = args[7];
       } else if (table === "gene_active_config") {
         const existing = this.tables[table].findIndex(r => r.gene_id === args[0]);
         if (existing >= 0) this.tables[table].splice(existing, 1);
@@ -96,18 +96,18 @@ class FakeDb {
           (row.win_count as number) += args[1] as number;
           (row.loss_count as number) += args[2] as number;
         }
-      } else if (table === "gene_variants" && lc.includes("petri_score < 0")) {
+      } else if (table === "gene_variants" && lc.includes("alpha_score < 0")) {
         for (const row of this.tables[table]) {
-          if ((row.petri_score as number) < 0) row.petri_score = 0;
+          if ((row.alpha_score as number) < 0) row.alpha_score = 0;
         }
-      } else if (table === "gene_evolution_log" && lc.includes("petri_score < 0")) {
+      } else if (table === "gene_evolution_log" && lc.includes("alpha_score < 0")) {
         for (const row of this.tables[table]) {
-          if ((row.petri_score as number) < 0) row.petri_score = 0;
+          if ((row.alpha_score as number) < 0) row.alpha_score = 0;
         }
-      } else if (table === "gene_variants" && lc.includes("petri_score =")) {
+      } else if (table === "gene_variants" && lc.includes("alpha_score =")) {
         const id = args[1];
         const row = this.tables[table].find(r => r.id === id);
-        if (row) row.petri_score = args[0];
+        if (row) row.alpha_score = args[0];
       }
     }
   }
@@ -244,11 +244,11 @@ test("recordTradeResult accumulates scores", async () => {
   assert.equal(v.totalPnl, 13);
 });
 
-test("computePetriScore calculates weighted score", async () => {
+test("computeAlphaScore calculates weighted score", async () => {
   const {
     createVariant,
     recordTradeResult,
-    computePetriScore,
+    computeAlphaScore,
   } = await import("../src/gene-variants");
   const db = new FakeDb() as unknown as D1Database;
 
@@ -257,15 +257,15 @@ test("computePetriScore calculates weighted score", async () => {
   await recordTradeResult(db, "polymarket-scanner:v1-test", 20, true);
   await recordTradeResult(db, "polymarket-scanner:v1-test", -5, false);
 
-  const score = await computePetriScore(db, "polymarket-scanner:v1-test");
+  const score = await computeAlphaScore(db, "polymarket-scanner:v1-test");
   assert.ok(score > 0, `Score should be positive, got ${score}`);
 });
 
-test("computePetriScore clamps losing variants to 0-100 range", async () => {
+test("computeAlphaScore clamps losing variants to 0-100 range", async () => {
   const {
     createVariant,
     recordTradeResult,
-    computePetriScore,
+    computeAlphaScore,
   } = await import("../src/gene-variants");
   const db = new FakeDb() as unknown as D1Database;
 
@@ -274,7 +274,7 @@ test("computePetriScore clamps losing variants to 0-100 range", async () => {
   await recordTradeResult(db, "polymarket-risk:conservative g1", -900, false);
   await recordTradeResult(db, "polymarket-risk:conservative g1", -800, false);
 
-  const score = await computePetriScore(db, "polymarket-risk:conservative g1");
+  const score = await computeAlphaScore(db, "polymarket-risk:conservative g1");
   assert.equal(score, 0);
 });
 
@@ -330,26 +330,26 @@ test("ensureStaticG1LineageBackfill inserts static challenger lineage rows", asy
   assert.ok(lineage.some(l => l.childId === "polymarket-micro-evolver:aggressive g1"));
 });
 
-test("ensureNonNegativePetriScores clamps historical negative stored scores", async () => {
+test("ensureNonNegativeAlphaScores clamps historical negative stored scores", async () => {
   const {
     createVariant,
     getVariant,
     getEvolutionLog,
-    ensureNonNegativePetriScores,
+    ensureNonNegativeAlphaScores,
     logEvolution,
   } = await import("../src/gene-variants");
   const db = new FakeDb() as unknown as D1Database;
 
   await createVariant(db, "polymarket-risk", "conservative g1", "conservative", "Conservative", null, 1);
-  (db as unknown as FakeDb).tables.gene_variants[0].petri_score = -48.5;
+  (db as unknown as FakeDb).tables.gene_variants[0].alpha_score = -48.5;
   await logEvolution(db, 65, "polymarket-risk", "variant_promoted", "polymarket-risk:conservative g1", "{}", -48.5);
 
-  await ensureNonNegativePetriScores(db);
+  await ensureNonNegativeAlphaScores(db);
 
   const variant = await getVariant(db, "polymarket-risk:conservative g1");
   const log = await getEvolutionLog(db);
-  assert.equal(variant?.petriScore, 0);
-  assert.equal(log[0].petriScore, 0);
+  assert.equal(variant?.alphaScore, 0);
+  assert.equal(log[0].alphaScore, 0);
 });
 
 test("ensureSaneActiveVariant moves winner away from sufficiently sampled zero-score variant", async () => {
@@ -364,10 +364,10 @@ test("ensureSaneActiveVariant moves winner away from sufficiently sampled zero-s
   await createVariant(db, "polymarket-risk", "v1-baseline", "baseline", "Baseline", null, 0);
   await createVariant(db, "polymarket-risk", "conservative g1", "conservative", "Conservative", "polymarket-risk:v1-baseline", 1);
   const fake = db as unknown as FakeDb;
-  fake.tables.gene_variants.find(r => r.id === "polymarket-risk:v1-baseline")!.petri_score = 0;
+  fake.tables.gene_variants.find(r => r.id === "polymarket-risk:v1-baseline")!.alpha_score = 0;
   fake.tables.gene_variants.find(r => r.id === "polymarket-risk:v1-baseline")!.trades_evaluated = 3;
   fake.tables.gene_variants.find(r => r.id === "polymarket-risk:v1-baseline")!.total_pnl = -447.56;
-  fake.tables.gene_variants.find(r => r.id === "polymarket-risk:conservative g1")!.petri_score = 0;
+  fake.tables.gene_variants.find(r => r.id === "polymarket-risk:conservative g1")!.alpha_score = 0;
   fake.tables.gene_variants.find(r => r.id === "polymarket-risk:conservative g1")!.trades_evaluated = 56;
   fake.tables.gene_variants.find(r => r.id === "polymarket-risk:conservative g1")!.total_pnl = -67652.62;
   await setActiveVariant(db, "polymarket-risk", "polymarket-risk:conservative g1");

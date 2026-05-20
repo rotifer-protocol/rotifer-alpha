@@ -4,11 +4,12 @@
  * Tests for the Gene implementation-level evolution loop (Phase 3.5).
  * Covers: epoch boundary detection, variant promotion, and elimination.
  *
- * Note on Petri Score vs F(g):
- *   These tests verify Petri Score (local PBT metric) which is STRICTLY
- *   independent of the Rotifer Protocol F(g) (protocol-level fitness).
+ * Note on Alpha Score vs F(g):
+ *   These tests verify Alpha Score (local PBT metric, formerly "Petri Score" /
+ *   "PBT Rank Score" — renamed 2026-05-20) which is STRICTLY independent of
+ *   the Rotifer Protocol F(g) (protocol-level fitness).
  *   ADR-273 D5 / ADR-117 three-dimension independence discipline applies:
- *   Petri Score ≠ F(g) — they must never directly feed each other.
+ *   Alpha Score ≠ F(g) — they must never directly feed each other.
  */
 
 import test from "node:test";
@@ -77,12 +78,12 @@ class FakeDb {
         row.parent_variant_id = args[6]; row.generation = args[7];
         row.status = "active";
         row.created_at = args[8];
-        row.petri_score = 0; row.trades_evaluated = 0;
+        row.alpha_score = 0; row.trades_evaluated = 0;
         row.win_count = 0; row.loss_count = 0; row.total_pnl = 0;
       } else if (table === "gene_evolution_log") {
         row.id = args[0]; row.epoch = args[1]; row.gene_id = args[2];
         row.action = args[3]; row.variant_id = args[4]; row.details = args[5];
-        row.petri_score = args[6]; row.created_at = args[7];
+        row.alpha_score = args[6]; row.created_at = args[7];
       } else if (table === "gene_active_config") {
         const existing = this.tables[table].findIndex(r => r.gene_id === args[0]);
         if (existing >= 0) this.tables[table].splice(existing, 1);
@@ -106,10 +107,10 @@ class FakeDb {
           (row.win_count as number) += args[1] as number;
           (row.loss_count as number) += args[2] as number;
         }
-      } else if (table === "gene_variants" && lc.includes("petri_score =")) {
+      } else if (table === "gene_variants" && lc.includes("alpha_score =")) {
         const id = args[1];
         const row = this.tables[table].find(r => r.id === id);
-        if (row) row.petri_score = args[0];
+        if (row) row.alpha_score = args[0];
       }
     }
   }
@@ -328,7 +329,7 @@ test("checkAndRunCodeEvolution: DOES eliminate when ≥2 variants exist (post 20
   assert.equal(scannerElim[0].variantId, "polymarket-scanner:v2-alt", "v2-alt has worse score, should be eliminated");
 });
 
-test("checkAndRunCodeEvolution: does NOT promote variants with zero Petri Score", async () => {
+test("checkAndRunCodeEvolution: does NOT promote variants with zero Alpha Score", async () => {
   const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
   const { createVariant, getActiveVariantId } = await import("../src/gene-variants");
   const db = new FakeDb();

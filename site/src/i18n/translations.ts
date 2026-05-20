@@ -109,7 +109,7 @@ const en = {
   evoStep1Title: "Compete",
   evoStep1Desc: "Funds trade live on Polymarket",
   evoStep2Title: "Evaluate",
-  evoStep2Desc: "PBT Rank Score (0-100) ranks performance",
+  evoStep2Desc: "Alpha Score (0-100) ranks performance",
   evoStep3Title: "Inherit",
   evoStep3Desc: "Top genes pass to next generation",
   evoStep4Title: "Mutate",
@@ -166,7 +166,7 @@ const en = {
   evoFitnessAfter: "After",
 
   // Fitness Chart — shows fund parameter fitness F(g) in [0,1] range,
-  // NOT the gene variant PBT Rank Score (0-100) shown in the Gene Evolution table.
+  // NOT the gene variant Alpha Score (0-100) shown in the Gene Evolution table.
   fitnessTitle: "Fund Fitness F(g) History",
   fitnessEmpty: "Fund Fitness F(g) chart will appear after the first evolution epoch.",
   thresholdReset: "0.2: Global Reset threshold",
@@ -528,7 +528,7 @@ const en = {
   geneEpoch: "Epoch",
   geneCurrentEpoch: "Gene Competition Round",
   evoEpochBadge: "Round",
-  genePetriScore: "PBT Rank Score (0-100)",
+  geneAlphaScore: "Alpha Score (0-100)",
   geneTradesEvaluated: "Trades Evaluated",
   geneWinRate: "Win Rate",
   geneStatus: "Status",
@@ -612,7 +612,7 @@ const en = {
   geneFilterPromotions: "Promoted",
   geneFilterEliminations: "Elim.",
   geneFilterEpoch: "Round",
-  tipGenePetriScore: "PBT Rank Score (0–100) measures this variant's competitive fitness in the Rotifer Alpha evaluation pipeline. Updated after each epoch cycle. Scores require ≥ 3 evaluated trades to appear.",
+  tipGeneAlphaScore: "Alpha Score (0–100) measures this variant's competitive fitness in the Rotifer Alpha evaluation pipeline. Updated after each epoch cycle. Scores require ≥ 3 evaluated trades to appear.",
 
   // Micro-evolution
   microEvoParams: "params",
@@ -867,7 +867,7 @@ const zh: Record<TranslationKey, string> = {
   evoStep1Title: "竞争",
   evoStep1Desc: "基金在 Polymarket 实盘交易",
   evoStep2Title: "评估",
-  evoStep2Desc: "PBT 排名分 (0-100) 筛选表现",
+  evoStep2Desc: "Alpha 分 (0-100) 筛选表现",
   evoStep3Title: "继承",
   evoStep3Desc: "最优基因传递给后代",
   evoStep4Title: "变异",
@@ -922,7 +922,7 @@ const zh: Record<TranslationKey, string> = {
   reasonAllFundsBelow: "全部基金适应度低于 {threshold}",
   reasonMicroAdjustment: "基于 {count} 笔交易的数据驱动微调",
 
-  // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 PBT 排名分 (0-100)
+  // 基金参数适应度 F(g) 曲线，取值范围 [0,1]（可为负），≠ 基因变体 Alpha 分 (0-100)
   fitnessTitle: "基金适应度 F(g) 历史曲线",
   fitnessEmpty: "适应度 F(g) 图表将在首次进化后显示。",
   thresholdReset: "0.2：全局重置阈值",
@@ -1267,7 +1267,7 @@ const zh: Record<TranslationKey, string> = {
   geneEpoch: "世代",
   geneCurrentEpoch: "竞争轮次",
   evoEpochBadge: "轮次",
-  genePetriScore: "PBT 排名分 (0-100)",
+  geneAlphaScore: "Alpha 分 (0-100)",
   geneTradesEvaluated: "已评估交易数",
   geneWinRate: "胜率",
   geneStatus: "状态",
@@ -1347,7 +1347,7 @@ const zh: Record<TranslationKey, string> = {
   geneFilterPromotions: "晋升",
   geneFilterEliminations: "淘汰",
   geneFilterEpoch: "轮次",
-  tipGenePetriScore: "PBT 排名分（0–100）衡量变体在 Rotifer Alpha 评估管线中的竞争适应度。每个世代周期后更新，需至少 3 笔已评估交易。",
+  tipGeneAlphaScore: "Alpha 分（0–100）衡量变体在 Rotifer Alpha 评估管线中的竞争适应度。每个世代周期后更新，需至少 3 笔已评估交易。",
 
   microEvoParams: "个参数",
 

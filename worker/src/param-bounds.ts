@@ -5,7 +5,7 @@
  *   - PBT parameter evolution (evolve.ts)   — daily cron
  *   - Data-driven micro-evolution (micro-evolve.ts) — per-20-trades
  *
- * ADR-274 D2: Tier-aware bounds (Petri-internal only, NOT protocol-level F(g)).
+ * ADR-274 D2: Tier-aware bounds (Alpha-internal only, NOT protocol-level F(g)).
  */
 
 export interface ParamBound {

@@ -9,7 +9,7 @@
  * Supported genes: polymarket-scanner, polymarket-monitor.
  * Unsupported genes fall back to the respawn path in code-evolver.ts.
  *
- * Per ADR-274 / Phase 3.5: this is Petri-internal evolution, not protocol F(g).
+ * Per ADR-274 / Phase 3.5: this is Alpha-internal evolution, not protocol F(g).
  */
 
 type AiBinding = NonNullable<import("./types").Env["AI"]>;
@@ -18,7 +18,7 @@ export interface LLMVariantStats {
   tradesEvaluated: number;
   winRate: number;   // 0-1
   avgPnl: number;    // USD per trade
-  petriScore: number;
+  alphaScore: number;
 }
 
 // ─── Scanner ────────────────────────────────────────────
@@ -29,7 +29,7 @@ function buildScannerPrompt(stats: LLMVariantStats): string {
     `Purpose: Detect trading signals in Polymarket prediction markets via edge/confidence analysis.`,
     ``,
     `Epoch performance of current winner:`,
-    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, Alpha score: ${stats.alphaScore.toFixed(1)}`,
     ``,
     `Design a challenger with a DIFFERENT scanning hypothesis.`,
     `Available config overrides:`,
@@ -68,7 +68,7 @@ function buildMonitorPrompt(stats: LLMVariantStats): string {
     `Purpose: Manage open prediction-market positions — stop-loss, take-profit, trailing stop.`,
     ``,
     `Epoch performance of current winner:`,
-    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, Alpha score: ${stats.alphaScore.toFixed(1)}`,
     ``,
     `Design a challenger with a DIFFERENT position-management hypothesis.`,
     `Available config overrides:`,
@@ -104,7 +104,7 @@ function buildRiskPrompt(stats: LLMVariantStats): string {
     `Purpose: Enforce stop-loss and max-hold-days rules on open positions.`,
     ``,
     `Epoch performance of current winner:`,
-    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, Alpha score: ${stats.alphaScore.toFixed(1)}`,
     ``,
     `Design a challenger with a DIFFERENT risk management hypothesis.`,
     `Available config overrides (multipliers applied to each fund's configured thresholds):`,
@@ -137,7 +137,7 @@ function buildTraderPrompt(stats: LLMVariantStats): string {
     `Purpose: Select and size positions from scanner signals for each fund.`,
     ``,
     `Epoch performance of current winner:`,
-    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, Alpha score: ${stats.alphaScore.toFixed(1)}`,
     ``,
     `Design a challenger with a DIFFERENT signal selection hypothesis.`,
     `Available config overrides:`,
@@ -173,7 +173,7 @@ function buildMicroEvolverPrompt(stats: LLMVariantStats): string {
     `Purpose: Periodically nudge fund parameters (stop-loss, sizing, etc.) based on recent trade outcomes.`,
     ``,
     `Epoch performance of current winner:`,
-    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, PBT score: ${stats.petriScore.toFixed(1)}`,
+    `  trades: ${stats.tradesEvaluated}, win rate: ${(stats.winRate * 100).toFixed(1)}%, avg PnL: $${stats.avgPnl.toFixed(0)}, Alpha score: ${stats.alphaScore.toFixed(1)}`,
     ``,
     `Design a challenger with a DIFFERENT parameter-adjustment strategy.`,
     `Available config overrides:`,

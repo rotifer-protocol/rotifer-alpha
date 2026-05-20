@@ -10,7 +10,7 @@ Paper trading on [Polymarket](https://polymarket.com) prediction markets with po
 >
 > All nine pipeline stages are implemented as Rotifer Protocol Genes with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator manages variant dispatch via Population-Based Training evolution.
 >
-> **PBT Rank Score boundary**: the "PBT Rank Score" used by this repository (formerly "Petri Score") is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. PBT Rank Score ≠ F(g).
+> **Alpha Score boundary**: the "Alpha Score" used by this repository (formerly "Petri Score", briefly renamed "PBT Rank Score" on 2026-05-20 before settling on "Alpha Score") is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. Alpha Score ≠ F(g).
 
 ---
 

@@ -14,7 +14,7 @@
 
 import {
   listVariants,
-  computePetriScore,
+  computeAlphaScore,
   eliminateVariant,
   setActiveVariant,
   logEvolution,
@@ -93,7 +93,7 @@ export async function checkAndRunCodeEvolution(
 
     for (const v of active) {
       if (v.tradesEvaluated >= MIN_TRADES_FOR_EVAL) {
-        await computePetriScore(db, v.id);
+        await computeAlphaScore(db, v.id);
       }
     }
 
@@ -101,8 +101,8 @@ export async function checkAndRunCodeEvolution(
     const activeRefreshed = refreshed.filter(v => v.status === "active");
     const evaluated = activeRefreshed.filter(v => v.tradesEvaluated >= MIN_TRADES_FOR_EVAL);
 
-    const sorted = [...evaluated].sort((a, b) => b.petriScore - a.petriScore);
-    const promotable = sorted.filter(v => v.petriScore > 0);
+    const sorted = [...evaluated].sort((a, b) => b.alphaScore - a.alphaScore);
+    const promotable = sorted.filter(v => v.alphaScore > 0);
     const best = promotable[0] ?? null;
     const worst = best && sorted.length >= 2 ? sorted[sorted.length - 1] : null;
 
@@ -110,7 +110,7 @@ export async function checkAndRunCodeEvolution(
       geneId: gene.id,
       variants: activeRefreshed.map(v => ({
         variantId: v.id,
-        score: v.petriScore,
+        score: v.alphaScore,
         trades: v.tradesEvaluated,
         status: v.status,
       })),
@@ -122,13 +122,13 @@ export async function checkAndRunCodeEvolution(
     if (best) {
       await setActiveVariant(db, gene.id, best.id);
       await logEvolution(db, nextEpoch, gene.id, "variant_promoted", best.id,
-        JSON.stringify({ score: best.petriScore, trades: best.tradesEvaluated }), best.petriScore);
-      promotions.push({ geneId: gene.id, variantId: best.id, score: best.petriScore });
+        JSON.stringify({ score: best.alphaScore, trades: best.tradesEvaluated }), best.alphaScore);
+      promotions.push({ geneId: gene.id, variantId: best.id, score: best.alphaScore });
     }
 
     if (worst && activeRefreshed.length >= 2) {
       await eliminateVariant(db, worst.id, nextEpoch);
-      eliminations.push({ geneId: gene.id, variantId: worst.id, score: worst.petriScore });
+      eliminations.push({ geneId: gene.id, variantId: worst.id, score: worst.alphaScore });
 
       // After elimination, spawn a fresh challenger so competition can continue.
       // Phase 3.5: try LLM config generation first (scanner/monitor only).
@@ -143,7 +143,7 @@ export async function checkAndRunCodeEvolution(
             tradesEvaluated: survivor.tradesEvaluated,
             winRate: survivor.tradesEvaluated > 0 ? survivor.winCount / survivor.tradesEvaluated : 0,
             avgPnl: survivor.tradesEvaluated > 0 ? survivor.totalPnl / survivor.tradesEvaluated : 0,
-            petriScore: survivor.petriScore,
+            alphaScore: survivor.alphaScore,
           };
           const llmConfig = await generateLLMVariantConfig(env.AI, gene.id, stats);
           if (llmConfig) {
@@ -173,7 +173,7 @@ export async function checkAndRunCodeEvolution(
             `Fresh challenger respawned from ${worst.id} after epoch ${nextEpoch}`,
           );
           await logEvolution(db, nextEpoch, gene.id, "variant_respawned", worst.id,
-            JSON.stringify({ strategyKey: worst.strategyKey, parentScore: worst.petriScore, newVariant: name }), null);
+            JSON.stringify({ strategyKey: worst.strategyKey, parentScore: worst.alphaScore, newVariant: name }), null);
         }
       }
     }

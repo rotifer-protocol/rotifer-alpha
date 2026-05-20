@@ -1,6 +1,6 @@
 import type { Env, FundConfig } from "./types";
 import { corsHeaders } from "./auth";
-import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch, ensureStaticG1LineageBackfill, ensureNonNegativePetriScores, ensureSaneActiveVariant } from "./gene-variants";
+import { listVariants, getLineage, getEvolutionLog, getAllActiveVariants, getCurrentEpoch, ensureStaticG1LineageBackfill, ensureNonNegativeAlphaScores, ensureSaneActiveVariant } from "./gene-variants";
 import { GENE_REGISTRY, type GeneMeta } from "./gene-interface";
 import {
   calculateCurrentPositionValue,
@@ -1111,7 +1111,7 @@ async function apiGeneVariants(
   const url = new URL(req.url);
   const geneId = url.searchParams.get("gene") ?? undefined;
   const lang = url.searchParams.get("lang") ?? "en";
-  await ensureNonNegativePetriScores(db);
+  await ensureNonNegativeAlphaScores(db);
   await Promise.all(GENE_REGISTRY.map(g => ensureSaneActiveVariant(db, g.id).catch(() => null)));
   const variants = await listVariants(db, geneId);
   const active = await getAllActiveVariants(db);
@@ -1165,7 +1165,7 @@ async function apiGeneEvolution(
 ): Promise<Response> {
   const url = new URL(req.url);
   const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
-  await ensureNonNegativePetriScores(db);
+  await ensureNonNegativeAlphaScores(db);
   const log = await getEvolutionLog(db, limit);
   const epoch = await getCurrentEpoch(db);
   return Response.json({ epoch, log }, { headers });

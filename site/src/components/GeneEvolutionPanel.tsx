@@ -18,7 +18,7 @@ interface GeneVariant {
   strategyKey: string;
   generation: number;
   status: "active" | "eliminated" | "retired";
-  petriScore: number;
+  alphaScore: number;
   tradesEvaluated: number;
   winCount: number;
   lossCount: number;
@@ -34,7 +34,7 @@ interface EvolutionLogEntry {
   action: string;
   variantId: string | null;
   details: string | null;
-  petriScore: number | null;
+  alphaScore: number | null;
   createdAt: string;
 }
 
@@ -159,7 +159,7 @@ function pnlStr(v: number): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Mini horizontal PBT score bar + number. Separates "not enough data" from a real zero score. */
+/** Mini horizontal Alpha Score bar + number. Separates "not enough data" from a real zero score. */
 function ScoreBar({
   score,
   evaluated,
@@ -262,7 +262,7 @@ function VariantRow({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowProp
         )}
       </td>
       <td className="text-right py-1.5 px-2">
-        <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} t={t} />
+        <ScoreBar score={v.alphaScore} evaluated={v.tradesEvaluated} t={t} />
       </td>
       <td className="text-right py-1.5 px-2 font-mono text-xs">{v.tradesEvaluated}</td>
       <td className="text-right py-1.5 px-2">
@@ -305,7 +305,7 @@ function VariantCard({ v, t, locale, expandedDesc, onToggleDesc }: VariantRowPro
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-[var(--r-text-faint)]">{t("geneScoreLabel")}</span>
-          <ScoreBar score={v.petriScore} evaluated={v.tradesEvaluated} t={t} />
+          <ScoreBar score={v.alphaScore} evaluated={v.tradesEvaluated} t={t} />
         </div>
         <div className="flex items-center gap-1.5 justify-end">
           <span className="text-[10px] text-[var(--r-text-faint)]">{t("geneTradesEvaluated")}</span>
@@ -350,8 +350,8 @@ function VariantSection({
                 <th className="text-left py-1 pr-3">{t("geneStrategy")}</th>
                 <th className="text-right py-1 px-2">
                   <span className="flex items-center justify-end gap-1">
-                    {t("genePetriScore")}
-                    <InfoPopover text={t("tipGenePetriScore")} />
+                    {t("geneAlphaScore")}
+                    <InfoPopover text={t("tipGeneAlphaScore")} />
                   </span>
                 </th>
                 <th className="text-right py-1 px-2">{t("geneTradesEvaluated")}</th>
@@ -432,11 +432,11 @@ export function GeneEvolutionPanel() {
   const sparklineData = useMemo(() => {
     const map: Record<string, number[]> = {};
     const promotions = [...log]
-      .filter(e => e.action === "variant_promoted" && e.petriScore !== null)
+      .filter(e => e.action === "variant_promoted" && e.alphaScore !== null)
       .sort((a, b) => a.epoch - b.epoch);
     for (const e of promotions) {
       if (!map[e.geneId]) map[e.geneId] = [];
-      map[e.geneId].push(e.petriScore!);
+      map[e.geneId].push(e.alphaScore!);
     }
     return map;
   }, [log]);
@@ -568,7 +568,7 @@ export function GeneEvolutionPanel() {
               {champion && (
                 <div className={`mx-4 mb-3 rounded-lg ${color.bg} border border-[var(--r-border)] p-3`}>
                   {(() => {
-                    const credibleChampion = champion.petriScore > 0 && champion.totalPnl >= 0;
+                    const credibleChampion = champion.alphaScore > 0 && champion.totalPnl >= 0;
                     return (
                   <>
                   <div className="flex items-start justify-between gap-3 mb-2.5">
@@ -606,7 +606,7 @@ export function GeneEvolutionPanel() {
                         </div>
                       )}
                       {champion.tradesEvaluated >= 3 ? (
-                        champion.petriScore === 0 ? (
+                        champion.alphaScore === 0 ? (
                           <span
                             className="font-mono text-lg font-bold tabular-nums text-rose-400/80"
                             title={t("geneZeroScoreTip")}
@@ -615,12 +615,12 @@ export function GeneEvolutionPanel() {
                           <div className="flex items-center gap-1.5">
                             <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${champion.petriScore >= 70 ? "bg-emerald-500" : champion.petriScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
-                                style={{ width: `${Math.min(100, champion.petriScore)}%` }}
+                                className={`h-full rounded-full ${champion.alphaScore >= 70 ? "bg-emerald-500" : champion.alphaScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
+                                style={{ width: `${Math.min(100, champion.alphaScore)}%` }}
                               />
                             </div>
                             <span className={`font-mono text-lg font-bold tabular-nums ${color.accent}`}>
-                              {champion.petriScore.toFixed(1)}
+                              {champion.alphaScore.toFixed(1)}
                             </span>
                           </div>
                         )
@@ -771,9 +771,9 @@ export function GeneEvolutionPanel() {
                       {entry.geneId !== "*" && (
                         <span className="text-[var(--r-text-faint)]">{geneName}</span>
                       )}
-                      {entry.petriScore !== null && (
+                      {entry.alphaScore !== null && (
                         <span className="text-[var(--r-text-faint)] font-mono">
-                          {t("geneScoreLabel")}: {entry.petriScore.toFixed(1)}
+                          {t("geneScoreLabel")}: {entry.alphaScore.toFixed(1)}
                         </span>
                       )}
                     </div>

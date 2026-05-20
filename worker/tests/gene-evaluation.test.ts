@@ -22,7 +22,7 @@ function variant(
     parentVariantId: generation > 0 ? `${geneId}:v1-baseline` : null,
     generation,
     status,
-    petriScore: 0,
+    alphaScore: 0,
     tradesEvaluated,
     winCount: 0,
     lossCount: 0,

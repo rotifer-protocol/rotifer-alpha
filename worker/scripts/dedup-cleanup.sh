@@ -1,4 +1,7 @@
 #!/bin/bash
+# [HISTORICAL ARCHIVE — 2026-05-16 one-shot cleanup, kept for audit trail]
+# PETRI_API env var name retained for backward compat; see ADR-280 for full context.
+#
 # Dedup cleanup driver — wraps POST /admin/dedup-trades with dry-run preview,
 # interactive confirmation, execute, and post-cleanup verification.
 #
@@ -67,7 +70,7 @@ echo " Step 3 — Verifying new system return rate"
 echo "════════════════════════════════════════════════════════════════"
 sleep 2
 
-curl -s -A "petri-audit/1.0" "$API/api/funds" | python3 -c "
+curl -s -A "rotifer-alpha-audit/1.0" "$API/api/funds" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 funds = d.get('funds', d) if isinstance(d, dict) else d

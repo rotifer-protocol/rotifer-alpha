@@ -16,7 +16,7 @@
 #     npx wrangler secret put OWNER_PRIVATE_KEY
 #
 # After running this script, verify with:
-#   npx wrangler d1 execute petri-db [--remote] --command \
+#   npx wrangler d1 execute polymarket-signals [--remote] --command \
 #     "SELECT fund_id, wallet_address, registered_at FROM fund_wallets ORDER BY fund_id"
 
 set -euo pipefail
@@ -110,7 +110,7 @@ TMPFILE=$(mktemp /tmp/register-wallet-XXXXXX.sql)
 printf '%s' "$SQL" > "$TMPFILE"
 trap 'rm -f "$TMPFILE"' EXIT
 
-npx wrangler d1 execute petri-db "$ENV_FLAG" --file="$TMPFILE"
+npx wrangler d1 execute polymarket-signals "$ENV_FLAG" --file="$TMPFILE"
 
 echo ""
 echo "✅ Registration complete."
@@ -118,7 +118,7 @@ echo ""
 echo "─── Verification ────────────────────────────────────────────────────────"
 echo "Run the following to confirm all rows were written:"
 echo ""
-echo "  npx wrangler d1 execute petri-db $ENV_FLAG --command \\"
+echo "  npx wrangler d1 execute polymarket-signals $ENV_FLAG --command \\"
 echo "    \"SELECT fund_id, wallet_address, registered_at FROM fund_wallets ORDER BY fund_id\""
 echo ""
 echo "─── Next steps (Phase 2 checklist) ─────────────────────────────────────"
