@@ -120,13 +120,13 @@ export async function loadCircuitBreakerState(
     `SELECT fund_id, epoch_start_usdc, epoch_loss_usdc, tripped, tripped_at
      FROM circuit_breaker_state
      WHERE fund_id = ?`,
-  ).first<{
+  ).bind(fundId).first<{
     fund_id: string;
     epoch_start_usdc: number;
     epoch_loss_usdc: number;
     tripped: number;
     tripped_at: string | null;
-  }>(fundId);
+  }>();
 
   if (!row) return null;
 
