@@ -126,4 +126,4 @@ AGPL 3.0 的"网络服务"条款（Section 13）适用于本项目：
 
 ### 商业许可
 
-如需在不公开衍生作品源代码的条件下使用 rotifer-alpha，请联系 **license@rotifer.dev** 获取商业许可。
+如需在不公开衍生作品源代码的条件下使用 rotifer-alpha，请联系 **dev@rotifer.dev** 获取商业许可。
