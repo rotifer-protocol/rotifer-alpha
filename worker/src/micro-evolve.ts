@@ -169,7 +169,7 @@ export async function checkAndRunMicroEvolution(
   return results;
 }
 
-function analyzeAndAdjust(
+export function analyzeAndAdjust(
   trades: ClosedTrade[],
   fund: FundConfig,
   tier: "small" | "medium" | "large",
@@ -194,15 +194,37 @@ function analyzeAndAdjust(
     adjustments.push(nudge("stopLossPercent", fund, tier, "down", adjustRatio));
   }
 
-  // --- Take-profit tuning ---
-  if (profitTakenCount > 0) {
+  // --- Take-profit tuning (v2: bidirectional with deadband, 2026-05-20) ---
+  //
+  // PRIOR BUG (v1): the up-trigger was `avgTakeReturn > fund.takeProfitPercent * 0.8`.
+  // PROFIT_TAKEN-state trades by *definition* satisfy `pnl/amount ≥ takeProfitPercent`,
+  // and 5-min monitor-cycle slippage typically pushes the realized value 10-30% above
+  // the threshold.  The old judge was therefore permanently true whenever any profit
+  // was taken, creating a one-way upward drift that pushed all 15 funds from the 0.25
+  // default to 0.45-1.16 by 2026-05-20 (none ever decreased).
+  //
+  // RESULT (v1 bug evidence): take-profit rarely fired (PROFIT_TAKEN 136 vs STOPPED 315
+  // over 14 days = 1:2.3 imbalance), since most positions could not realistically reach
+  // the 50%+ threshold the bug had pushed funds to.
+  //
+  // FIX (v2 bidirectional + deadband):
+  //   • Down-trigger (NEW): profit-taken rate < 10% AND stop-loss rate > 30%
+  //     → threshold is too high; positions get stopped out before reaching it.
+  //   • Up-trigger (TIGHTENED): profit-taken rate > 20% AND avgTakeReturn > 1.5×
+  //     → threshold-overshoot must be substantial, not just slippage.
+  //   • Deadband (10% ≤ profitTakenRate ≤ 20%): no adjustment, prevents oscillation
+  //     around the boundary.
+  const profitTakenRate = profitTakenCount / trades.length;
+  const stopLossRateForTP = stopLossCount / trades.length;
+
+  if (profitTakenRate < 0.10 && stopLossRateForTP > 0.30) {
+    adjustments.push(nudge("takeProfitPercent", fund, tier, "down", adjustRatio));
+  } else if (profitTakenRate > 0.20 && profitTakenCount > 0) {
     const postProfitTrades = trades.filter(t => t.status === "PROFIT_TAKEN");
     const avgTakeReturn = postProfitTrades.reduce((s, t) => s + t.pnl / t.amount, 0) / postProfitTrades.length;
-    if (avgTakeReturn > fund.takeProfitPercent * 0.8) {
+    if (avgTakeReturn > fund.takeProfitPercent * 1.5) {
       adjustments.push(nudge("takeProfitPercent", fund, tier, "up", adjustRatio));
     }
-  } else if (winRate > 0.6) {
-    adjustments.push(nudge("takeProfitPercent", fund, tier, "down", adjustRatio));
   }
 
   // --- Trailing stop tuning ---
