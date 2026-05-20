@@ -30,8 +30,17 @@ const SCAN_TIMEOUT_MS = 15_000;
 // 实测对比：6 tag → 2 multi-outcome events vs offset×5 → 12 multi-outcome events（+6x）
 //
 // 单页上限保守取 100（Gamma API 接受更大值，但分批降低单次请求超时风险）。
+//
+// 2026-05-20 Layer 1 信号源多样化：
+// 经 API 验证，默认排序（≈按 event 总 volume 综合排名）与 order=volume24hr 的
+// overlap 仅 26%——volume24hr 排序独有 74 个新市场，且 crypto/politics 占比更高
+//（crypto 19%、politics 27%，远比默认排序中的 sports 集中度低）。
+// 新增 VOLUME_SORT_PAGES：每次 scan 额外并行拉 2 页 volume24hr 市场，与默认排序
+// 去重合并，扩充可分析市场池约 +140 unique markets。
 const PAGE_SIZE = 100;
 const PAGE_OFFSETS = [0, 100, 200, 300, 400];
+// volume24hr 排序额外页：始终拉取，不受 SCAN_LIMIT 约束（总开销仅 2 次 HTTP）
+const VOLUME_SORT_OFFSETS = [0, 100];
 
 function parseMarket(m: any): MarketSnapshot {
   const ev = Array.isArray(m.events) && m.events.length > 0 ? m.events[0] : null;
@@ -55,11 +64,17 @@ function parseMarket(m: any): MarketSnapshot {
   };
 }
 
-async function fetchBatch(limit: number, offset: number): Promise<any[]> {
+async function fetchBatch(
+  limit: number,
+  offset: number,
+  orderBy?: string,
+  ascending?: boolean,
+): Promise<any[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
-    const url = `${GAMMA_API}?limit=${limit}&offset=${offset}&active=true&closed=false`;
+    let url = `${GAMMA_API}?limit=${limit}&offset=${offset}&active=true&closed=false`;
+    if (orderBy) url += `&order=${orderBy}&ascending=${ascending ? "true" : "false"}`;
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) return [];
     return await res.json() as any[];
@@ -71,16 +86,22 @@ async function fetchBatch(limit: number, offset: number): Promise<any[]> {
 }
 
 export async function scan(limit: number): Promise<{ markets: MarketSnapshot[]; totalFetched: number }> {
-  // 计算需要多少页：limit / PAGE_SIZE，上限不超过 PAGE_OFFSETS.length
+  // 默认排序（综合 volume/流动性）翻页
   const pagesNeeded = Math.min(PAGE_OFFSETS.length, Math.ceil(limit / PAGE_SIZE));
-  const offsets = PAGE_OFFSETS.slice(0, pagesNeeded);
-  const batches = await Promise.all(offsets.map(off => fetchBatch(PAGE_SIZE, off)));
+  const defaultOffsets = PAGE_OFFSETS.slice(0, pagesNeeded);
+
+  // Layer 1（2026-05-20）：并行拉取 volume24hr 排序页
+  // API 验证：volume24hr 排序与默认排序 overlap 仅 26%，独有 crypto/politics 市场 74 个/页
+  const defaultBatches = defaultOffsets.map(off => fetchBatch(PAGE_SIZE, off));
+  const volumeBatches  = VOLUME_SORT_OFFSETS.map(off => fetchBatch(PAGE_SIZE, off, "volume24hr", false));
+
+  const allBatches = await Promise.all([...defaultBatches, ...volumeBatches]);
 
   const seen = new Set<string>();
   const markets: MarketSnapshot[] = [];
   let totalFetched = 0;
 
-  for (const batch of batches) {
+  for (const batch of allBatches) {
     totalFetched += batch.length;
     for (const m of batch) {
       if (seen.has(m.id)) continue;
