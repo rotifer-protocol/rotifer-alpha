@@ -152,9 +152,10 @@ function strategyLabel(key: string, locale: string): string {
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
-function pnlStr(v: number): string {
-  if (v === 0) return "—";
-  return (v > 0 ? "+" : "-") + fmtCompact(Math.abs(v));
+function pnlStr(v: number | null | undefined): string {
+  const safeV = v ?? 0;
+  if (safeV === 0) return "—";
+  return (safeV > 0 ? "+" : "-") + fmtCompact(Math.abs(safeV));
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -165,14 +166,15 @@ function ScoreBar({
   evaluated,
   t,
 }: {
-  score: number;
+  score: number | null | undefined;
   evaluated: number;
   t: (key: TranslationKey) => string;
 }) {
   if (evaluated < 3) {
     return <span className="text-[var(--r-text-faint)] text-[11px]">{t("geneAwaitingEval")}</span>;
   }
-  if (score === 0) {
+  const safeScore = score ?? 0;
+  if (safeScore === 0) {
     return (
       <span
         className="text-rose-400/80 text-xs font-mono tabular-nums"
@@ -181,23 +183,25 @@ function ScoreBar({
     );
   }
   const color =
-    score >= 70 ? "bg-emerald-500" :
-    score >= 40 ? "bg-amber-500" :
+    safeScore >= 70 ? "bg-emerald-500" :
+    safeScore >= 40 ? "bg-amber-500" :
     "bg-rose-500";
   return (
     <div className="flex items-center gap-1.5 justify-end">
       <div className="w-12 h-1 bg-[var(--r-border)] rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, score)}%` }} />
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, safeScore)}%` }} />
       </div>
-      <span className="font-mono text-xs tabular-nums">{score.toFixed(1)}</span>
+      <span className="font-mono text-xs tabular-nums">{safeScore.toFixed(1)}</span>
     </div>
   );
 }
 
 /** Mini inline win-rate bar. */
-function WinRateBar({ wins, total }: { wins: number; total: number }) {
-  if (total < 1) return <span className="text-[var(--r-text-faint)] font-mono text-xs">—</span>;
-  const rate = (wins / total) * 100;
+function WinRateBar({ wins, total }: { wins: number | null | undefined; total: number | null | undefined }) {
+  const safeTotal = total ?? 0;
+  const safeWins = wins ?? 0;
+  if (safeTotal < 1) return <span className="text-[var(--r-text-faint)] font-mono text-xs">—</span>;
+  const rate = (safeWins / safeTotal) * 100;
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-10 h-1 bg-[var(--r-border)] rounded-full overflow-hidden">
@@ -432,7 +436,7 @@ export function GeneEvolutionPanel() {
   const sparklineData = useMemo(() => {
     const map: Record<string, number[]> = {};
     const promotions = [...log]
-      .filter(e => e.action === "variant_promoted" && e.alphaScore !== null)
+      .filter(e => e.action === "variant_promoted" && e.alphaScore != null)
       .sort((a, b) => a.epoch - b.epoch);
     for (const e of promotions) {
       if (!map[e.geneId]) map[e.geneId] = [];
@@ -568,7 +572,9 @@ export function GeneEvolutionPanel() {
               {champion && (
                 <div className={`mx-4 mb-3 rounded-lg ${color.bg} border border-[var(--r-border)] p-3`}>
                   {(() => {
-                    const credibleChampion = champion.alphaScore > 0 && champion.totalPnl >= 0;
+                    const championScore = champion.alphaScore ?? 0;
+                    const championPnl = champion.totalPnl ?? 0;
+                    const credibleChampion = championScore > 0 && championPnl >= 0;
                     return (
                   <>
                   <div className="flex items-start justify-between gap-3 mb-2.5">
@@ -606,7 +612,7 @@ export function GeneEvolutionPanel() {
                         </div>
                       )}
                       {champion.tradesEvaluated >= 3 ? (
-                        champion.alphaScore === 0 ? (
+                        championScore === 0 ? (
                           <span
                             className="font-mono text-lg font-bold tabular-nums text-rose-400/80"
                             title={t("geneZeroScoreTip")}
@@ -615,12 +621,12 @@ export function GeneEvolutionPanel() {
                           <div className="flex items-center gap-1.5">
                             <div className="w-14 h-1.5 bg-[var(--r-border)] rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${champion.alphaScore >= 70 ? "bg-emerald-500" : champion.alphaScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
-                                style={{ width: `${Math.min(100, champion.alphaScore)}%` }}
+                                className={`h-full rounded-full ${championScore >= 70 ? "bg-emerald-500" : championScore >= 40 ? "bg-amber-500" : "bg-rose-500"}`}
+                                style={{ width: `${Math.min(100, championScore)}%` }}
                               />
                             </div>
                             <span className={`font-mono text-lg font-bold tabular-nums ${color.accent}`}>
-                              {champion.alphaScore.toFixed(1)}
+                              {championScore.toFixed(1)}
                             </span>
                           </div>
                         )
@@ -640,8 +646,8 @@ export function GeneEvolutionPanel() {
                       {t("geneWinRate")}:
                       <WinRateBar wins={champion.winCount} total={champion.tradesEvaluated} />
                     </span>
-                    <span className={`ml-auto font-mono font-semibold ${champion.totalPnl > 0 ? "text-[var(--r-green)]" : champion.totalPnl < 0 ? "text-[var(--r-red)]" : ""}`}>
-                      {pnlStr(champion.totalPnl)}
+                    <span className={`ml-auto font-mono font-semibold ${championPnl > 0 ? "text-[var(--r-green)]" : championPnl < 0 ? "text-[var(--r-red)]" : ""}`}>
+                      {pnlStr(championPnl)}
                     </span>
                   </div>
                   {!credibleChampion && champion.tradesEvaluated >= 3 && (
@@ -771,7 +777,7 @@ export function GeneEvolutionPanel() {
                       {entry.geneId !== "*" && (
                         <span className="text-[var(--r-text-faint)]">{geneName}</span>
                       )}
-                      {entry.alphaScore !== null && (
+                      {entry.alphaScore != null && (
                         <span className="text-[var(--r-text-faint)] font-mono">
                           {t("geneScoreLabel")}: {entry.alphaScore.toFixed(1)}
                         </span>
