@@ -64,7 +64,7 @@ function applyMarketFilters(markets: MarketSnapshot[], input: ScannerInput, volu
 async function scannerBaseline(input: ScannerInput): Promise<ScannerOutput> {
   const { markets, totalFetched } = await scan(input.scanLimit);
   const filtered = applyMarketFilters(markets, input);
-  const signals = analyze(filtered, new Date().toISOString());
+  const signals = analyze(filtered, new Date().toISOString(), input.maxCategoryFraction);
   const avgEdge = signals.length > 0
     ? Math.round((signals.reduce((s, x) => s + x.edge, 0) / signals.length) * 100) / 100
     : 0;
@@ -82,7 +82,7 @@ scannerStrategies.set("baseline", scannerBaseline);
 async function scannerTrendFollowing(input: ScannerInput): Promise<ScannerOutput> {
   const { markets, totalFetched } = await scan(input.scanLimit);
   const filtered = applyMarketFilters(markets, input, 1.5);
-  const rawSignals = analyze(filtered, new Date().toISOString());
+  const rawSignals = analyze(filtered, new Date().toISOString(), input.maxCategoryFraction);
 
   const signals = rawSignals
     .filter(s => s.type !== "SPREAD")
@@ -145,7 +145,7 @@ async function scannerLLMConfig(input: ScannerInput): Promise<ScannerOutput> {
 
   const { markets, totalFetched } = await scan(input.scanLimit);
   const filtered = applyMarketFilters(markets, input, volMul);
-  const rawSignals = analyze(filtered, new Date().toISOString());
+  const rawSignals = analyze(filtered, new Date().toISOString(), input.maxCategoryFraction);
 
   const signals = rawSignals
     .filter(s => !excludeTypes.includes(s.type))

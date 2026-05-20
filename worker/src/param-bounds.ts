@@ -70,6 +70,12 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   // cron timestamp. Default 6h: conservative funds may evolve toward 12-24h
   // (effectively once-per-day); aggressive funds toward 2-4h (faster re-entry).
   eventFamilyCooldownHours: { min: 2,  max: 24,   integer: true },
+  // Signal diversity budget: max fraction of total signals from any single
+  // category (sports/politics/crypto/ai/other). Default 0.40 (40%).
+  // Conservative funds evolve toward 0.20-0.30 (strict diversification);
+  // aggressive funds may evolve toward 0.50-0.60 (allow category concentration
+  // when a single-category opportunity is genuinely strong).
+  maxCategoryFraction:      { min: 0.10, max: 0.80 },
 };
 
 export const EVOLVABLE_PARAMS: string[] = [

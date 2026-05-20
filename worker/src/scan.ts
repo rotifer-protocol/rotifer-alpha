@@ -9,7 +9,7 @@
  *   - analyze()     → signal detection from in-memory market data
  *   - parseMarket() → data normalization
  */
-import type { MarketSnapshot, ArbSignal } from "./types";
+import type { MarketSnapshot, ArbSignal, SignalCategory } from "./types";
 
 function parseJson(raw: unknown): any[] {
   if (Array.isArray(raw)) return raw;
@@ -92,12 +92,79 @@ export async function scan(limit: number): Promise<{ markets: MarketSnapshot[]; 
   return { markets, totalFetched };
 }
 
+// ─── Signal Diversity Layer 2 (2026-05-20) ────────────────────────────────
+//
+// Root cause of NBA-signal concentration: Gamma API default sort is by volume.
+// During sports seasons (NBA playoffs, World Cup, etc.) the top-500 markets
+// by volume are dominated by a single event family, generating correlated
+// signals that exhaust every fund's event-family cooldown quota in one tick.
+//
+// Fix: tag each signal with an inferred category, then cap any single category
+// at `maxCategoryFraction` of total signal count (default 0.40).  Signals are
+// already sorted by edge descending, so only the lowest-edge excess signals in
+// the dominant category are dropped — high-quality alpha is never suppressed.
+//
+// The `maxCategoryFraction` parameter is evolvable (PARAM_BOUNDS_INVARIANT)
+// so conservative funds can tighten to 0.20–0.30 and aggressive funds can
+// loosen to 0.50–0.60 based on their measured fitness F(g).
+
+const SPORTS_RE =
+  /\b(nba|nfl|nhl|mlb|ncaa|ufc|mma|soccer|football|basketball|baseball|hockey|tennis|golf|f1|formula[- ]1|premier league|champions league|world cup|super bowl|championship|playoffs?|semifinals?|finals?|match|tournament|league|team|game|season|vs\.?|versus)\b/i;
+const POLITICS_RE =
+  /\b(election|president|senate|congress|vote|voter|poll|ballot|democrat|republican|gop|candidate|primary|caucus|inaugur|parliament|minister|chancellor|referendum|trump|harris|biden|obama|modi|macron|zelensky|netanyahu|xi jinping|putin)\b/i;
+const CRYPTO_RE =
+  /\b(bitcoin|btc|ethereum|eth|solana|sol|crypto|defi|blockchain|altcoin|stablecoin|usdc|usdt|tether|nft|dao|web3|l2|layer.?2|rollup|ordinals|runes|halving|memecoin|doge|shib)\b/i;
+const AI_RE =
+  /\b(openai|gpt|chatgpt|anthropic|claude|gemini|google deepmind|llm|ai model|artificial intelligence|machine learning|large language|mistral|llama|deepseek|copilot|midjourney|stable diffusion|sora)\b/i;
+
+export function inferCategory(slug: string, question: string): SignalCategory {
+  const text = `${slug} ${question}`.toLowerCase();
+  if (SPORTS_RE.test(text)) return "sports";
+  if (POLITICS_RE.test(text)) return "politics";
+  if (CRYPTO_RE.test(text)) return "crypto";
+  if (AI_RE.test(text)) return "ai";
+  return "other";
+}
+
+/**
+ * Cap the fraction of total signals any single category may occupy.
+ *
+ * Traverses signals in existing order (caller ensures edge-descending sort).
+ * Only the lowest-edge excess signals of the dominant category are dropped;
+ * signals from under-represented categories are always kept.
+ *
+ * @param signals    Already sorted (edge descending) signal list.
+ * @param maxFraction  Max fraction per category (0 < f ≤ 1). Default 0.40.
+ */
+export function applyCategoryBudget(
+  signals: ArbSignal[],
+  maxFraction = 0.40,
+): ArbSignal[] {
+  if (signals.length === 0 || maxFraction >= 1) return signals;
+  const maxPerCat = Math.max(1, Math.ceil(signals.length * maxFraction));
+  const catCount = new Map<SignalCategory, number>();
+  const result: ArbSignal[] = [];
+
+  for (const sig of signals) {
+    const cat = sig.category ?? "other";
+    const n = catCount.get(cat) ?? 0;
+    if (n >= maxPerCat) continue;         // over budget → skip (low edge)
+    catCount.set(cat, n + 1);
+    result.push(sig);
+  }
+  return result;
+}
+
 let sigCtr = 0;
 function sid(): string {
   return `SIG-${Date.now().toString(36)}-${(++sigCtr).toString(36).padStart(4, "0")}`;
 }
 
-export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
+export function analyze(
+  markets: MarketSnapshot[],
+  ts: string,
+  maxCategoryFraction = 0.40,
+): ArbSignal[] {
   sigCtr = 0;
   const sigs: ArbSignal[] = [];
   const TH = 0.015, MS = 0.02, MC = 0.2;
@@ -113,8 +180,9 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
     const over = sum > 1.0;
     const conf = Math.min(1, (dev / TH) * 0.5);
     if (conf < MC) continue;
+    const mSlug = m.eventSlug || m.slug;
     sigs.push({
-      signalId: sid(), type: "MISPRICING", marketId: m.id, slug: m.eventSlug || m.slug, question: m.question,
+      signalId: sid(), type: "MISPRICING", marketId: m.id, slug: mSlug, question: m.question,
       description: over
         ? `价格总和 = ${sum.toFixed(4)}（>${(1 + TH).toFixed(3)}），双方结果均被高估，可考虑做空双方。`
         : `价格总和 = ${sum.toFixed(4)}（<${(1 - TH).toFixed(3)}），双方结果均被低估，可考虑买入双方。`,
@@ -129,6 +197,7 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
         liquidity: m.liquidity,
       },
       groupItemTitle: m.groupItemTitle || undefined,
+      category: inferCategory(mSlug, m.question),
       timestamp: ts,
     });
   }
@@ -171,18 +240,21 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
     // since that is the single market we will actually trade.
     prices["liquidity"] = selected.liquidity;
 
+    const evSlug = g[0].eventSlug;
+    const evTitle = g[0].eventTitle || evSlug;
     sigs.push({
       signalId: sid(), type: "MULTI_OUTCOME_ARB",
-      marketId: g[0].eventSlug, slug: g[0].eventSlug, question: g[0].eventTitle || g[0].eventSlug,
+      marketId: evSlug, slug: evSlug, question: evTitle,
       resolvedMarketId: selected.id,
       description: over
-        ? `事件「${g[0].eventTitle}」：${g.length} 个结果 Yes 价格总和 = ${ySum.toFixed(4)}，整体高估。`
-        : `事件「${g[0].eventTitle}」：${g.length} 个结果 Yes 价格总和 = ${ySum.toFixed(4)}，整体低估。`,
+        ? `事件「${evTitle}」：${g.length} 个结果 Yes 价格总和 = ${ySum.toFixed(4)}，整体高估。`
+        : `事件「${evTitle}」：${g.length} 个结果 Yes 价格总和 = ${ySum.toFixed(4)}，整体低估。`,
       edge: Math.round(dev * 10000) / 100,
       confidence: Math.round(conf * 100) / 100,
       direction: over ? "SELL_WEAKEST" : "BUY_STRONGEST",
       prices,
       groupItemTitle: selected.groupItemTitle || undefined,
+      category: inferCategory(evSlug, evTitle),
       timestamp: ts,
     });
   }
@@ -194,18 +266,22 @@ export function analyze(markets: MarketSnapshot[], ts: string): ArbSignal[] {
     const vf = Math.min(1, m.volume24hr / 50000);
     const conf = Math.min(1, (sp / MS) * 0.3 * vf);
     if (conf < MC) continue;
+    const spSlug = m.eventSlug || m.slug;
     sigs.push({
-      signalId: sid(), type: "SPREAD", marketId: m.id, slug: m.eventSlug || m.slug, question: m.question,
+      signalId: sid(), type: "SPREAD", marketId: m.id, slug: spSlug, question: m.question,
       description: `买卖价差 = ${(sp * 100).toFixed(1)}%（买: ${m.bestBid}，卖: ${m.bestAsk}）`,
       edge: Math.round(sp * 10000) / 100,
       confidence: Math.round(conf * 100) / 100,
       direction: "PROVIDE_LIQUIDITY",
       prices: { bestBid: m.bestBid, bestAsk: m.bestAsk, spread: sp, midpoint: mid, volume24hr: m.volume24hr, liquidity: m.liquidity },
       groupItemTitle: m.groupItemTitle || undefined,
+      category: inferCategory(spSlug, m.question),
       timestamp: ts,
     });
   }
 
   sigs.sort((a, b) => b.edge - a.edge);
-  return sigs;
+  // Layer 2 diversity cap: no single category may exceed maxCategoryFraction of
+  // total signals. Signals already edge-sorted so only lowest-edge excess is dropped.
+  return applyCategoryBudget(sigs, maxCategoryFraction);
 }

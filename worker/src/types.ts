@@ -75,6 +75,9 @@ export interface MarketSnapshot {
 
 export type SignalType = "MISPRICING" | "MULTI_OUTCOME_ARB" | "SPREAD";
 
+/** Derived market category used for signal diversity budgeting. */
+export type SignalCategory = "sports" | "politics" | "crypto" | "ai" | "other";
+
 export interface ArbSignal {
   signalId: string;
   type: SignalType;
@@ -92,6 +95,8 @@ export interface ArbSignal {
    *  For MULTI_OUTCOME_ARB, this is the winning/losing candidate from prices map.
    *  Empty string when not applicable (standalone binary markets). */
   groupItemTitle?: string;
+  /** Inferred market category for signal diversity budgeting (Layer 2, 2026-05-20). */
+  category?: SignalCategory;
 }
 
 export interface FundConfig {
@@ -134,6 +139,11 @@ export interface FundConfig {
   // the last N hours count toward maxSameEventPositions.
   // Optional — defaults to 6h if not set. Evolvable via PARAM_BOUNDS_INVARIANT.
   eventFamilyCooldownHours?: number;
+  // Signal diversity budget: max fraction of total signals from any single
+  // inferred category (sports/politics/crypto/ai/other).
+  // Applied in analyze() via applyCategoryBudget(); default 0.40.
+  // Evolvable via PARAM_BOUNDS_INVARIANT (min: 0.10, max: 0.80).
+  maxCategoryFraction?: number;
 }
 
 export type TradeStatus =

@@ -19,6 +19,9 @@ export interface ScannerInput {
   minLiquidity: number;
   /** Only include markets resolving within this many days. 0 = no filter (default). */
   endDateWindowDays?: number;
+  /** Max fraction of total signals from any single inferred category (0.10–0.80).
+   *  Passed to analyze() → applyCategoryBudget(). Default 0.40. */
+  maxCategoryFraction?: number;
   /** LLM-generated behavioral overrides for "llm-config" strategy variants. */
   variantConfig?: Record<string, unknown>;
 }

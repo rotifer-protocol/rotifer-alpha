@@ -387,6 +387,7 @@ async function apiFundDetail(
     probReversalThreshold: (configRow as any).prob_reversal_threshold,
     maxSameEventPositions: (configRow as any).max_same_event_positions ?? 1,
     eventFamilyCooldownHours: (configRow as any).event_family_cooldown_hours ?? 6,
+    maxCategoryFraction: (configRow as any).max_category_fraction ?? 0.40,
     generation: (configRow as any).generation,
     parentId: (configRow as any).parent_id,
   } : {
@@ -405,6 +406,7 @@ async function apiFundDetail(
     probReversalThreshold: fund.probReversalThreshold,
     maxSameEventPositions: fund.maxSameEventPositions ?? 1,
     eventFamilyCooldownHours: fund.eventFamilyCooldownHours ?? 6,
+    maxCategoryFraction: fund.maxCategoryFraction ?? 0.40,
     sizingMode: fund.sizingMode,
     sizingBase: fund.sizingBase,
     sizingScale: fund.sizingScale,

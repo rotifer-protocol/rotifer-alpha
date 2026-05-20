@@ -253,7 +253,14 @@ async function runPipeline(env: Env, funds: FundConfig[]): Promise<Record<string
   }
 
   const filtered = markets.filter(m => m.volume24hr >= minVolume && m.liquidity >= minLiquidity);
-  const sigs = analyze(filtered, ts);
+  // Derive global diversity budget from the most conservative fund (min maxCategoryFraction).
+  // Signals are shared across all funds in this pipeline path; using the most restrictive
+  // value ensures even the most diversity-focused fund's budget is respected.
+  const globalCatFraction = Math.min(
+    ...funds.map(f => f.maxCategoryFraction ?? 0.40),
+    0.40,   // hard ceiling: never looser than the default even if funds haven't evolved
+  );
+  const sigs = analyze(filtered, ts, globalCatFraction);
   const avg = sigs.length > 0
     ? Math.round((sigs.reduce((s, x) => s + x.edge, 0) / sigs.length) * 100) / 100
     : 0;

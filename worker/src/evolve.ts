@@ -265,6 +265,7 @@ function fundToRow(fund: FundConfig): Record<string, unknown> {
     prob_reversal_threshold: fund.probReversalThreshold,
     max_same_event_positions: fund.maxSameEventPositions ?? 1,
     event_family_cooldown_hours: fund.eventFamilyCooldownHours ?? 6,
+    max_category_fraction: fund.maxCategoryFraction ?? 0.40,
   };
 }
 
@@ -295,6 +296,7 @@ function rowToFund(row: any): FundConfig {
     sizingScale: row.sizing_scale,
     maxSameEventPositions: row.max_same_event_positions ?? 1,
     eventFamilyCooldownHours: row.event_family_cooldown_hours ?? 6,
+    maxCategoryFraction: row.max_category_fraction ?? 0.40,
   };
 }
 
@@ -318,9 +320,9 @@ export async function initializeFunds(db: D1Database): Promise<void> {
         max_per_event, max_open_positions, stop_loss_percent,
         max_hold_days, sizing_mode, sizing_base, sizing_scale,
         take_profit_percent, trailing_stop_percent, prob_reversal_threshold,
-        max_same_event_positions, event_family_cooldown_hours,
+        max_same_event_positions, event_family_cooldown_hours, max_category_fraction,
         generation, parent_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
     ).bind(
       row.id, row.name, row.emoji, row.motto, row.initial_balance,
       row.monthly_target, row.drawdown_limit, row.drawdown_soft_limit,
@@ -329,7 +331,7 @@ export async function initializeFunds(db: D1Database): Promise<void> {
       row.max_open_positions, row.stop_loss_percent, row.max_hold_days,
       row.sizing_mode, row.sizing_base, row.sizing_scale,
       row.take_profit_percent, row.trailing_stop_percent, row.prob_reversal_threshold,
-      row.max_same_event_positions, row.event_family_cooldown_hours,
+      row.max_same_event_positions, row.event_family_cooldown_hours, row.max_category_fraction,
       ts, ts,
     ).run();
   }
@@ -372,6 +374,7 @@ async function updateFundParams(
     probReversalThreshold: "prob_reversal_threshold",
     maxSameEventPositions: "max_same_event_positions",
     eventFamilyCooldownHours: "event_family_cooldown_hours",
+    maxCategoryFraction: "max_category_fraction",
   };
 
   for (const [key, column] of Object.entries(fieldMap)) {
