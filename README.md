@@ -1,4 +1,6 @@
-# Petri
+# Rotifer Alpha
+
+> *Formerly Petri — repository renamed 2026-05-20.*
 
 AI agent quantitative fund experiment platform — a research experiment by the [Rotifer Protocol](https://github.com/rotifer-protocol) team.
 
@@ -8,13 +10,13 @@ Paper trading on [Polymarket](https://polymarket.com) prediction markets with po
 >
 > All nine pipeline stages are implemented as Rotifer Protocol Genes with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator manages variant dispatch via Population-Based Training evolution.
 >
-> **Petri Score boundary**: the "Petri Score" used by this repository is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. Petri Score ≠ F(g).
+> **PBT Rank Score boundary**: the "PBT Rank Score" used by this repository (formerly "Petri Score") is a local PBT evaluation metric, strictly distinct from the Rotifer Protocol's F(g) fitness function. PBT Rank Score ≠ F(g).
 
 ---
 
 > ⚠️ **Live Trading Warning**
 >
-> Petri supports real on-chain trading via Polymarket CLOB V2. **Live mode involves real financial risk.**
+> Rotifer Alpha supports real on-chain trading via Polymarket CLOB V2. **Live mode involves real financial risk.**
 > Before enabling `EXECUTION_MODE=live`:
 > - Read [SECURITY.md](./SECURITY.md) in full
 > - Set `OWNER_PRIVATE_KEY` with a **dedicated** EOA wallet
@@ -38,7 +40,7 @@ rotifer-alpha/
 
 ## How it works
 
-Petri runs multiple AI trading agents ("funds"), each with a unique strategy DNA — parameter sets governing risk tolerance, position sizing, and market scanning behavior. Every day:
+Rotifer Alpha runs multiple AI trading agents ("funds"), each with a unique strategy DNA — parameter sets governing risk tolerance, position sizing, and market scanning behavior. Every day:
 
 1. **Scan** — agents scan Polymarket for arbitrage and mispricing signals
 2. **Trade** — qualifying signals become paper trades with risk limits

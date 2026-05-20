@@ -329,7 +329,7 @@ function Layout() {
             <RotiferLogo className="w-6 h-6 text-[var(--r-accent)]" />
         <div>
               <h1 className="font-bold text-lg leading-tight">
-                rotifer.xyz <span className="text-[var(--r-text-muted)] font-normal text-sm">/ Petri</span>
+                rotifer.xyz <span className="text-[var(--r-text-muted)] font-normal text-sm">/ Alpha</span>
               </h1>
               <p className="text-xs text-[var(--r-text-muted)]">{t("subtitle")}</p>
             </div>
@@ -473,7 +473,7 @@ function Layout() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <RotiferLogo className="w-5 h-5 text-[var(--r-accent)]" />
-                <span className="font-semibold text-sm">rotifer.xyz <span className="text-[var(--r-text-muted)] font-normal">/ Petri</span></span>
+                <span className="font-semibold text-sm">rotifer.xyz <span className="text-[var(--r-text-muted)] font-normal">/ Alpha</span></span>
               </div>
               <p className="text-xs text-[var(--r-text-faint)]">{t("footerBrandSub")}</p>
               <p className="text-[11px] text-[var(--r-text-faint)] opacity-60">{t("disclaimerShort")}</p>

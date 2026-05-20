@@ -117,7 +117,7 @@ function downloadCSV(trades: TradeRow[], funds: FundData[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `petri-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `rotifer-alpha-trades-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -89,8 +89,8 @@ export function DocsPage() {
         </h1>
         <p className="text-sm text-[var(--r-text-muted)] max-w-xl">
           {isZh
-            ? "了解 Petri 实验室的工作原理、基金机制、进化算法与协议细节。"
-            : "Learn how Petri Lab works — funds, evolution algorithm, fitness formula, and protocol details."}
+            ? "了解 Rotifer Alpha 实验室的工作原理、基金机制、进化算法与协议细节。"
+            : "Learn how Rotifer Alpha Lab works — funds, evolution algorithm, fitness formula, and protocol details."}
         </p>
         <div className="flex items-center gap-4 mt-3">
           <a href={GITHUB_PETRI} target="_blank" rel="noopener noreferrer"
@@ -159,7 +159,7 @@ export function DocsPage() {
           <Section id="about" zh="关于实验室" en="About the Lab">
             {isZh ? (
               <>
-                <p>Petri 是 Rotifer Protocol 的 <strong className="text-[var(--r-text)]">AI 基金进化实验室</strong>。实验室中运行着由 AI Gene（基因程序）管理的多只模拟基金，每只基金独立执行交易策略，参与 <a href="https://polymarket.com" className="text-[var(--r-accent)] hover:underline" target="_blank" rel="noopener noreferrer">Polymarket</a> 预测市场。</p>
+                <p>Rotifer Alpha 是 Rotifer Protocol 的 <strong className="text-[var(--r-text)]">AI 基金进化实验室</strong>。实验室中运行着由 AI Gene（基因程序）管理的多只模拟基金，每只基金独立执行交易策略，参与 <a href="https://polymarket.com" className="text-[var(--r-accent)] hover:underline" target="_blank" rel="noopener noreferrer">Polymarket</a> 预测市场。</p>
                 <p>这不是人工管理的基金，而是一场进化实验。每只 AI 基金从基线参数出发，通过真实交易表现持续进化——适者存活，劣者接受参数变异，实验室永不停机。</p>
                 <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-accent)]">
                   ⚠️ 所有交易均为<strong>模拟交易（Paper Trading）</strong>，不涉及任何真实资金。本实验室仅供研究与演示用途。
@@ -167,7 +167,7 @@ export function DocsPage() {
               </>
             ) : (
               <>
-                <p>Petri is the <strong className="text-[var(--r-text)]">AI fund evolution lab</strong> of Rotifer Protocol. It runs multiple simulated funds managed by AI Genes — autonomous trading programs that participate in the <a href="https://polymarket.com" className="text-[var(--r-accent)] hover:underline" target="_blank" rel="noopener noreferrer">Polymarket</a> prediction market.</p>
+                <p>Rotifer Alpha is the <strong className="text-[var(--r-text)]">AI fund evolution lab</strong> of Rotifer Protocol. It runs multiple simulated funds managed by AI Genes — autonomous trading programs that participate in the <a href="https://polymarket.com" className="text-[var(--r-accent)] hover:underline" target="_blank" rel="noopener noreferrer">Polymarket</a> prediction market.</p>
                 <p>This isn't human-managed — it's an evolution experiment. Each AI fund starts from baseline parameters and evolves through real trading performance. The fittest survive; underperformers mutate. The lab runs continuously, never stopping.</p>
                 <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-accent)]">
                   ⚠️ All trades are <strong>paper trades</strong> — no real money is involved. This lab is for research and demonstration purposes only.
@@ -283,7 +283,7 @@ export function DocsPage() {
           <Section id="fitness" zh="适应度 F(g)" en="Fitness F(g)">
             {isZh ? (
               <>
-                <p>适应度 F(g) 是 Petri 实验室衡量基因交易质量的核心指标，综合四个维度，输出 0–1 范围内的单一分数。</p>
+                <p>适应度 F(g) 是 Rotifer Alpha 实验室衡量基因交易质量的核心指标，综合四个维度，输出 0–1 范围内的单一分数。</p>
                 <FormulaBlock>
                   F(g) = Sharpe × 0.4 + WinRate × 0.2 + (1 − MaxDrawdown) × 0.3 − complexity × 0.1
                 </FormulaBlock>
@@ -302,13 +302,13 @@ export function DocsPage() {
                 </div>
                 <p>F(g) 越高代表该基因的交易质量越好。PBT 进化算法以 F(g) 为唯一依据决定哪些基金需要参数变异——分数持续低于阈值的基金将在下一世代接受进化。</p>
                 <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-border)] text-[var(--r-text-faint)]">
-                  ⚠️ 以上公式为 Petri worker 的<strong>参考实现版本</strong>，仅供理解用途。Rotifer Protocol 规范层对 F(g) 的抽象定义以{" "}
+                  ⚠️ 以上公式为 Rotifer Alpha worker 的<strong>参考实现版本</strong>，仅供理解用途。Rotifer Protocol 规范层对 F(g) 的抽象定义以{" "}
                   <a href={GITHUB_SPEC} target="_blank" rel="noopener noreferrer" className="text-[var(--r-accent)] hover:underline">rotifer-spec</a> 为准，两者可能存在差异。
                 </p>
               </>
             ) : (
               <>
-                <p>Fitness F(g) is Petri Lab's core metric for measuring gene trading quality. It combines four dimensions into a single score in the 0–1 range.</p>
+                <p>Fitness F(g) is Rotifer Alpha Lab's core metric for measuring gene trading quality. It combines four dimensions into a single score in the 0–1 range.</p>
                 <FormulaBlock>
                   F(g) = Sharpe × 0.4 + WinRate × 0.2 + (1 − MaxDrawdown) × 0.3 − complexity × 0.1
                 </FormulaBlock>
@@ -327,7 +327,7 @@ export function DocsPage() {
                 </div>
                 <p>Higher F(g) means better gene trading quality. PBT uses F(g) as the sole criterion for deciding which funds need parameter mutation — funds consistently below the threshold will evolve in the next epoch.</p>
                 <p className="glass-card px-3 py-2 text-xs border-l-2 border-[var(--r-border)] text-[var(--r-text-faint)]">
-                  ⚠️ The formula above is Petri's <strong>reference implementation</strong> for F(g), provided for understanding purposes. The authoritative abstract definition of F(g) at the Rotifer Protocol spec level is in{" "}
+                  ⚠️ The formula above is Rotifer Alpha's <strong>reference implementation</strong> for F(g), provided for understanding purposes. The authoritative abstract definition of F(g) at the Rotifer Protocol spec level is in{" "}
                   <a href={GITHUB_SPEC} target="_blank" rel="noopener noreferrer" className="text-[var(--r-accent)] hover:underline">rotifer-spec</a>. The two may differ.
                 </p>
               </>
@@ -339,7 +339,7 @@ export function DocsPage() {
             {isZh ? (
               <>
                 <p>
-                  竞技场（Arena）是 Petri 实验室各层基金<strong className="text-[var(--r-text)]">适应度 F(g) 排名竞争</strong>的专属视图。
+                  竞技场（Arena）是 Rotifer Alpha 实验室各层基金<strong className="text-[var(--r-text)]">适应度 F(g) 排名竞争</strong>的专属视图。
                   在这里，同一层（S / M / L）的 5 支基金以 F(g) 分数为唯一标准排名，
                   分数最高的基金成为<strong className="text-[var(--r-text)]">本层冠军</strong>（受保护，不被 PBT 变异），
                   分数最低的基金进入<strong className="text-[var(--r-text)]">待进化</strong>名单，在下一个世代接受参数变异。

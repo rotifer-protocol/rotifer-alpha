@@ -1,4 +1,6 @@
-# Petri Architecture
+# Rotifer Alpha — Architecture
+
+> *Formerly Petri — repository renamed 2026-05-20.*
 
 > A research experiment in population-based AI trading on Polymarket prediction markets.  
 > Part of the [Rotifer Protocol](https://rotifer.dev) — open-source AI agent evolution framework.
@@ -7,7 +9,7 @@
 
 ## System Overview
 
-Petri runs 15 AI trading funds simultaneously. Each fund has a unique strategy "DNA" — a phenotype parameter set governing risk tolerance, position sizing, and market selection. Funds evolve over time via Population-Based Training (PBT), selecting better-performing strategies.
+Rotifer Alpha runs 15 AI trading funds simultaneously. Each fund has a unique strategy "DNA" — a phenotype parameter set governing risk tolerance, position sizing, and market selection. Funds evolve over time via Population-Based Training (PBT), selecting better-performing strategies.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐

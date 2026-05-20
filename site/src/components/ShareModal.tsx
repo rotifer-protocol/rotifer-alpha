@@ -39,7 +39,7 @@ interface ShareModalProps {
 const MEDALS = ["🥇", "🥈", "🥉"];
 const POSTER_W = 340;
 const BRAND_NAME = "ROTIFER ALPHA";
-const BRAND_URL = "https://petri.baby/";
+const BRAND_URL = "https://rotifer.xyz/";
 
 const PERSONALITY_HEX: Record<string, string> = {
   cheetah: "#eab308",
@@ -175,7 +175,7 @@ function PosterCard({
         <span style={{ fontSize: 9, color: "rgba(255,255,255,0.22)" }}>
           ⚡ {isZh ? "Rotifer Protocol AI Gene 驱动" : "Powered by Rotifer Protocol AI Gene"}
         </span>
-        <span style={{ fontSize: 9.5, color: "#00d4aa", opacity: 0.65, fontWeight: 500 }}>petri.baby</span>
+        <span style={{ fontSize: 9.5, color: "#00d4aa", opacity: 0.65, fontWeight: 500 }}>rotifer.xyz</span>
       </div>
     </div>
   );
