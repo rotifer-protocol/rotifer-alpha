@@ -49,7 +49,6 @@ export function requireAuth(req: Request, env: Env): Response | null {
 const ALLOWED_ORIGINS = [
   "https://rotifer.xyz",
   "https://www.rotifer.xyz",
-  "https://rotifer-xyz.pages.dev",
   "http://localhost:5173",
   "http://localhost:3000",
 ];
