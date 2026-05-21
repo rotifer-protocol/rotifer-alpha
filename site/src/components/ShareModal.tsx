@@ -46,7 +46,7 @@ const PERSONALITY_HEX: Record<string, string> = {
   octopus: "#60a5fa",
   turtle:  "#22c55e",
   shark:   "#ef4444",
-  honeyBadger: "#f472b6",
+  honey_badger: "#f472b6",
 };
 
 // ─── Sub-component: poster card (captured by html-to-image) ──────────────────

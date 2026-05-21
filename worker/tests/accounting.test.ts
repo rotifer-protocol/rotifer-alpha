@@ -142,7 +142,7 @@ test("drawdown uses mark-to-market equity instead of invested notional", () => {
 // P8 fix (2026-05-21) regression coverage — confirms calculateDrawdownPct now
 // behaves correctly when callers pass peak equity instead of initial balance.
 test("drawdown reports peak-to-trough when reference is peak equity", () => {
-  // honeyBadger_l-shaped scenario: $1M → $1.477M peak → $1.031M now.
+  // honey_badger_l-shaped scenario: $1M → $1.477M peak → $1.031M now.
   // Old call site (calculateDrawdownPct(initial, current)) returned 0% because
   // current still exceeded initial. Calling with peak as reference now reports
   // the true 30.2% drawdown that risk.effectiveSizing() needs.

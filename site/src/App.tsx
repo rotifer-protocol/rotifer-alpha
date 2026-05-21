@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
 import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
-import { Languages, ExternalLink, Info, Share2, BarChart2 } from "lucide-react";
+import { Languages, ExternalLink, Info, Share2, BarChart2, Trophy, Zap } from "lucide-react";
 
 // Inline GitHub SVG octicon (lucide-react version used doesn't export Github)
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -529,7 +529,7 @@ function polymarketUrl(slug: unknown, question: unknown): string | null {
 
 function useHighlight(events: AgentEvent[]) {
   const { t } = useI18n();
-  const tFund = (raw: unknown) => fundDisplayName(String(raw).toLowerCase(), t);
+  const tFund = (raw: unknown) => fundDisplayName(String(raw), t);
 
   for (const e of events) {
     const p = e.payload;
@@ -1029,7 +1029,7 @@ function ArenaPage() {
               : "text-[var(--r-text-muted)] hover:text-[var(--r-text)]"
           }`}
         >
-          🏆 {t("fundArenaRankings")}
+          <Trophy size={12} className="shrink-0" /> {t("fundArenaRankings")}
         </button>
         <button
           onClick={() => switchTab("events")}
@@ -1039,7 +1039,7 @@ function ArenaPage() {
               : "text-[var(--r-text-muted)] hover:text-[var(--r-text)]"
           }`}
         >
-          ⚡ {t("liveEventFeed")}
+          <Zap size={12} className="shrink-0" /> {t("liveEventFeed")}
           {unreadEvents > 0 && (
             <span className="absolute -top-0.5 right-2 min-w-[16px] h-4 px-1 rounded-full bg-[var(--r-accent)] text-white text-[9px] flex items-center justify-center font-bold leading-none">
               {unreadEvents > 9 ? "9+" : unreadEvents}

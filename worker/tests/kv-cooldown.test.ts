@@ -128,7 +128,7 @@ test("runGenomePipeline: KV keys contribute to cooldown set (no crash, returns e
     list: async () => ({
       keys: [
         { name: "cooldown:shark_m:market-detroit-pistons" },
-        { name: "cooldown:honeyBadger_l:market-nba-finals" },
+        { name: "cooldown:honey_badger_l:market-nba-finals" },
       ],
       list_complete: true,
     }),

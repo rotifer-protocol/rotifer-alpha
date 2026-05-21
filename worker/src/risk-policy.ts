@@ -19,7 +19,7 @@
 
 // ─── OTM single-position cap (P2 Path A, founder approved 2026-05-10) ───
 //
-// Background: honeyBadger_l (formerly gambler_l) accumulated $349K unrealized PnL with 89%
+// Background: honey_badger_l (formerly gambler_l) accumulated $349K unrealized PnL with 89%
 // concentrated in just two SELL_WEAKEST OTM positions. Single-position
 // concentration with deep tail risk: 99% of the time these positions earn
 // small amounts, but a single OTM hit (e.g. an underdog winning the NBA

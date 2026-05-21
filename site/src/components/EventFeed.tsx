@@ -139,7 +139,7 @@ function tFundName(t: (k: TranslationKey) => string, raw: unknown): string {
   // DB names already contain non-ASCII (e.g. "章鱼·S") — return them as-is
   // to avoid producing double-suffix artefacts like "章鱼·s·S".
   if (/^[a-zA-Z_]+$/.test(str)) {
-    return fundDisplayName(str.toLowerCase(), t);
+    return fundDisplayName(str, t);
   }
   return str;
 }

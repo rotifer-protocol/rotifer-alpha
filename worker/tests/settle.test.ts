@@ -81,13 +81,13 @@ function mockFetch(body: unknown): () => void {
   return () => { globalThis.fetch = original; };
 }
 
-const funds = [{ id: "honeyBadger_l", emoji: "🦡" }] as FundConfig[];
+const funds = [{ id: "honey_badger_l", emoji: "🦡" }] as FundConfig[];
 
 test("settle: Gamma fallback resolves missing scanner market where NO won", async () => {
   const { db, rows } = makeDb([
     {
       id: "trade-1",
-      fund_id: "honeyBadger_l",
+      fund_id: "honey_badger_l",
       market_id: "553843",
       slug: "flyers",
       question: "Will the Philadelphia Flyers win the 2026 NHL Stanley Cup?",
@@ -125,7 +125,7 @@ test("settle: Gamma fallback resolves BUY_YES loss when NO won", async () => {
   const { db, rows } = makeDb([
     {
       id: "trade-2",
-      fund_id: "honeyBadger_l",
+      fund_id: "honey_badger_l",
       market_id: "553843",
       slug: "flyers",
       question: "Will the Philadelphia Flyers win the 2026 NHL Stanley Cup?",

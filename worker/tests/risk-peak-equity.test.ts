@@ -9,7 +9,7 @@
  *   - trade.ts:324 called calculateDrawdownPct(fund.initialBalance, currentEquity).
  *   - For any fund whose totalValue > initialBalance, drawdown reported 0%
  *     regardless of how far it had fallen from its peak.
- *   - 3 production funds (honeyBadger_l real-DD 30.2%, shark_m 15.3%, cheetah_m 10.4%)
+ *   - 3 production funds (honey_badger_l real-DD 30.2%, shark_m 15.3%, cheetah_m 10.4%)
  *     had crossed their soft limits but kept opening full-sized positions.
  *
  * Fix (this commit):
@@ -45,7 +45,7 @@ function makeDb(prepared: PreparedRow): D1Database {
 
 test("returns DB peak when it exceeds fallback", async () => {
   const db = makeDb({ peak: 1_477_000 });
-  const peak = await getPeakEquity(db, "honeyBadger_l", 1_000_000);
+  const peak = await getPeakEquity(db, "honey_badger_l", 1_000_000);
   assert.equal(peak, 1_477_000);
 });
 
