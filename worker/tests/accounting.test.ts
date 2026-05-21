@@ -134,7 +134,31 @@ test("cash balance subtracts invested capital and adds realized pnl", () => {
 test("drawdown uses mark-to-market equity instead of invested notional", () => {
   const totalValue = calculateTotalValue(10000, 0, -250);
   assert.equal(totalValue, 9750);
+  // legacy semantic: passing initialBalance still works as a backwards-compat
+  // reference for tests that pre-date the P8 peak-DD fix.
   assert.equal(calculateDrawdownPct(10000, totalValue), 0.025);
+});
+
+// P8 fix (2026-05-21) regression coverage — confirms calculateDrawdownPct now
+// behaves correctly when callers pass peak equity instead of initial balance.
+test("drawdown reports peak-to-trough when reference is peak equity", () => {
+  // gambler_l-shaped scenario: $1M → $1.477M peak → $1.031M now.
+  // Old call site (calculateDrawdownPct(initial, current)) returned 0% because
+  // current still exceeded initial. Calling with peak as reference now reports
+  // the true 30.2% drawdown that risk.effectiveSizing() needs.
+  assert.equal(calculateDrawdownPct(1_477_000, 1_031_000).toFixed(3), "0.302");
+});
+
+test("drawdown returns 0 when current equity exceeds reference", () => {
+  // A fund making a new high should never report negative drawdown — the
+  // Math.max(0, ...) clamp protects against snapshots that lag intra-day
+  // peaks (portfolio_snapshots cron runs daily, not per trade).
+  assert.equal(calculateDrawdownPct(1_000_000, 1_200_000), 0);
+});
+
+test("drawdown returns 0 when reference is 0", () => {
+  // Defensive: avoid division-by-zero when a fund has no recorded peak yet.
+  assert.equal(calculateDrawdownPct(0, 100), 0);
 });
 
 test("current position value is cost basis plus unrealized pnl", () => {

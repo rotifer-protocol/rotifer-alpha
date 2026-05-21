@@ -157,6 +157,35 @@ export function effectiveSizing(
 }
 
 /**
+ * Look up a fund's peak historical equity from portfolio_snapshots.
+ *
+ * Returned value is at least `fallback` (typically initialBalance) — protects
+ * brand-new funds with no snapshots and against any anomalously low MAX from
+ * the table. The caller is also responsible for taking max(returned, currentEquity)
+ * to handle the "fund is currently making a new high but no daily snapshot has
+ * been written yet" case (snapshots run on a daily cron, not per-trade).
+ *
+ * Added 2026-05-21 as part of P8 fix (drawdown peak-vs-initial reference bug).
+ *
+ * @param db D1 database
+ * @param fundId Fund ID to look up
+ * @param fallback Minimum value returned (typically fund.initialBalance)
+ * @returns max(MAX(total_value) FROM portfolio_snapshots WHERE fund_id=?, fallback)
+ */
+export async function getPeakEquity(
+  db: D1Database,
+  fundId: string,
+  fallback: number,
+): Promise<number> {
+  const row = await db.prepare(
+    "SELECT MAX(total_value) AS peak FROM portfolio_snapshots WHERE fund_id = ?",
+  ).bind(fundId).first<{ peak: number | null }>();
+  const dbPeak = row?.peak ?? null;
+  if (dbPeak === null || !Number.isFinite(dbPeak)) return fallback;
+  return Math.max(dbPeak, fallback);
+}
+
+/**
  * Lightweight piggyback risk check — re-evaluates stop-loss for a fund's
  * open positions when users view the fund page. D-Lite: reads last_price
  * from D1 directly (no per-request fetchPrices); stale rows are skipped.

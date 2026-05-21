@@ -70,9 +70,32 @@ export function calculateReturnPct(initialBalance: number, totalValue: number): 
   return ((totalValue - initialBalance) / initialBalance) * 100;
 }
 
-export function calculateDrawdownPct(initialBalance: number, totalValue: number): number {
-  if (initialBalance === 0) return 0;
-  return Math.max(0, (initialBalance - totalValue) / initialBalance);
+/**
+ * Drawdown ratio relative to a reference equity value.
+ *
+ * @param referenceValue Anchor for "drawdown from where". Two valid choices:
+ *   - **peakEquity (preferred, P8 fix 2026-05-21)**: peak-to-trough drawdown,
+ *     which matches industry convention and the semantic intent of
+ *     `fund.drawdownSoftLimit` / `fund.drawdownLimit`. A fund that climbs
+ *     from $1M to $1.5M and falls back to $1.05M correctly reports 30% DD.
+ *   - **initialBalance (legacy)**: loss-vs-initial-capital. Returns 0 for
+ *     any fund whose totalValue is still above its starting balance, even
+ *     if it has fallen substantially from a recent peak. Kept for backwards
+ *     compatibility (some accounting tests still pass initialBalance).
+ * @param totalValue Current mark-to-market equity (cash + open position value).
+ * @returns Drawdown as a fraction in [0, 1]. Returns 0 if reference is 0
+ *   or if totalValue >= referenceValue.
+ *
+ * BUG HISTORY (P8 root cause): trade.ts:324 used to call this with
+ * `(fund.initialBalance, currentEquity)`, which silently disabled
+ * `effectiveSizing()`'s soft/hard drawdown protection for any fund that had
+ * once been profitable. Three funds had crossed their soft limits in real
+ * peak-to-trough terms while the calculator returned 0%. Fixed by switching
+ * the call site to pass peakEquity (looked up via getPeakEquity()).
+ */
+export function calculateDrawdownPct(referenceValue: number, totalValue: number): number {
+  if (referenceValue === 0) return 0;
+  return Math.max(0, (referenceValue - totalValue) / referenceValue);
 }
 
 export function calculateCurrentPositionValue(amount: number, unrealizedPnl: number): number {

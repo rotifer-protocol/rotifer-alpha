@@ -19,7 +19,7 @@
  */
 import type { ArbSignal, FundConfig, MarketSnapshot, TradeAction } from "./types";
 import { sizing } from "./types";
-import { effectiveSizing, getOpenPositionCount } from "./risk";
+import { effectiveSizing, getOpenPositionCount, getPeakEquity } from "./risk";
 import {
   calculateCashBalance,
   calculateDrawdownPct,
@@ -321,7 +321,16 @@ export async function paperTrade(
     const openStats = calculateOpenPositionStats(openTrades);
     const realizedPnl = cash + openStats.invested - fund.initialBalance;
     const currentEquity = calculateTotalValue(fund.initialBalance, realizedPnl, openStats.unrealizedPnl);
-    const currentDrawdown = calculateDrawdownPct(fund.initialBalance, currentEquity);
+    // P8 fix (2026-05-21): use peak equity (not initialBalance) as drawdown
+    // reference so `effectiveSizing()`'s soft/hard limits actually engage when
+    // a once-profitable fund has fallen back from its high. Pre-fix, any fund
+    // with totalValue > initialBalance reported drawdown=0% regardless of how
+    // far it had fallen from its peak — silently disabling sizing protection.
+    // Snapshots are written daily; we max with currentEquity so a fund making
+    // a fresh intra-day high reports drawdown=0 instead of a stale negative.
+    const peakFromDb = await getPeakEquity(db, fund.id, fund.initialBalance);
+    const peakReference = Math.max(peakFromDb, currentEquity);
+    const currentDrawdown = calculateDrawdownPct(peakReference, currentEquity);
     // Rolling cooldown window: entries in the last N hours per event family.
     // Per-fund parameter (default 6h) replaces the old UTC-midnight boundary.
     const cooldownHours = fund.eventFamilyCooldownHours ?? 6;
