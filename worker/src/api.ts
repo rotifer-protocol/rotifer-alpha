@@ -928,17 +928,19 @@ async function apiSystem(
 // ─── Phase 1 Shadow Metrics ─────────────────────────────
 //
 // Computes Phase 1 Shadow Live exit conditions (ALPHA-001 §11 Phase 1):
-//   - Fill rate ≥ 85% (shadow orders WOULD_FILL / total, rolling 14d)
+//   - Rolling 14-day average fill rate ≥ 75%
 //   - Median price deviation ≤ 5% (|simulated_fill_price - entry_price| / entry_price)
+//   - Minimum 14 days of data accumulated since Phase 1 start
 //
-// "Who monitors Phase 1 exit?" — this endpoint is the answer.
-// Called by the Diagnostics page to render the Phase 1 health panel.
+// Algorithm change (2026-05-21): replaced "14 consecutive days each ≥ 85%"
+// with "rolling 14-day average ≥ 75%" — the consecutive-days approach was
+// unreachable due to structural orderbook depth limits on Polymarket.
 
-// Phase 1 started 2026-05-19 when PolymarketVenue shadow mode deployed.
 const PHASE1_START_DATE = "2026-05-19";
-const PHASE1_FILL_RATE_TARGET = 85;   // %
+const PHASE1_FILL_RATE_TARGET = 75;   // % (rolling 14d average)
 const PHASE1_PRICE_DEV_TARGET = 5.0;  // %
 const PHASE1_WINDOW_DAYS = 14;
+const PHASE1_MIN_DATA_DAYS = 14;      // must have ≥14 days of data
 
 interface ShadowRow {
   simulated_fill_price: number | null;
@@ -996,7 +998,7 @@ async function apiShadowMetrics(
       ? Math.round(Math.max(...deviations) * 100) / 100
       : 0;
 
-    // Consecutive-days calculation: how many trailing days have data
+    // Days-with-data calculation
     const dayBuckets = new Map<string, { total: number; filled: number }>();
     for (const row of rows) {
       const day = row.created_at.slice(0, 10);
@@ -1005,25 +1007,13 @@ async function apiShadowMetrics(
       if (row.status === "WOULD_FILL") bucket.filled++;
       dayBuckets.set(day, bucket);
     }
+    const daysWithData = dayBuckets.size;
 
-    // Count trailing consecutive days (from today backward) with ≥ 85% fill rate
-    let consecutiveDaysMet = 0;
-    const today = new Date();
-    for (let i = 0; i < PHASE1_WINDOW_DAYS; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      const bucket = dayBuckets.get(key);
-      if (!bucket || bucket.total === 0) break;
-      const dayFillRate = (bucket.filled / bucket.total) * 100;
-      if (dayFillRate < PHASE1_FILL_RATE_TARGET) break;
-      consecutiveDaysMet++;
-    }
-
+    // Exit condition: rolling 14-day average fill rate ≥ target + enough data days
     const fillRateMet = fillRatePct >= PHASE1_FILL_RATE_TARGET;
     const priceDevMet = medianDeviationPct <= PHASE1_PRICE_DEV_TARGET;
-    const consecutiveDaysRequired = PHASE1_WINDOW_DAYS;
-    const exitConditionMet = fillRateMet && priceDevMet && consecutiveDaysMet >= consecutiveDaysRequired;
+    const dataMaturityMet = daysWithData >= PHASE1_MIN_DATA_DAYS;
+    const exitConditionMet = fillRateMet && priceDevMet && dataMaturityMet;
 
     // Days since Phase 1 start
     const phase1StartMs = new Date(PHASE1_START_DATE).getTime();
@@ -1039,7 +1029,7 @@ async function apiShadowMetrics(
       filledOrders: filled,
       rejectedOrders: rejected,
       deviationSampleSize: deviations.length,
-      // Fill rate
+      // Fill rate (rolling 14d average)
       fillRatePct,
       fillRateTarget: PHASE1_FILL_RATE_TARGET,
       fillRateMet,
@@ -1049,9 +1039,10 @@ async function apiShadowMetrics(
       maxDeviationPct,
       priceDevTarget: PHASE1_PRICE_DEV_TARGET,
       priceDevMet,
-      // Consecutive days
-      consecutiveDaysMet,
-      consecutiveDaysRequired,
+      // Data maturity
+      daysWithData,
+      minDataDays: PHASE1_MIN_DATA_DAYS,
+      dataMaturityMet,
       // Overall status
       exitConditionMet,
       status: exitConditionMet

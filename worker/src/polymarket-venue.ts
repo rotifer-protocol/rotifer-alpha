@@ -49,6 +49,14 @@ export const POLYMARKET_TAKER_FEE_BPS = 0; // Polymarket has 0% trading fee curr
 /** Maximum slippage we'll simulate — above this, the order is marked "SHADOW_REJECT". */
 const MAX_SIMULATED_SLIPPAGE_BPS = 500; // 5%
 
+/**
+ * Shadow mode caps simulated order size to Phase 2's maxSingleTradeUsdc.
+ * Paper trades can be $5k–$200k+, but real Phase 2 orders are ≤ $20.
+ * Without this cap, shadow fill rate reflects orderbook depth for unrealistically
+ * large orders and underestimates Phase 2 real-world fillability.
+ */
+const SHADOW_SIZE_CAP_USDC = 20;
+
 // ─── Orderbook walk (pure, testable) ─────────────────────────────────────────
 
 export interface ClobLevel {
@@ -275,13 +283,19 @@ export class PolymarketVenue implements ExecutionVenue {
       return simulatedQuote(intent);
     }
 
+    // Shadow mode: cap simulated size to Phase 2 max trade size.
+    // This makes fill rate reflect what real $20 orders would experience.
+    const effectiveSize = this.mode === "shadow"
+      ? Math.min(intent.sizeUsdc, SHADOW_SIZE_CAP_USDC)
+      : intent.sizeUsdc;
+
     // Map side to orderbook side
     // YES buyer → takes asks; NO buyer (selling YES) → takes bids
     const clobSide: "BUY" | "SELL" = intent.side === "YES" ? "BUY" : "SELL";
     const levels = clobSide === "BUY" ? book.asks : book.bids;
 
-    const fill = walkClobFill(clobSide, intent.sizeUsdc, levels, book.midPrice);
-    const fees = estimatePolymarketFees(intent.sizeUsdc);
+    const fill = walkClobFill(clobSide, effectiveSize, levels, book.midPrice);
+    const fees = estimatePolymarketFees(effectiveSize);
 
     // All-in fill price: raw fill price + fee spread (cost to trader)
     // BUY: net cost per share = avgFillPrice * (1 + fee_bps/10000)

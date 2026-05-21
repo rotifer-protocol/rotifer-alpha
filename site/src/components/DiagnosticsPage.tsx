@@ -41,8 +41,9 @@ interface Phase1Metrics {
   avgDeviationPct: number;
   priceDevTarget: number;
   priceDevMet: boolean;
-  consecutiveDaysMet: number;
-  consecutiveDaysRequired: number;
+  daysWithData: number;
+  minDataDays: number;
+  dataMaturityMet: boolean;
   exitConditionMet: boolean;
   status: "PASSED" | "IN_PROGRESS" | "NO_DATA" | "ERROR";
   deviationSampleSize: number;
@@ -813,10 +814,10 @@ function Phase1MetricsPanel({ metrics }: { metrics: Phase1Metrics | null }) {
           <div className="grid grid-cols-3 gap-2 pt-1">
             <div className="text-center">
               <p className="text-[11px] font-mono font-semibold">
-                {metrics!.consecutiveDaysMet}
-                <span className="text-[var(--r-text-faint)] font-normal">/{metrics!.consecutiveDaysRequired}</span>
+                {metrics!.daysWithData}
+                <span className="text-[var(--r-text-faint)] font-normal">/{metrics!.minDataDays}</span>
               </p>
-              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("phase1ConsecDaysLabel")}</p>
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5">{t("phase1DataDaysLabel")}</p>
             </div>
             <div className="text-center">
               <p className="text-[11px] font-mono font-semibold">{metrics!.totalOrders}</p>
