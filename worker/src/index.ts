@@ -84,7 +84,7 @@ async function recordScan(
   }
 }
 
-async function takeSnapshot(db: D1Database, date: string, funds: FundConfig[]): Promise<void> {
+export async function takeSnapshot(db: D1Database, date: string, funds: FundConfig[]): Promise<void> {
   // D-Lite: read mark from D1.last_price (refreshed every 5min by
   // price-refresh.ts cron). Stale rows contribute 0 to unrealized — see
   // calculateOpenPositionStats() for stale-treatment policy. Snapshots
@@ -104,13 +104,29 @@ async function takeSnapshot(db: D1Database, date: string, funds: FundConfig[]): 
     const invested = fundOpenTrades.reduce((s: number, t: any) => s + (t.amount as number), 0);
 
     let unrealizedPnl = 0;
+    let staleSkipCount = 0;
     for (const t of fundOpenTrades) {
       const price = t.last_price;
-      if (typeof price !== "number") continue;
-      if (isStale(t.last_price_updated_at, snapshotNowMs)) continue;
+      if (typeof price !== "number") { staleSkipCount++; continue; }
+      if (isStale(t.last_price_updated_at, snapshotNowMs)) { staleSkipCount++; continue; }
       unrealizedPnl += calcUnrealizedPnl(t.direction, t.shares, t.amount, price);
     }
     unrealizedPnl = Math.round(unrealizedPnl * 100) / 100;
+
+    // P9-B fix (2026-05-21): refuse to overwrite previous snapshot when every
+    // OPEN position got skipped as stale. INSERT OR REPLACE used to clobber a
+    // good prior-day row with a zero-unrealized snapshot, which is what made
+    // the 2026-05-10 D-Lite deploy window collapse 15/15 funds' total_value
+    // (commit 3c270a0 deployed at 23:37, daily cron ran at 23:59 with
+    // last_price_updated_at column still NULL across the board → isStale()
+    // returned true for everyone). See plan rotifer-alpha-v1.0-plan.md §P9-B.
+    if (openCount > 0 && staleSkipCount === openCount) {
+      console.warn(
+        `[takeSnapshot] skip ${fund.id} ${date}: all ${openCount} OPEN ` +
+        `positions stale — preserving prior snapshot rather than writing un=0`,
+      );
+      continue;
+    }
 
     const resolved = await db.prepare(
       `SELECT
