@@ -6,6 +6,8 @@ AI agent quantitative fund experiment platform — a research experiment by the 
 
 Paper trading on [Polymarket](https://polymarket.com) prediction markets with population-based training (PBT) evolution.
 
+**Latest updates** → [Changelog](./CHANGELOG.md) · [中文](./CHANGELOG.zh.md)
+
 > **Status — Phase 1 Shadow Live active. Phase 2 Live Small pending (est. 4 days).**
 >
 > All nine pipeline stages are implemented as Rotifer Protocol Genes with typed Phenotype Schemas (RotiferGeneSpec § 4.2). A Genome orchestrator manages variant dispatch via Population-Based Training evolution.

@@ -1,19 +1,54 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n/context";
+import changelogEn from "../../../CHANGELOG.md?raw";
+import changelogZh from "../../../CHANGELOG.zh.md?raw";
 
 const GITHUB_PETRI = "https://github.com/rotifer-protocol/rotifer-alpha";
 const GITHUB_SPEC = "https://github.com/rotifer-protocol/rotifer-spec";
+const GITHUB_COMMITS = "https://github.com/rotifer-protocol/rotifer-alpha/commits/main";
 
 const SECTIONS = [
-  { id: "about",    zh: "关于实验室",    en: "About the Lab" },
-  { id: "funds",    zh: "基金说明",      en: "Fund Guide" },
-  { id: "pbt",      zh: "进化算法 PBT",  en: "PBT Algorithm" },
-  { id: "fitness",  zh: "适应度 F(g)",   en: "Fitness F(g)" },
-  { id: "arena",    zh: "竞技场 Arena",  en: "Arena" },
-  { id: "glossary", zh: "术语词典",      en: "Glossary" },
-  { id: "data",     zh: "数据说明",      en: "Data Notes" },
+  { id: "about",     zh: "关于实验室",    en: "About the Lab" },
+  { id: "funds",     zh: "基金说明",      en: "Fund Guide" },
+  { id: "pbt",       zh: "进化算法 PBT",  en: "PBT Algorithm" },
+  { id: "fitness",   zh: "适应度 F(g)",   en: "Fitness F(g)" },
+  { id: "arena",     zh: "竞技场 Arena",  en: "Arena" },
+  { id: "glossary",  zh: "术语词典",      en: "Glossary" },
+  { id: "data",      zh: "数据说明",      en: "Data Notes" },
+  { id: "changelog", zh: "更新动态",      en: "Changelog" },
 ];
+
+type ChangelogEntry = { date: string; subtitle?: string; bullets: string[] };
+
+function parseChangelog(md: string): ChangelogEntry[] {
+  const entries: ChangelogEntry[] = [];
+  let current: ChangelogEntry | null = null;
+  for (const line of md.split("\n")) {
+    const h3 = line.match(/^###\s+(\d{4}-\d{2}-\d{2})(?:\s+[—-]\s+(.+))?\s*$/);
+    if (h3) {
+      if (current) entries.push(current);
+      current = { date: h3[1], subtitle: h3[2], bullets: [] };
+      continue;
+    }
+    const bullet = line.match(/^-\s+(.+)$/);
+    if (bullet && current) {
+      current.bullets.push(bullet[1].trim());
+    }
+  }
+  if (current) entries.push(current);
+  return entries;
+}
+
+function renderInline(text: string): ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i} className="text-[var(--r-text)]">{part.slice(2, -2)}</strong>;
+    }
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
 
 function Section({ id, zh, en, children }: {
   id: string; zh: string; en: string; children: React.ReactNode;
@@ -50,6 +85,32 @@ function FormulaBlock({ children }: { children: React.ReactNode }) {
   return (
     <div className="glass-card px-4 py-3 font-mono text-sm text-[var(--r-accent)] my-2">
       {children}
+    </div>
+  );
+}
+
+function ChangelogTimeline({ locale }: { locale: "zh" | "en" }) {
+  const entries = parseChangelog(locale === "zh" ? changelogZh : changelogEn);
+  return (
+    <div className="space-y-5 pt-2">
+      {entries.map(entry => (
+        <div key={entry.date} className="flex gap-4">
+          <div className="w-24 shrink-0 pt-0.5">
+            <p className="font-mono text-xs text-[var(--r-accent)] tabular-nums">{entry.date}</p>
+            {entry.subtitle && (
+              <p className="text-[10px] text-[var(--r-text-faint)] mt-0.5 leading-tight">{entry.subtitle}</p>
+            )}
+          </div>
+          <ul className="flex-1 space-y-1.5 min-w-0">
+            {entry.bullets.map((b, i) => (
+              <li key={i} className="text-xs leading-relaxed flex gap-2">
+                <span className="text-[var(--r-text-faint)] shrink-0 mt-0.5">·</span>
+                <span>{renderInline(b)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -467,6 +528,22 @@ export function DocsPage() {
                 </div>
               </>
             )}
+          </Section>
+
+          {/* ── 8. Changelog ── */}
+          <Section id="changelog" zh="更新动态" en="Changelog">
+            {isZh ? (
+              <p>每日进展日志——无更新的日期会被跳过，这是一份动态信号，不是事无巨细的工程报告。</p>
+            ) : (
+              <p>Daily progress log — empty days are skipped. This is a momentum signal, not an exhaustive engineering report.</p>
+            )}
+            <ChangelogTimeline locale={locale} />
+            <p className="pt-2">
+              <a href={GITHUB_COMMITS} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-[var(--r-accent)] hover:underline">
+                {isZh ? "在 GitHub 查看完整 commit 历史 →" : "Full git commit history on GitHub →"}
+              </a>
+            </p>
           </Section>
 
           {/* Back to top / link to spec */}
