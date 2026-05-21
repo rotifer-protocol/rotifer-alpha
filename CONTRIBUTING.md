@@ -81,6 +81,31 @@ Pull requests with any unsigned commits will be **blocked** by the automated
 DCO check (`.github/workflows/dco.yml`). Please sign all commits before
 opening a PR.
 
+## Maintainer Workflow
+
+Maintainers with direct push access to `main` follow the same PR flow as
+external contributors. This keeps the DCO check meaningful and prevents
+the "treatment gap" where maintainer commits skip the gate everyone else
+must pass.
+
+### Standard PR Flow
+
+```bash
+git checkout -b feat/description       # branch off main
+git commit -s -m "feat(scope): ..."    # sign-off (always)
+git push -u origin feat/description
+gh pr create --base main --fill        # open PR
+gh pr checks --watch                   # wait for DCO green
+gh pr merge --squash --delete-branch   # self-merge
+```
+
+### Emergency Bypass
+
+`main` branch protection permits administrator bypass for production-down
+incidents. Use sparingly — every bypass weakens the consistency external
+contributors observe. Always sign off (`-s`) even when bypassing, and
+document the reason in the commit message.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under
