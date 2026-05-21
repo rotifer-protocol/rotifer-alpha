@@ -143,10 +143,12 @@ const TIER_LABELS: Record<FundTier, { key: "arenaTierS" | "arenaTierM" | "arenaT
 };
 
 const TIER_ORDER: FundTier[] = ["small", "medium", "large"];
-const MEDALS = ["🥇", "🥈", "🥉"];
+const MEDAL_COLORS = ["#f59e0b", "#94a3b8", "#cd7f32"]; // gold / silver / bronze
 
-function medalFor(rank: number): string | null {
-  return MEDALS[rank] ?? null;
+function medalFor(rank: number): React.ReactNode | null {
+  const color = MEDAL_COLORS[rank];
+  if (!color) return null;
+  return <Trophy size={13} style={{ color }} />;
 }
 
 // ─── P1-3: Hero KPI strip ─────────────────────────────────────────────────────
