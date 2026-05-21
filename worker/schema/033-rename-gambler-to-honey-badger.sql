@@ -29,7 +29,7 @@
 -- 失败回滚：跑 033-rollback.sql 反向恢复（保持 ID 映射对称）。
 --
 -- Related:
---   - internal/products/rotifer-alpha/plan/live-trading-plan.md §"Gambler 重命名"
+--   - internal/products/rotifer-alpha/plan/rotifer-alpha-v1.0-plan.md §"Gambler 重命名"
 --   - rotifer-alpha/site/src/i18n/translations.ts (UI 文案)
 --   - rotifer-alpha/site/src/lib/fundMeta.ts (前端基金元数据)
 --   - rotifer-alpha/worker/src/types.ts (Worker 端基金枚举)
