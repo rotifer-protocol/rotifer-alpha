@@ -15,7 +15,7 @@ import {
 // P2 Path A — single-position OTM cap (founder approved 2026-05-10)
 // ============================================================
 //
-// Background: gambler_l accumulated $349K unrealized PnL with 89%
+// Background: honeyBadger_l (formerly gambler_l) accumulated $349K unrealized PnL with 89%
 // concentrated in 2 SELL_WEAKEST OTM positions. Tail-risk concentration:
 // 99% of the time these positions earn small amounts, but a single OTM
 // hit (e.g. an underdog winning the NBA championship) can wipe months
@@ -78,7 +78,7 @@ test("calcOTMCap: large fund ($1M equity) → $50,000 cap", () => {
 });
 
 test("calcOTMCap: cap scales with equity, not initial balance", () => {
-  // After fund grows from $1M → $1.349M (gambler_l real scenario),
+  // After fund grows from $1M → $1.349M (honeyBadger_l real scenario),
   // cap should scale accordingly (not stay anchored to initial $1M)
   assert.equal(calcOTMCap(1_349_000), 67_450);
 });
@@ -89,10 +89,10 @@ test("calcOTMCap: cap shrinks during drawdown (compound risk protection)", () =>
   assert.equal(calcOTMCap(850_000), 42_500);
 });
 
-// ─── Combined: realistic gambler_l scenario ─────────────────────
+// ─── Combined: realistic honeyBadger_l scenario ─────────────────────
 
-test("scenario: gambler_l $30K bet at price 0.0085 EXCEEDS cap", () => {
-  // gambler_l sizingBase=10K, sizingScale=20K → max single bet $30K
+test("scenario: honeyBadger_l $30K bet at price 0.0085 EXCEEDS cap", () => {
+  // honeyBadger_l sizingBase=10K, sizingScale=20K → max single bet $30K
   // current equity ~$1.349M → cap $67,450
   // 30K < 67.45K → would PASS cap (not blocked)
   // This is a CALIBRATION CHECK: cap is loose enough that it doesn't

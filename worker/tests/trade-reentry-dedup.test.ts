@@ -734,7 +734,7 @@ test("Market Impact Gate: rawSize > 15% of liquidity → MARKET_IMPACT_TOO_HIGH 
   }
 
   const fund = {
-    id: "gambler_l", name: "蜜獾·L", emoji: "🦡",
+    id: "honeyBadger_l", name: "蜜獾·L", emoji: "🦡",
     initialBalance: 100000, maxOpenPositions: 5, maxPerEvent: 50000,
     minEdge: 1.0, minConfidence: 0.3, minVolume: 1000, minLiquidity: 1000,
     allowedTypes: ["MISPRICING"] as const,
@@ -1009,7 +1009,7 @@ function makeSameEventDb(dailyCount: number, insertCountRef: { n: number }) {
 }
 
 const BASE_FUND = {
-  id: "gambler-l", name: "蜜獾·L", emoji: "🎲",
+  id: "honeyBadger_l", name: "蜜獾·L", emoji: "🦡",
   initialBalance: 1_000_000, maxOpenPositions: 20, maxPerEvent: 500_000,
   minEdge: 1.0, minConfidence: 0.3, minVolume: 5_000, minLiquidity: 5_000,
   allowedTypes: ["MULTI_OUTCOME_ARB"] as const,

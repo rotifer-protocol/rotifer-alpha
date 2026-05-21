@@ -5,8 +5,8 @@
  *   Risk guardrails optimize for "no catastrophe", evolution optimizes for
  *   "max return". Those goals conflict. Putting guardrails into PARAM_BOUNDS
  *   would let funds gradually loosen their own catastrophe protection in
- *   pursuit of higher short-term fitness — equivalent to letting a gambler
- *   set their own betting limits. So these stay as constants.
+ *   pursuit of higher short-term fitness — equivalent to letting a high-risk
+ *   fund set its own betting limits. So these stay as constants.
  *
  * NOT in EVOLVABLE_PARAMS — see param-bounds.ts.
  *
@@ -19,7 +19,7 @@
 
 // ─── OTM single-position cap (P2 Path A, founder approved 2026-05-10) ───
 //
-// Background: gambler_l accumulated $349K unrealized PnL with 89%
+// Background: honeyBadger_l (formerly gambler_l) accumulated $349K unrealized PnL with 89%
 // concentrated in just two SELL_WEAKEST OTM positions. Single-position
 // concentration with deep tail risk: 99% of the time these positions earn
 // small amounts, but a single OTM hit (e.g. an underdog winning the NBA

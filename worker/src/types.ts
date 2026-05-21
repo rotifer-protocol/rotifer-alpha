@@ -337,7 +337,7 @@ export const DEFAULT_FUNDS: FundConfig[] = [
     sizingMode: "confidence", sizingBase: 150, sizingScale: 500,
   },
   {
-    id: "gambler", name: "蜜獾", emoji: "🎲",
+    id: "honeyBadger", name: "蜜獾", emoji: "🦡",
     motto: "无所畏惧，绝不退让",
     initialBalance: 10000, monthlyTarget: 0.30,
     drawdownLimit: 0.50, drawdownSoftLimit: 0.25,
@@ -398,7 +398,7 @@ export const DEFAULT_FUNDS: FundConfig[] = [
     sizingMode: "confidence", sizingBase: 1500, sizingScale: 5000,
   },
   {
-    id: "gambler_m", name: "蜜獾·M", emoji: "🎲",
+    id: "honeyBadger_m", name: "蜜獾·M", emoji: "🦡",
     motto: "无所畏惧，绝不退让",
     initialBalance: 100000, monthlyTarget: 0.30,
     drawdownLimit: 0.50, drawdownSoftLimit: 0.25,
@@ -461,7 +461,7 @@ export const DEFAULT_FUNDS: FundConfig[] = [
     sizingMode: "confidence", sizingBase: 15000, sizingScale: 50000,
   },
   {
-    id: "gambler_l", name: "蜜獾·L", emoji: "🎲",
+    id: "honeyBadger_l", name: "蜜獾·L", emoji: "🦡",
     motto: "无所畏惧，绝不退让",
     initialBalance: 1000000, monthlyTarget: 0.30,
     drawdownLimit: 0.50, drawdownSoftLimit: 0.25,
