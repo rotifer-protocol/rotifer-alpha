@@ -7,6 +7,18 @@ broader Rotifer Protocol ecosystem, visit [rotifer.dev](https://rotifer.dev).
 
 ## Workflow
 
+### Setup (One-time)
+
+After cloning, enable the repository's version-controlled hooks:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This activates the `pre-commit` hook which (a) rejects accidental staging
+of `internal/` paths and (b) validates internal markdown links in staged
+`.md` / `.mdc` files via [`scripts/check-broken-links.py`](./scripts/check-broken-links.py).
+
 ### Branch Naming
 
 - `feat/description` — new features
@@ -111,7 +123,5 @@ document the reason in the commit message.
 By contributing, you agree that your contributions will be licensed under
 **AGPL 3.0 + Commercial Dual License** — see [`LICENSE`](./LICENSE) for the full text.
 
-For AGPL+dual repositories: commercial licensing inquiries go to
-`dev@rotifer.dev` — see the
-[commercial license template](https://github.com/rotifer-protocol/internal/blob/main/strategy/governance/commercial-license-template.md)
-(internal reference) for the structure of such agreements.
+For AGPL+dual repositories: contact `dev@rotifer.dev` for commercial
+licensing terms and template agreements.

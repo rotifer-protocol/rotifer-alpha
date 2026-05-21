@@ -1,0 +1,51 @@
+#!/bin/sh
+# Repository pre-commit guard.
+# PURPOSE:
+#   1. Cross-Contamination Guard — reject internal/ files in repo commits.
+#   2. Broken Link Guard (CP-3) — reject broken internal links in staged markdown-like files.
+# LOCATION: Version-controlled in .githooks/ so changes are visible in git status.
+# BYPASS: `git commit --no-verify` skips all guards (emergency + known follow-up only).
+
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if git diff --cached --name-only | grep -q "^internal/"; then
+  echo "⛔ pre-commit blocked: internal/ files detected in staging."
+  git diff --cached --name-only | grep "^internal/"
+  exit 1
+fi
+
+
+# === Broken Link Guard ===
+# Catches broken internal relative links in staged markdown-like files.
+# Only scans staged files (performance); bypass with `git commit --no-verify`.
+STAGED_DOC_FILES="$(git diff --cached --name-only --diff-filter=ACM -- '*.md' '*.mdc')"
+
+if [ -n "$STAGED_DOC_FILES" ]; then
+  LINK_CHECKER="$REPO_ROOT/scripts/check-broken-links.py"
+  if [ ! -f "$LINK_CHECKER" ]; then
+    echo "⛔ pre-commit blocked: broken-link checker not found at $LINK_CHECKER"
+    exit 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "⛔ pre-commit blocked: python3 is required for broken-link validation."
+    exit 1
+  fi
+
+  ABS_PATHS=""
+  for f in $STAGED_DOC_FILES; do
+    ABS_PATHS="$ABS_PATHS $REPO_ROOT/$f"
+  done
+
+  echo "🔍 Broken link guard (staged markdown-like files)..."
+  # shellcheck disable=SC2086
+  if ! python3 "$LINK_CHECKER" $ABS_PATHS; then
+    echo ""
+    echo "⛔ pre-commit blocked: broken markdown links found in staged files."
+    echo "   Fix the broken links (or use 'git commit --no-verify' to bypass)."
+    echo "   Run for full diagnostics:"
+    echo "     python3 scripts/check-broken-links.py <paths>"
+    exit 1
+  fi
+fi
