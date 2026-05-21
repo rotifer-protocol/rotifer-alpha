@@ -46,7 +46,7 @@ export function fundDisplayName(
 
 // ─── All 15 fund IDs ────────────────────────────────────────────────────────
 
-export const PERSONALITY_IDS = ["turtle", "cheetah", "octopus", "shark", "gambler"] as const;
+export const PERSONALITY_IDS = ["turtle", "cheetah", "octopus", "shark", "honeyBadger"] as const;
 export type PersonalityId = typeof PERSONALITY_IDS[number];
 
 export const ALL_FUND_IDS: string[] = [
@@ -62,7 +62,7 @@ const PERSONALITY_NAME_KEYS: Record<string, TranslationKey> = {
   octopus: "fundOctopus",
   turtle:  "fundTurtle",
   shark:   "fundShark",
-  gambler: "fundGambler",
+  honeyBadger: "fundHoneyBadger",
 };
 
 const PERSONALITY_MOTTO_KEYS: Record<string, TranslationKey> = {
@@ -70,7 +70,7 @@ const PERSONALITY_MOTTO_KEYS: Record<string, TranslationKey> = {
   octopus: "mottoOctopus",
   turtle:  "mottoTurtle",
   shark:   "mottoShark",
-  gambler: "mottoGambler",
+  honeyBadger: "mottoHoneyBadger",
 };
 
 /** Name translation key for any fund ID (including _m / _l variants). */
@@ -92,7 +92,7 @@ const PERSONALITY_COLORS: Record<string, string> = {
   octopus: "text-blue-400",
   turtle:  "text-green-400",
   shark:   "text-red-400",
-  gambler: "text-pink-400",
+  honeyBadger: "text-pink-400",
 };
 
 const PERSONALITY_GRADIENTS: Record<string, string> = {
@@ -100,7 +100,7 @@ const PERSONALITY_GRADIENTS: Record<string, string> = {
   octopus: "from-blue-500/6 to-transparent",
   turtle:  "from-green-500/6 to-transparent",
   shark:   "from-red-500/6 to-transparent",
-  gambler: "from-pink-500/6 to-transparent",
+  honeyBadger: "from-pink-500/6 to-transparent",
 };
 
 const PERSONALITY_BORDER_COLORS: Record<string, string> = {
@@ -108,7 +108,7 @@ const PERSONALITY_BORDER_COLORS: Record<string, string> = {
   octopus: "border-l-blue-500/50",
   turtle:  "border-l-green-500/50",
   shark:   "border-l-red-500/50",
-  gambler: "border-l-pink-500/50",
+  honeyBadger: "border-l-pink-500/50",
 };
 
 const PERSONALITY_HEX_COLORS: Record<string, string> = {
@@ -116,7 +116,7 @@ const PERSONALITY_HEX_COLORS: Record<string, string> = {
   cheetah: "#eab308",
   octopus: "#60a5fa",
   shark:   "#ef4444",
-  gambler: "#f472b6",
+  honeyBadger: "#f472b6",
 };
 
 // Tier brightness modifier: M = slightly dimmer, L = slightly more muted

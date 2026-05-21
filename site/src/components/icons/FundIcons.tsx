@@ -96,7 +96,7 @@ export const FUND_ICONS: Record<string, typeof CheetahIcon> = {
   octopus: OctopusIcon,   octopus_m: OctopusIcon,   octopus_l: OctopusIcon,
   turtle:  TurtleIcon,    turtle_m:  TurtleIcon,     turtle_l:  TurtleIcon,
   shark:   SharkIcon,     shark_m:   SharkIcon,      shark_l:   SharkIcon,
-  gambler: HoneyBadgerIcon, gambler_m: HoneyBadgerIcon, gambler_l: HoneyBadgerIcon,
+  honeyBadger: HoneyBadgerIcon, honeyBadger_m: HoneyBadgerIcon, honeyBadger_l: HoneyBadgerIcon,
 };
 // cache-bust: 2
 export const FUND_ICONS_VERSION = 2;

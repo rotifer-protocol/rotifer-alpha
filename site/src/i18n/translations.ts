@@ -241,14 +241,14 @@ const en = {
   fundOctopus: "Octopus",
   fundTurtle: "Turtle",
   fundShark: "Shark",
-  fundGambler: "Honey Badger",
+  fundHoneyBadger: "Honey Badger",
 
   // Fund mottos
   mottoCheetah: "Fortune favors the bold",
   mottoOctopus: "Data speaks, formulas decide",
   mottoTurtle: "Less is more, certainty above all",
   mottoShark: "Strike hard, reap fast",
-  mottoGambler: "Fearless, relentless",
+  mottoHoneyBadger: "Fearless, relentless",
 
   // Tier section headers (3×5 matrix, ADR-274)
   tierSmall: "S · $10K",
@@ -991,13 +991,13 @@ const zh: Record<TranslationKey, string> = {
   fundOctopus: "章鱼",
   fundTurtle: "海龟",
   fundShark: "鲨鱼",
-  fundGambler: "蜜獾",
+  fundHoneyBadger: "蜜獾",
 
   mottoCheetah: "机会属于敢于出手的人",
   mottoOctopus: "用数据说话，让公式决策",
   mottoTurtle: "少即是多，确定性高于一切",
   mottoShark: "大胆出击，快速收割",
-  mottoGambler: "无所畏惧，绝不退让",
+  mottoHoneyBadger: "无所畏惧，绝不退让",
 
   tierSmall: "S · $1万",
   tierMedium: "M · $10万",
