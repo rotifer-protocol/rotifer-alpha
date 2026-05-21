@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
-import { Routes, Route, NavLink, Outlet, useOutletContext } from "react-router-dom";
-import { Languages, ExternalLink, Info, Share2, BarChart2, Trophy, Zap } from "lucide-react";
+import { Routes, Route, NavLink, Outlet, useOutletContext, useLocation } from "react-router-dom";
+import { Languages, ExternalLink, Info, Share2, BarChart2, Trophy, Zap, ChevronDown } from "lucide-react";
 
 // Inline GitHub SVG octicon (lucide-react version used doesn't export Github)
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -53,6 +53,7 @@ const prefetch = {
   gene:        () => import("./components/GeneEvolutionPanel"),
   diagnostics: () => import("./components/DiagnosticsPage"),
   arena:       () => import("./components/ArenaPage"),
+  analysis:    () => import("./components/AnalysisPage"),
   live:        () => import("./components/LivePanel"),
 };
 import { useI18n } from "./i18n/context";
@@ -281,10 +282,82 @@ export function useLayoutContext() {
   return useOutletContext<LayoutContext>();
 }
 
+// ─── NavDropdown ──────────────────────────────────────────────────────────────
+// A dropdown nav entry for grouped pages. Active state lights up when any
+// child route is active.
+
+interface NavDropdownItem { to: string; label: string; prefetch?: () => void; }
+
+function NavDropdown({ label, items }: { label: string; items: NavDropdownItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+
+  const childActive = items.some(item =>
+    pathname === `/${item.to}` || pathname.startsWith(`/${item.to}/`)
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Close on route change
+  useEffect(() => { setOpen(false); }, [pathname]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1 ${
+          childActive
+            ? "bg-[var(--r-accent)] text-white"
+            : "text-[var(--r-text-muted)] hover:text-[var(--r-text)]"
+        }`}
+      >
+        {label}
+        <ChevronDown size={10} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden shadow-2xl z-[60] min-w-[128px] py-1"
+          style={{ background: "var(--r-surface)", border: "1px solid var(--r-border)" }}
+        >
+          {items.map(item => (
+            <NavLink
+              key={item.to}
+              to={`/${item.to}`}
+              onMouseEnter={item.prefetch}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+                  isActive
+                    ? "text-[var(--r-accent)] bg-[var(--r-accent)]/10"
+                    : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.04]"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mobile nav uses the same NavDropdown but inside a scrollable pill bar.
+// We reuse NavDropdown so active-state logic stays in one place.
+
 function Layout() {
   const { events, connected, connectionCount } = useWebSocket(WS_URL);
   const { data: fundsData, loading, refetch } = useFetch<FundsResponse>("/api/funds", 60_000);
   const { t, toggle, locale } = useI18n();
+  const isZh = locale === "zh";
 
   useEffect(() => {
     if (events.length === 0) return;
@@ -336,14 +409,20 @@ function Layout() {
           </NavLink>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1">
+          <div className="hidden sm:flex items-center gap-1 bg-[var(--r-surface)] border border-[var(--r-border)] rounded-lg p-1">
               <NavLink to="/" className={navClass} end>{t("arena")}</NavLink>
               <NavLink to="/arena" className={navClass} onMouseEnter={prefetch.arena}>{t("navArena")}</NavLink>
-              <NavLink to="/evolution" className={navClass} onMouseEnter={prefetch.evolution}>{t("evolution")}</NavLink>
-              <NavLink to="/shadow" className={navClass} onMouseEnter={prefetch.shadow}>{t("shadow")}</NavLink>
-              <NavLink to="/gene-evolution" className={navClass} onMouseEnter={prefetch.gene}>{t("navGeneEvolution")}</NavLink>
-              <NavLink to="/diagnostics" className={navClass} onMouseEnter={prefetch.diagnostics}>{t("diagnostics")}</NavLink>
-              <NavLink to="/live" className={navClass} onMouseEnter={prefetch.live}>Live</NavLink>
+              <NavLink to="/analysis" className={navClass} onMouseEnter={prefetch.analysis}>{isZh ? "历史" : "History"}</NavLink>
+              <NavDropdown
+                label={isZh ? "研究室" : "Lab"}
+                items={[
+                  { to: "evolution",     label: t("evolution"),        prefetch: prefetch.evolution },
+                  { to: "gene-evolution",label: t("navGeneEvolution"), prefetch: prefetch.gene },
+                  { to: "shadow",        label: t("shadow"),           prefetch: prefetch.shadow },
+                  { to: "diagnostics",   label: t("diagnostics"),      prefetch: prefetch.diagnostics },
+                  { to: "live",          label: "Live",                prefetch: prefetch.live },
+                ]}
+              />
               <NavLink to="/docs" className={navClass}>
                 {t("navDocs")}
               </NavLink>
@@ -381,7 +460,7 @@ function Layout() {
             to="/"
             end
             className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
@@ -391,7 +470,7 @@ function Layout() {
           <NavLink
             to="/arena"
             className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
@@ -399,60 +478,30 @@ function Layout() {
             {t("navArena")}
           </NavLink>
           <NavLink
-            to="/evolution"
+            to="/analysis"
             className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
+            onMouseEnter={prefetch.analysis}
           >
-            {t("evolution")}
+            {isZh ? "历史" : "History"}
           </NavLink>
-          <NavLink
-            to="/shadow"
-            className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
-                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
-              }`
-            }
-          >
-            {t("shadow")}
-          </NavLink>
-          <NavLink
-            to="/gene-evolution"
-            className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
-                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
-              }`
-            }
-            >
-            {t("navGeneEvolution")}
-          </NavLink>
-          <NavLink
-            to="/diagnostics"
-            className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
-                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
-              }`
-            }
-          >
-            {t("diagnostics")}
-          </NavLink>
-          <NavLink
-            to="/live"
-            className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
-                isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
-              }`
-            }
-            onMouseEnter={prefetch.live}
-          >
-            Live
-          </NavLink>
+          <NavDropdown
+            label={isZh ? "研究室" : "Lab"}
+            items={[
+              { to: "evolution",      label: t("evolution"),        prefetch: prefetch.evolution },
+              { to: "gene-evolution", label: t("navGeneEvolution"), prefetch: prefetch.gene },
+              { to: "shadow",         label: t("shadow"),           prefetch: prefetch.shadow },
+              { to: "diagnostics",    label: t("diagnostics"),      prefetch: prefetch.diagnostics },
+              { to: "live",           label: "Live",                prefetch: prefetch.live },
+            ]}
+          />
           <NavLink
             to="/docs"
             className={({ isActive }) =>
-              `flex-1 px-2 py-2 rounded-md text-sm font-medium text-center whitespace-nowrap transition-all ${
+              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
                 isActive ? "bg-[var(--r-accent)] text-white" : "text-[var(--r-text-muted)]"
               }`
             }
