@@ -43,6 +43,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             pages deploy site/dist
-            --project-name=rotifer-xyz
+            --project-name=rotifer-alpha
             --branch=main
             --commit-hash=${{ github.sha }}
