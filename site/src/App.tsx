@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { Routes, Route, NavLink, Outlet, useOutletContext, useLocation } from "react-router-dom";
 import { Languages, ExternalLink, Info, Share2, BarChart2, Trophy, Zap, ChevronDown } from "lucide-react";
 
@@ -283,9 +284,12 @@ export function useLayoutContext() {
 }
 
 // ─── NavDropdown ──────────────────────────────────────────────────────────────
-// Desktop (usePortal=false): absolute-positioned dropdown.
-// Mobile  (usePortal=true) : items expand inline in the parent flex scroll bar,
-//   avoiding all z-index / overflow / portal reliability issues on iOS Safari.
+// A dropdown nav entry for grouped pages. Active state lights up when any
+// child route is active.
+//
+// usePortal=true (mobile nav inside overflow-x-auto): portal to document.body
+//   with position:fixed + z-[9999] so the menu escapes both the overflow
+//   container clipping AND any descendant stacking context conflicts.
 
 interface NavDropdownItem { to: string; label: string; prefetch?: () => void; }
 
@@ -296,71 +300,92 @@ function NavDropdown({
 }: {
   label: string;
   items: NavDropdownItem[];
-  /** Mobile mode: subitems expand inline in the parent overflow-x-auto bar. */
+  /** Pass true when the dropdown is inside an overflow-x-auto container (mobile nav).
+   *  Uses createPortal + position:fixed + z-[9999] so the menu isn't clipped. */
   usePortal?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);      // wraps the trigger button
+  const menuRef = useRef<HTMLDivElement>(null);  // portal menu element
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const { pathname } = useLocation();
 
   const childActive = items.some(item =>
     pathname === `/${item.to}` || pathname.startsWith(`/${item.to}/`)
   );
 
-  // Desktop only: close on click outside the wrapper div
   useEffect(() => {
-    if (usePortal || !open) return;
-    const handler = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    if (!open) return;
+    const handler = (e: Event) => {
+      const t = (e instanceof TouchEvent
+        ? e.touches[0]?.target
+        : (e as MouseEvent).target) as Node | null;
+      if (!t) return;
+      if (!ref.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open, usePortal]);
+    document.addEventListener("touchstart", handler, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [open]);
 
   // Close on route change
   useEffect(() => { setOpen(false); }, [pathname]);
 
-  // ── Mobile: inline expansion in scroll bar ────────────────────────────────
-  if (usePortal) {
-    return (
-      <>
-        <button
-          onClick={() => setOpen(o => !o)}
-          className={`flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1 ${
-            childActive
-              ? "bg-[var(--r-accent)] text-white"
-              : "text-[var(--r-text-muted)]"
-          }`}
-        >
-          {label}
-          <ChevronDown size={10} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-        </button>
-        {open && items.map(item => (
-          <NavLink
-            key={item.to}
-            to={`/${item.to}`}
-            onMouseEnter={item.prefetch}
-            onClick={() => setOpen(false)}
-            className={({ isActive }) =>
-              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
-                isActive
-                  ? "bg-[var(--r-accent)] text-white"
-                  : "text-[var(--r-text-muted)] bg-[var(--r-surface-hover)]"
-              }`
-            }
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </>
-    );
-  }
+  const handleToggle = () => {
+    if (!open && usePortal && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      // Clamp left so the menu (min-w 128px + buffer) stays inside the viewport.
+      const menuWidth = 148;
+      const clampedLeft = Math.min(
+        Math.max(8, r.left),
+        Math.max(8, window.innerWidth - menuWidth - 8)
+      );
+      setMenuPos({ top: r.bottom + 6, left: clampedLeft });
+    }
+    setOpen(o => !o);
+  };
 
-  // ── Desktop: absolute dropdown ────────────────────────────────────────────
+  const menuContent = (
+    <div
+      ref={menuRef}
+      className={`${
+        usePortal ? "fixed" : "absolute top-full left-0 mt-1.5"
+      } rounded-xl overflow-hidden shadow-2xl z-[9999] min-w-[128px] py-1`}
+      style={{
+        background: "var(--r-surface)",
+        border: "1px solid var(--r-border)",
+        ...(usePortal ? { top: menuPos.top, left: menuPos.left } : {}),
+      }}
+    >
+      {items.map(item => (
+        <NavLink
+          key={item.to}
+          to={`/${item.to}`}
+          onMouseEnter={item.prefetch}
+          onClick={() => setOpen(false)}
+          className={({ isActive }) =>
+            `flex items-center px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+              isActive
+                ? "text-[var(--r-accent)] bg-[var(--r-accent)]/10"
+                : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.04]"
+            }`
+          }
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </div>
+  );
+
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleToggle}
         className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1 ${
           childActive
             ? "bg-[var(--r-accent)] text-white"
@@ -370,35 +395,13 @@ function NavDropdown({
         {label}
         <ChevronDown size={10} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && (
-        <div
-          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden shadow-2xl z-[200] min-w-[128px] py-1"
-          style={{ background: "var(--r-surface)", border: "1px solid var(--r-border)" }}
-        >
-          {items.map(item => (
-            <NavLink
-              key={item.to}
-              to={`/${item.to}`}
-              onMouseEnter={item.prefetch}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
-                  isActive
-                    ? "text-[var(--r-accent)] bg-[var(--r-accent)]/10"
-                    : "text-[var(--r-text-muted)] hover:text-[var(--r-text)] hover:bg-white/[0.04]"
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
+      {open && (usePortal ? createPortal(menuContent, document.body) : menuContent)}
     </div>
   );
 }
 
-// Mobile nav uses NavDropdown with usePortal=true for inline expansion.
+// Mobile nav uses the same NavDropdown but inside a scrollable pill bar.
+// We reuse NavDropdown so active-state logic stays in one place.
 
 function Layout() {
   const { events, connected, connectionCount } = useWebSocket(WS_URL);
