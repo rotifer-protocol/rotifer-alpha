@@ -94,3 +94,128 @@ export function categoryCalibrationGate(
 
   return { pass: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// v1.0.5 §4.1 Platt scaling (ALPHA-PRD-003 C-HARDEN1.4)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Per-category Platt scaling replaces the hardcoded UNTRUSTED_CATEGORY_MULTIPLIER
+// + floors above with data-driven calibration:
+//
+//   calibratedProb = sigmoid(a × rawProb + b)
+//
+// Where (a, b) are logistic-regression coefficients trained on historical
+// (rawProb, actual_outcome) pairs from paper_trades. Each category gets its
+// own (a, b) — sports markets have different microstructure than crypto, etc.
+//
+// Training pipeline: see worker/scripts/train-platt-scaling.ts
+// Trained model store: worker/data/platt-models.json (or D1 platt_models table)
+//
+// Until P-HARDEN1.2 (5 categories × ≥100 settled trades) the model defaults
+// to identity (a=1, b=0) for every category — calibratedProb == rawProb,
+// no behavioral change. Once trained, scan.ts populates sig.calibratedProb
+// and downstream consumers (edge re-computation, sizing) use it.
+//
+// Once Platt is live + per-category quotas (§4.2) ship, this file's
+// CALIBRATION_TRUSTED set + UNTRUSTED_* constants above can be removed —
+// the calibrated probability + per-category quota naturally subsume the
+// transitional gate (low calibratedProb → low edge → filtered by fund.minEdge).
+
+/**
+ * Platt scaling coefficients for one category.
+ * calibrated_prob = sigmoid(a * raw_prob + b)
+ */
+export interface PlattScalingParams {
+  /** Slope coefficient. Identity default = 1. */
+  a: number;
+  /** Intercept coefficient. Identity default = 0. */
+  b: number;
+  /** Training metadata for audit / drift detection. */
+  trainedAt?: string;          // ISO timestamp of last training run
+  trainedSampleCount?: number; // Number of (rawProb, outcome) pairs used
+}
+
+/** Per-category Platt model table. Each SignalCategory maps to one (a, b). */
+export type PlattModelStore = Record<SignalCategory, PlattScalingParams>;
+
+/** Identity model: calibratedProb == rawProb for every category. */
+export const IDENTITY_PLATT_MODEL: PlattModelStore = {
+  sports:   { a: 1, b: 0 },
+  politics: { a: 1, b: 0 },
+  crypto:   { a: 1, b: 0 },
+  ai:       { a: 1, b: 0 },
+  other:    { a: 1, b: 0 },
+};
+
+/**
+ * Logistic / sigmoid function: σ(x) = 1 / (1 + exp(-x))
+ * Numerically stable for large |x| (clamps before exp to avoid Infinity).
+ */
+export function sigmoid(x: number): number {
+  if (x >= 0) {
+    const ex = Math.exp(-x);
+    return 1 / (1 + ex);
+  } else {
+    const ex = Math.exp(x);
+    return ex / (1 + ex);
+  }
+}
+
+/**
+ * Apply per-category Platt scaling to a raw probability.
+ *
+ * Falls back to identity (returns rawProb unchanged) when:
+ *   - category not in model store (defensive: model file out-of-date with new
+ *     SignalCategory enum values)
+ *   - model params are non-finite (defensive: corrupt model)
+ *
+ * @param rawProb Raw probability from the SignalAgent, range [0, 1].
+ *   Clamped defensively before applying sigmoid argument.
+ * @param category Inferred market category. Maps to (a, b) row.
+ * @param model Platt model store (per-category coefficients). Defaults to
+ *   IDENTITY_PLATT_MODEL when untrained — calibrated == raw.
+ * @returns Calibrated probability in [0, 1]. Equal to rawProb when model is
+ *   identity or when params are invalid.
+ */
+export function calibrateProbability(
+  rawProb: number,
+  category: SignalCategory,
+  model: PlattModelStore = IDENTITY_PLATT_MODEL,
+): number {
+  // Defensive: clamp rawProb to [0, 1] in case caller passed an unclamped edge.
+  const p = Math.max(0, Math.min(1, rawProb));
+  const params = model[category];
+  if (!params || !Number.isFinite(params.a) || !Number.isFinite(params.b)) {
+    return p;
+  }
+  // Identity short-circuit (avoid sigmoid round-trip cost for untrained model).
+  if (params.a === 1 && params.b === 0) return p;
+  return sigmoid(params.a * p + params.b);
+}
+
+/**
+ * Batch helper: populates sig.rawProb + sig.calibratedProb on each ArbSignal.
+ *
+ * Assumes the caller has already populated `sig.rawProb` upstream (or that
+ * `sig.confidence` is the raw probability — TBD when scan.ts is wired up).
+ * Until then, this is a no-op pass-through that returns the input signals
+ * with calibratedProb mirroring rawProb (identity model).
+ *
+ * @param signals Signals to calibrate. Mutated in place AND returned.
+ * @param model Platt model store. Defaults to IDENTITY_PLATT_MODEL.
+ */
+export function applyCalibrationToSignals(
+  signals: ArbSignal[],
+  model: PlattModelStore = IDENTITY_PLATT_MODEL,
+): ArbSignal[] {
+  for (const sig of signals) {
+    if (typeof sig.rawProb !== "number") {
+      // No upstream raw — skip (preserves current behavior where edge/conf
+      // come directly from SignalAgent without an explicit probability layer).
+      continue;
+    }
+    const cat = sig.category ?? "other";
+    sig.calibratedProb = calibrateProbability(sig.rawProb, cat, model);
+  }
+  return signals;
+}

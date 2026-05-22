@@ -97,6 +97,25 @@ export interface ArbSignal {
   groupItemTitle?: string;
   /** Inferred market category for signal diversity budgeting (Layer 2, 2026-05-20). */
   category?: SignalCategory;
+  /**
+   * v1.0.5 §4.1 (ALPHA-PRD-003 C-HARDEN1.4): raw probability estimate from
+   * the SignalAgent, before per-category Platt scaling. Range [0, 1].
+   *
+   * When the calibration model has not yet been trained (pre-P-HARDEN1.2 data
+   * accumulation), this field is identical to whatever `edge`-derived
+   * probability the SignalAgent already uses internally.
+   */
+  rawProb?: number;
+  /**
+   * v1.0.5 §4.1 (ALPHA-PRD-003 C-HARDEN1.4): Platt-scaled calibrated
+   * probability — `sigmoid(a * rawProb + b)` with `(a, b)` looked up per
+   * category. Range [0, 1].
+   *
+   * When the calibration model is the identity default (a=1, b=0, untrained),
+   * this equals rawProb. Once trained, downstream `edge` and sizing decisions
+   * use calibratedProb instead of raw.
+   */
+  calibratedProb?: number;
 }
 
 export interface FundConfig {
