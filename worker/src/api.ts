@@ -448,8 +448,19 @@ async function apiTrades(
 ): Promise<Response> {
   const url = new URL(req.url);
   const status = (url.searchParams.get("status") || "all").toUpperCase();
-  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
   const fundId = url.searchParams.get("fund");
+  const since = parseIsoTimestamp(url.searchParams.get("since"));
+  const until = parseIsoTimestamp(url.searchParams.get("until"));
+  const hasTimeFilter = since != null || until != null;
+
+  // Time-filtered queries need a higher cap so KPI aggregates reflect the
+  // chosen window, not just the latest 200 rows.
+  const defaultLimit = hasTimeFilter ? 500 : 50;
+  const maxLimit = hasTimeFilter ? 1000 : 200;
+  const limit = Math.min(
+    parseInt(url.searchParams.get("limit") || String(defaultLimit)),
+    maxLimit,
+  );
 
   let query = "SELECT * FROM paper_trades";
   const conditions: string[] = [];
@@ -473,6 +484,14 @@ async function apiTrades(
     conditions.push("fund_id = ?");
     bindings.push(fundId);
   }
+  if (since) {
+    conditions.push("COALESCE(closed_at, opened_at) >= ?");
+    bindings.push(since);
+  }
+  if (until) {
+    conditions.push("COALESCE(closed_at, opened_at) <= ?");
+    bindings.push(until);
+  }
   if (conditions.length > 0) {
     query += " WHERE " + conditions.join(" AND ");
   }
@@ -488,6 +507,13 @@ async function apiTrades(
     { trades, total: trades.length },
     { headers },
   );
+}
+
+function parseIsoTimestamp(raw: string | null): string | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 async function apiSignals(

@@ -115,6 +115,21 @@ function dateCutoff(range: "7d" | "30d" | "90d" | "all"): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+type TradeTimeRange = "today" | "7d" | "30d" | "90d" | "all";
+
+// Server-side `since` filter for /api/trades. Anchors to local midnight so
+// "Today" / "7D" align with what the user sees on their calendar, not UTC.
+function tradeSinceTimestamp(range: TradeTimeRange): string | null {
+  if (range === "all") return null;
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (range !== "today") {
+    const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+    d.setDate(d.getDate() - days);
+  }
+  return d.toISOString();
+}
+
 function shortDate(isoDate: string): string {
   const [, m, d] = isoDate.split("-");
   return `${parseInt(m)}/${parseInt(d)}`;
@@ -1336,11 +1351,9 @@ function MobileTradeCard({ trade, fund, isZh }: MobileTCProps) {
 }
 
 function TradeHistoryPanel({
-  trades,
   funds,
   externalFundFilter,
 }: {
-  trades: TradeRow[];
   funds: FundData[];
   externalFundFilter?: string;
 }) {
@@ -1349,6 +1362,7 @@ function TradeHistoryPanel({
 
   const [fundFilter, setFundFilter] = useState<string>(externalFundFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [timeRange, setTimeRange] = useState<TradeTimeRange>("all");
 
   // P1-1 drill-down: when parent sets externalFundFilter, sync local state
   useEffect(() => {
@@ -1357,6 +1371,18 @@ function TradeHistoryPanel({
   // P1-1: sorting state
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // Time-filtered queries lift the server cap from 200 → 1000 so KPI
+  // aggregates (realized P&L, win rate, avg position) reflect the chosen
+  // window instead of just the latest 200 rows.
+  const apiPath = useMemo(() => {
+    const since = tradeSinceTimestamp(timeRange);
+    if (!since) return "/api/trades?limit=200";
+    return `/api/trades?since=${encodeURIComponent(since)}&limit=1000`;
+  }, [timeRange]);
+
+  const { data, loading } = useFetch<{ trades: TradeRow[] }>(apiPath, 120_000);
+  const trades = data?.trades ?? [];
 
   const fundMap = useMemo(
     () => new Map(funds.map((f) => [f.id, f])),
@@ -1440,7 +1466,16 @@ function TradeHistoryPanel({
     </th>
   );
 
+  if (loading && !data) return <AnalysisSkeleton />;
   if (trades.length === 0) return <EmptyState label={t("analysisNoData")} />;
+
+  const timeOpts = [
+    { v: "today" as const, l: t("analysisToday") },
+    { v: "7d" as const,    l: t("analysis7D") },
+    { v: "30d" as const,   l: t("analysis30D") },
+    { v: "90d" as const,   l: t("analysis90D") },
+    { v: "all" as const,   l: t("analysisAllTime") },
+  ];
 
   return (
     <div>
@@ -1474,6 +1509,12 @@ function TradeHistoryPanel({
             })),
           ]}
         />
+        {/* Time range pills — aligned with Tab 1 / Tab 2 visual treatment */}
+        {timeOpts.map(({ v, l }) => (
+          <Pill key={v} active={timeRange === v} onClick={() => setTimeRange(v)}>
+            {l}
+          </Pill>
+        ))}
         <div className="flex-1 min-w-0" />
         {/* Export CSV */}
         <button
@@ -1616,9 +1657,8 @@ export function AnalysisPage() {
   const { data: snapData, loading: snapLoading } = useFetch<{
     snapshots: SnapshotData[];
   }>("/api/snapshots?limit=500", 300_000);
-  const { data: tradesData, loading: tradesLoading } = useFetch<{
-    trades: TradeRow[];
-  }>("/api/trades?limit=200", 120_000);
+  // Trades are fetched inside TradeHistoryPanel so the request URL can react
+  // to the user's time-range selection.
   // Epoch data for NAV milestone markers
   const { data: evoData } = useFetch<{
     epochs: EpochStat[];
@@ -1626,7 +1666,6 @@ export function AnalysisPage() {
 
   const funds = fundsData?.funds ?? [];
   const snapshots = snapData?.snapshots ?? [];
-  const trades = tradesData?.trades ?? [];
   const epochStats = evoData?.epochs ?? [];
 
   const [activeTab, setActiveTab] = useState<"nav" | "returns" | "trades">("nav");
@@ -1651,8 +1690,8 @@ export function AnalysisPage() {
 
   const isLoading =
     fundsLoading ||
-    (activeTab !== "trades" && snapLoading) ||
-    (activeTab === "trades" && tradesLoading);
+    (activeTab !== "trades" && snapLoading);
+    // Tab "trades" manages its own loading state inside TradeHistoryPanel.
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -1695,7 +1734,7 @@ export function AnalysisPage() {
             <DailyReturnsPanel snapshots={snapshots} funds={funds} onDrillDown={handleDrillDown} />
           )}
           {activeTab === "trades" && (
-            <TradeHistoryPanel trades={trades} funds={funds} externalFundFilter={drillDownFund} />
+            <TradeHistoryPanel funds={funds} externalFundFilter={drillDownFund} />
           )}
         </>
       )}
