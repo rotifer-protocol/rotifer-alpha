@@ -154,22 +154,82 @@ export function inferCategory(slug: string, question: string): SignalCategory {
  * Only the lowest-edge excess signals of the dominant category are dropped;
  * signals from under-represented categories are always kept.
  *
- * @param signals    Already sorted (edge descending) signal list.
- * @param maxFraction  Max fraction per category (0 < f ≤ 1). Default 0.40.
+ * v1.0.5 §4.2 (ALPHA-PRD-003 C-HARDEN1.6): budget parameter accepts either a
+ * single fraction (legacy single-cap behavior — same cap for every category)
+ * OR a per-category lookup `Partial<Record<SignalCategory, number>>` so each
+ * archetype can tune category-by-category exposure (e.g. honey_badger 50%
+ * sports / 20% crypto vs turtle 40% sports / 10% crypto).
+ *
+ * When a category is missing from a per-cat object, the function falls back
+ * to the optional `legacyFraction` argument (typically `fund.maxCategoryFraction`
+ * for pre-schema-036 funds), or 0.40 if neither is provided.
+ *
+ * @param signals       Already sorted (edge descending) signal list.
+ * @param budget        Single fraction OR per-category lookup. Default 0.40.
+ * @param legacyFraction  Fallback fraction for per-cat lookup misses.
+ *                        Default = `budget` when budget is a number, else 0.40.
  */
+export type CategoryBudget = number | Partial<Record<SignalCategory, number>>;
+
+const ALL_SIGNAL_CATEGORIES: ReadonlyArray<SignalCategory> = [
+  "sports", "politics", "crypto", "ai", "other",
+];
+
 export function applyCategoryBudget(
   signals: ArbSignal[],
-  maxFraction = 0.40,
+  budget: CategoryBudget = 0.40,
+  legacyFraction?: number,
 ): ArbSignal[] {
-  if (signals.length === 0 || maxFraction >= 1) return signals;
-  const maxPerCat = Math.max(1, Math.ceil(signals.length * maxFraction));
+  if (signals.length === 0) return signals;
+
+  const isPerCat = typeof budget === "object";
+  const fallback = legacyFraction ?? (typeof budget === "number" ? budget : 0.40);
+
+  // Compute max count per category. Categories with fraction ≥ 1 are uncapped.
+  const maxPerCat = new Map<SignalCategory, number>();
+  let anyUncapped = false;
+  for (const cat of ALL_SIGNAL_CATEGORIES) {
+    let frac: number;
+    if (isPerCat) {
+      const perCat = budget as Partial<Record<SignalCategory, number>>;
+      frac = perCat[cat] ?? fallback;
+    } else {
+      frac = budget as number;
+    }
+    if (frac >= 1) {
+      anyUncapped = true;
+      continue;  // no cap → don't add to maxPerCat map
+    }
+    maxPerCat.set(cat, Math.max(1, Math.ceil(signals.length * frac)));
+  }
+
+  // Single-cap legacy fast path: if every category has the same cap (legacy
+  // number budget or per-cat with all same values), preserve original
+  // semantics exactly (single-pass filter).
+  if (!isPerCat && (budget as number) >= 1) return signals;
+
   const catCount = new Map<SignalCategory, number>();
   const result: ArbSignal[] = [];
-
   for (const sig of signals) {
     const cat = sig.category ?? "other";
+    const limit = maxPerCat.get(cat);
+    if (limit === undefined && !anyUncapped) {
+      // Category has no entry in maxPerCat AND nothing was marked uncapped
+      // — fall back to fallback fraction for this signal's category.
+      const fallbackLimit = Math.max(1, Math.ceil(signals.length * fallback));
+      const n = catCount.get(cat) ?? 0;
+      if (n >= fallbackLimit) continue;
+      catCount.set(cat, n + 1);
+      result.push(sig);
+      continue;
+    }
+    if (limit === undefined) {
+      // anyUncapped path: this category was marked as uncapped (frac ≥ 1).
+      result.push(sig);
+      continue;
+    }
     const n = catCount.get(cat) ?? 0;
-    if (n >= maxPerCat) continue;         // over budget → skip (low edge)
+    if (n >= limit) continue;             // over budget → skip (low edge)
     catCount.set(cat, n + 1);
     result.push(sig);
   }

@@ -84,6 +84,18 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   // aggressive funds may evolve toward 0.50-0.60 (allow category concentration
   // when a single-category opportunity is genuinely strong).
   maxCategoryFraction:      { min: 0.10, max: 0.80 },
+  // v1.0.5 §4.2 (ALPHA-PRD-003 C-HARDEN1.6): per-category quotas, replacing
+  // the single maxCategoryFraction cap. Each archetype can tune categories
+  // independently. The bounds reflect category-specific risk appetite:
+  //   sports:    [0.20, 0.70] — wide because sports is the primary trusted category
+  //   politics:  [0.15, 0.50] — moderate, secondary trusted category
+  //   crypto/ai: [0.05, 0.30] — narrow, untrusted categories with limited calibration
+  //   other:     [0.05, 0.30] — narrow, miscellaneous low-confidence bucket
+  maxCatSports:             { min: 0.20, max: 0.70 },
+  maxCatPolitics:           { min: 0.15, max: 0.50 },
+  maxCatCrypto:             { min: 0.05, max: 0.30 },
+  maxCatAi:                 { min: 0.05, max: 0.30 },
+  maxCatOther:              { min: 0.05, max: 0.30 },
 };
 
 export const EVOLVABLE_PARAMS: string[] = [

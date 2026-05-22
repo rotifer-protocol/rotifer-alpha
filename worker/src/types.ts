@@ -195,7 +195,26 @@ export interface FundConfig {
   // inferred category (sports/politics/crypto/ai/other).
   // Applied in analyze() via applyCategoryBudget(); default 0.40.
   // Evolvable via PARAM_BOUNDS_INVARIANT (min: 0.10, max: 0.80).
+  /** @deprecated 2026-05-22 (v1.0.5 §4.2): superseded by per-category lookup
+   *  `maxCategoryFractionByCat`. Retained as fallback for funds without the
+   *  new per-category fields. */
   maxCategoryFraction?: number;
+  /**
+   * v1.0.5 §4.2 (ALPHA-PRD-003 C-HARDEN1.6): per-category diversity budget,
+   * replacing the single `maxCategoryFraction` cap with a per-category lookup.
+   *
+   * Each entry caps how much of the total signal pool may come from that
+   * category. When a category is missing from this object, `applyCategoryBudget`
+   * falls back to `maxCategoryFraction` (legacy single-cap) or 0.40 default.
+   *
+   * Schema 036 populates per-archetype defaults:
+   *   turtle / octopus:   {sports:0.40, politics:0.30, crypto/ai/other:0.10}
+   *   cheetah / shark:    {sports:0.50, politics:0.30, crypto/ai/other:0.10}
+   *   honey_badger:       {sports:0.50, politics:0.30, crypto/ai/other:0.20}
+   *
+   * Each of the 5 sub-fields is independently evolvable via PARAM_BOUNDS_INVARIANT.
+   */
+  maxCategoryFractionByCat?: Partial<Record<SignalCategory, number>>;
 }
 
 export type TradeStatus =
