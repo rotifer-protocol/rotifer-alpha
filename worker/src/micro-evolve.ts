@@ -1,6 +1,7 @@
 import type { FundConfig } from "./types";
-import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL } from "./accounting";
+import { PERFORMANCE_REALIZED_TRADE_WHERE_SQL, calculateDrawdownPct } from "./accounting";
 import { fundTier, getBound, clampParam } from "./param-bounds";
+import { getPeakEquity } from "./risk";
 
 /**
  * Data-driven micro-evolution engine.
@@ -135,7 +136,10 @@ export async function checkAndRunMicroEvolution(
     }
 
     const tier = fundTier(fund.initialBalance);
-    const adjustments = analyzeAndAdjust(trades, fund, tier, MICRO_ADJUST_RATIO);
+    // v1.0.5 §3 (ALPHA-PRD-003 C-HARDEN1.3): suppress aggressive mutations
+    // when fund is in drawdown soft-limit state.
+    const isInSoftLimit = await checkDrawdownSoftLimitGate(db, fund);
+    const adjustments = analyzeAndAdjust(trades, fund, tier, MICRO_ADJUST_RATIO, isInSoftLimit);
 
     if (adjustments.length > 0) {
       const setClauses: string[] = [];
@@ -214,11 +218,46 @@ export async function checkAndRunMicroEvolution(
   return results;
 }
 
+/**
+ * Aggressive-direction mutations gated when a fund is in drawdown soft-limit
+ * state (v1.0.5 §3, ALPHA-PRD-003 C-HARDEN1.3).
+ *
+ * A mutation is "aggressive" if it increases the fund's risk envelope:
+ *   - stopLossPercent ↑   = tolerate larger per-trade losses
+ *   - takeProfitPercent ↑ = wait longer / require larger gains before exit
+ *   - trailingStopPercent ↑ = allow larger retracement from high
+ *   - sizingBase ↑        = larger initial position
+ *
+ * When a fund's peakDD or lossVsInitDD has crossed the soft limit, suppressing
+ * these mutations prevents micro-evolve from pushing the fund's DNA into a
+ * more aggressive posture while it's already losing money — counter-cyclical
+ * defense against monotonic drift toward riskier params under stress.
+ *
+ * Conservative-direction (down) mutations on these same params remain allowed;
+ * neutral params (maxHoldDays / probReversalThreshold) are not gated.
+ */
+const AGGRESSIVE_UP_PARAMS = new Set<string>([
+  "stopLossPercent",
+  "takeProfitPercent",
+  "trailingStopPercent",
+  "sizingBase",
+]);
+
+function isAggressiveMutation(adj: MicroAdjustment): boolean {
+  return adj.direction === "up" && AGGRESSIVE_UP_PARAMS.has(adj.param);
+}
+
 export function analyzeAndAdjust(
   trades: ClosedTrade[],
   fund: FundConfig,
   tier: "small" | "medium" | "large",
   adjustRatio: number,
+  /**
+   * v1.0.5 §3: When true (fund in peakDD or lossVsInit soft-limit state),
+   * filter out aggressive-direction mutations (see AGGRESSIVE_UP_PARAMS).
+   * Default false — backward-compatible with existing callers and tests.
+   */
+  isInSoftLimit: boolean = false,
 ): MicroAdjustment[] {
   const adjustments: MicroAdjustment[] = [];
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
@@ -300,7 +339,59 @@ export function analyzeAndAdjust(
     adjustments.push(nudge("sizingBase", fund, tier, "down", adjustRatio));
   }
 
-  return adjustments.filter(a => a.before !== a.after);
+  return adjustments.filter(a => {
+    if (a.before === a.after) return false;
+    // v1.0.5 §3: drawdown_soft state gate — suppress aggressive mutations
+    if (isInSoftLimit && isAggressiveMutation(a)) return false;
+    return true;
+  });
+}
+
+/**
+ * Check whether a fund is currently in drawdown soft-limit state for purposes
+ * of gating aggressive micro-evolve mutations (v1.0.5 §3, ALPHA-PRD-003
+ * C-HARDEN1.3).
+ *
+ * Uses dual-semantic drawdown (same as effectiveSizing): either peakDD ≥
+ * peakDrawdownSoftLimit OR lossVsInitialDD ≥ lossVsInitialSoftLimit triggers
+ * the gate. Falls back to legacy drawdownSoftLimit when the v1.0.5 §1 P8-B
+ * fields are missing (pre-schema-035 funds).
+ *
+ * Uses the latest portfolio_snapshots row as the currentEquity proxy. This is
+ * acceptable for micro-evolve gating because:
+ *   - micro-evolve triggers at most once per fund per day (when ≥20 trades
+ *     accumulate);
+ *   - daily snapshots are written at UTC 00:00 so are at worst ~24h stale;
+ *   - the gate is a coarse "are you in trouble?" check, not a precision metric.
+ *
+ * @returns true when the fund is in soft-limit state and aggressive
+ *   mutations should be suppressed; false otherwise (including when snapshot
+ *   data is unavailable, in which case the gate is open by default).
+ */
+export async function checkDrawdownSoftLimitGate(
+  db: D1Database,
+  fund: FundConfig,
+): Promise<boolean> {
+  const row = await db.prepare(
+    "SELECT total_value FROM portfolio_snapshots WHERE fund_id = ? ORDER BY date DESC LIMIT 1",
+  ).bind(fund.id).first<{ total_value: number | null }>();
+  const lastSnapshot = row?.total_value;
+  // Gate open (returns false) when no snapshot or invalid — never block on
+  // missing data; better to allow micro-evolve and lose gating than to silently
+  // freeze evolution for new/data-less funds.
+  if (typeof lastSnapshot !== "number" || !Number.isFinite(lastSnapshot) || lastSnapshot <= 0) {
+    return false;
+  }
+  const peakFromDb = await getPeakEquity(db, fund.id, fund.initialBalance);
+  const peakReference = Math.max(peakFromDb, lastSnapshot);
+  const peakDD = calculateDrawdownPct(peakReference, lastSnapshot);
+  const lossInitDD = calculateDrawdownPct(fund.initialBalance, lastSnapshot);
+
+  // Dual-semantic soft limits with legacy fallback (mirrors effectiveSizing).
+  const peakSoftLimit = fund.peakDrawdownSoftLimit ?? fund.drawdownSoftLimit;
+  const lossSoftLimit = fund.lossVsInitialSoftLimit ?? fund.drawdownSoftLimit;
+
+  return peakDD >= peakSoftLimit || lossInitDD >= lossSoftLimit;
 }
 
 function nudge(
