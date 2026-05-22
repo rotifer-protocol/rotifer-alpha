@@ -283,12 +283,22 @@ export function useLayoutContext() {
 }
 
 // ─── NavDropdown ──────────────────────────────────────────────────────────────
-// A dropdown nav entry for grouped pages. Active state lights up when any
-// child route is active.
+// Desktop (usePortal=false): absolute-positioned dropdown.
+// Mobile  (usePortal=true) : items expand inline in the parent flex scroll bar,
+//   avoiding all z-index / overflow / portal reliability issues on iOS Safari.
 
 interface NavDropdownItem { to: string; label: string; prefetch?: () => void; }
 
-function NavDropdown({ label, items }: { label: string; items: NavDropdownItem[] }) {
+function NavDropdown({
+  label,
+  items,
+  usePortal = false,
+}: {
+  label: string;
+  items: NavDropdownItem[];
+  /** Mobile mode: subitems expand inline in the parent overflow-x-auto bar. */
+  usePortal?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
@@ -297,18 +307,56 @@ function NavDropdown({ label, items }: { label: string; items: NavDropdownItem[]
     pathname === `/${item.to}` || pathname.startsWith(`/${item.to}/`)
   );
 
+  // Desktop only: close on click outside the wrapper div
   useEffect(() => {
-    if (!open) return;
+    if (usePortal || !open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, usePortal]);
 
   // Close on route change
   useEffect(() => { setOpen(false); }, [pathname]);
 
+  // ── Mobile: inline expansion in scroll bar ────────────────────────────────
+  if (usePortal) {
+    return (
+      <>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className={`flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1 ${
+            childActive
+              ? "bg-[var(--r-accent)] text-white"
+              : "text-[var(--r-text-muted)]"
+          }`}
+        >
+          {label}
+          <ChevronDown size={10} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && items.map(item => (
+          <NavLink
+            key={item.to}
+            to={`/${item.to}`}
+            onMouseEnter={item.prefetch}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              `flex-none px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
+                isActive
+                  ? "bg-[var(--r-accent)] text-white"
+                  : "text-[var(--r-text-muted)] bg-[var(--r-surface-hover)]"
+              }`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </>
+    );
+  }
+
+  // ── Desktop: absolute dropdown ────────────────────────────────────────────
   return (
     <div ref={ref} className="relative">
       <button
@@ -324,7 +372,7 @@ function NavDropdown({ label, items }: { label: string; items: NavDropdownItem[]
       </button>
       {open && (
         <div
-          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden shadow-2xl z-[60] min-w-[128px] py-1"
+          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden shadow-2xl z-[200] min-w-[128px] py-1"
           style={{ background: "var(--r-surface)", border: "1px solid var(--r-border)" }}
         >
           {items.map(item => (
@@ -350,8 +398,7 @@ function NavDropdown({ label, items }: { label: string; items: NavDropdownItem[]
   );
 }
 
-// Mobile nav uses the same NavDropdown but inside a scrollable pill bar.
-// We reuse NavDropdown so active-state logic stays in one place.
+// Mobile nav uses NavDropdown with usePortal=true for inline expansion.
 
 function Layout() {
   const { events, connected, connectionCount } = useWebSocket(WS_URL);
@@ -490,6 +537,7 @@ function Layout() {
           </NavLink>
           <NavDropdown
             label={isZh ? "研究室" : "Lab"}
+            usePortal
             items={[
               { to: "evolution",      label: t("evolution"),        prefetch: prefetch.evolution },
               { to: "gene-evolution", label: t("navGeneEvolution"), prefetch: prefetch.gene },
