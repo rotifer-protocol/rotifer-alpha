@@ -11,6 +11,51 @@ import { fundTier, getBound, clampParam } from "./param-bounds";
  *
  * Uses tier-aware param bounds from param-bounds.ts (shared with PBT evolve.ts)
  * so medium/large funds are not incorrectly clamped to small-tier limits.
+ *
+ * ── Symmetry audit log (criticality: high — monotonic positive feedback bugs
+ *    silently degrade fund DNA over weeks before symptoms surface) ───────────
+ *
+ * v1.0 P5 (2026-05-20, commit 6cf06c8):
+ *   takeProfitPercent — fixed monotonic up-drift bug
+ *     - bug: up-trigger `avgTakeReturn > takeProfitPercent × 0.8` was always
+ *       true by math (PROFIT_TAKEN pnl/amount ≥ takeProfit + slippage).
+ *     - fix: dual-trigger + deadband
+ *         down: profitTakenRate < 0.10 && stopLossRate > 0.30 (line 220-222)
+ *         up:   profitTakenRate > 0.20 && avgTakeReturn > tp × 1.5 (line 222-228)
+ *         deadband: profitTakenRate ∈ [0.10, 0.20] no adjustment
+ *
+ * v1.0 P6 (2026-05-20):
+ *   stopLossPercent — audited symmetric, no bug
+ *     - up:   stopLossRate > 0.4 (loosen — too tight)
+ *     - down: stopLossRate < 0.1 && avgPnl < 0 (tighten — too loose)
+ *     - distribution healthy (0.08–0.30 with both up + down samples)
+ *
+ * v1.0.5 §2 (2026-05-22, ALPHA-PRD-003 C-HARDEN1.2):
+ *   trailingStopPercent (line 230-235) — audited symmetric ✅
+ *     - up:   trailingStoppedRate > 0.3 (loosen — trailing too tight)
+ *     - down: trailingStoppedRate == 0 && profitTakenCount > 3 (tighten — never used)
+ *     - implicit deadband: rate ∈ (0, 0.3] OR profitTakenCount ≤ 3
+ *
+ *   maxHoldDays (line 245-248) — audited symmetric ✅
+ *     - down: expiredRate > 0.3 (shorten — too long)
+ *     - up:   expiredCount == 0 && avgPnl > 0 (extend — no expiry, profitable)
+ *     - implicit deadband: rate ∈ (0, 0.3] OR avgPnl ≤ 0
+ *
+ *   trailingActivationPercent — field does not exist in codebase. Plan §2
+ *     listed it as audit target but no implementation present. v1.0.5 §2
+ *     considers this satisfied (nothing to audit / no bug surface).
+ *
+ *   probReversalThreshold (line 237-242) — found asymmetric, but both
+ *     branches trigger "down" (not classic up/down asymmetry):
+ *       branch1: reversedRate > 0.25 → down (reversals too sensitive, loosen)
+ *       branch2: reversedCount == 0 && stopLossRate > 0.3 → down (also loosen?!)
+ *     Both branches push down. Either branch up direction is missing OR the
+ *     second branch is incorrect (should likely be `up` not `down`). Flagged
+ *     for v1.1 or follow-up commit — not in v1.0.5 §2 scope but warrants
+ *     review.
+ *
+ *   sizingBase (line 251-255) — different semantic (performance-driven, not
+ *     outcome-classification-driven). Not part of trailing/maxHold audit cohort.
  */
 
 const MICRO_TRADE_THRESHOLD_DEFAULT = 20;
