@@ -15,6 +15,14 @@ class FakeStatement {
         this.calls.push({ sql: this.sql, args });
         return {};
       },
+      /**
+       * Stub `.first()` for read queries (e.g. circuit-breaker.loadCircuitBreakerState).
+       * Returns null — simulates a fund with no prior circuit-breaker row. The
+       * test intent here is to verify monitor-driven UPDATE statements; circuit-
+       * breaker read just needs to not throw. Don't push to `calls` so we don't
+       * pollute the assertion counter — calls is meant to track writes.
+       */
+      first: async <T>(): Promise<T | null> => null,
     };
   }
 }
@@ -83,8 +91,16 @@ test("high water mark updates are skipped for trades that are closing", async ()
 
   await executeMonitorActions(db as unknown as D1Database, monitorResult);
 
-  assert.equal(db.calls.length, 2);
+  // Expected writes:
+  //   [0] high_water_mark UPDATE for trade-2 (trade-1 skipped because closing)
+  //   [1] exit_price UPDATE for trade-1 (REVERSED action persisted)
+  //   [2] circuit_breaker_state UPDATE — REVERSED action has pnl=-12 (a loss),
+  //       so recordCircuitBreakerLoss writes to epoch_loss_usdc. The follow-up
+  //       loadCircuitBreakerState read returns null (no prior row), so no trip
+  //       UPDATE happens; the breaker is not tripped in this single-loss scenario.
+  assert.equal(db.calls.length, 3);
   assert.match(db.calls[0].sql, /high_water_mark/);
   assert.deepEqual(db.calls[0].args, [0.8, "trade-2"]);
   assert.equal(db.calls[1].args[5], "trade-1");
+  assert.match(db.calls[2].sql, /circuit_breaker_state/);
 });
