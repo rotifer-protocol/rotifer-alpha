@@ -106,8 +106,41 @@ export interface FundConfig {
   motto: string;
   initialBalance: number;
   monthlyTarget: number;
+  /**
+   * @deprecated 2026-05-22 (v1.0.5 §1 P8-B): 语义被方案 A 改写后失去清晰边界。
+   * 新代码用 `peakDrawdownLimit` (从最高点跌幅) + `lossVsInitialLimit` (相对初始本金).
+   * 兼容期保留作 fallback,fund_configs 表对应列仍由 schema 035 填充。
+   */
   drawdownLimit: number;
+  /**
+   * @deprecated 2026-05-22 (v1.0.5 §1 P8-B): 同 drawdownLimit.
+   * 新代码用 `peakDrawdownSoftLimit` + `lossVsInitialSoftLimit`.
+   */
   drawdownSoftLimit: number;
+  /**
+   * v1.0.5 §1 P8-B: 从历史最高点跌幅 (业界标准 drawdown). 常态保护——
+   * effectiveSizing() 取 MAX(peakDD, lossVsInitialDD) 判断 sizing 砍半 / 停仓.
+   * Hard limit (停仓).Schema 035 backfill from drawdown_limit.
+   */
+  peakDrawdownLimit?: number;
+  /**
+   * v1.0.5 §1 P8-B: 同 peakDrawdownLimit, soft limit (sizing 砍半).
+   * Schema 035 backfill from drawdown_soft_limit.
+   */
+  peakDrawdownSoftLimit?: number;
+  /**
+   * v1.0.5 §1 P8-B: 相对初始本金的亏损比例. 绝对兜底——防御"基金从未涨过 + 直接亏损"
+   * 这种 peakDrawdown 失效场景. Hard limit (停仓).
+   * Schema 035 per-archetype default (turtle:0.15 / cheetah:0.25 / octopus:0.20
+   * / shark:0.35 / honey_badger:0.55).
+   */
+  lossVsInitialLimit?: number;
+  /**
+   * v1.0.5 §1 P8-B: 同 lossVsInitialLimit, soft limit (sizing 砍半).
+   * Schema 035 per-archetype default (turtle:0.08 / cheetah:0.15 / octopus:0.12
+   * / shark:0.20 / honey_badger:0.30).
+   */
+  lossVsInitialSoftLimit?: number;
   allowedTypes: string[];
   minEdge: number;
   minConfidence: number;

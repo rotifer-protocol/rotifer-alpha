@@ -52,6 +52,14 @@ export const PARAM_BOUNDS_INVARIANT: Record<string, ParamBound> = {
   minConfidence:         { min: 0,    max: 1 },
   monthlyTarget:         { min: 0.01, max: 0.30 },
   drawdownLimit:         { min: 0.05, max: 0.50 },
+  // v1.0.5 §1 P8-B Drawdown Double-Semantics (ALPHA-PRD-003 C-HARDEN1.1):
+  // 新双语义字段,与旧 drawdownLimit 并行进化。
+  // peakDrawdown_* 与 drawdownLimit 同范围 (语义已是 peak,方案 A 后).
+  // lossVsInitial_* 略宽 (绝对兜底,触发更慢但更严重).
+  peakDrawdownLimit:        { min: 0.05, max: 0.50 },
+  peakDrawdownSoftLimit:    { min: 0.02, max: 0.30 },
+  lossVsInitialLimit:       { min: 0.10, max: 0.60 },
+  lossVsInitialSoftLimit:   { min: 0.05, max: 0.40 },
   maxOpenPositions:      { min: 3,    max: 20,    integer: true },
   stopLossPercent:       { min: 0.05, max: 0.30 },
   maxHoldDays:           { min: 3,    max: 30,    integer: true },
