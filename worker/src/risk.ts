@@ -143,16 +143,53 @@ export async function checkRiskLimits(
 }
 
 /**
- * Calculate effective position sizing with drawdown soft limit.
- * When drawdown is between softLimit and hardLimit, sizing is halved.
+ * Calculate effective position sizing with **dual-semantic** drawdown soft
+ * limits (v1.0.5 §1 P8-B, ALPHA-003 D2).
+ *
+ * Two independent risk guardrails — the more restrictive one wins:
+ *
+ *  - **peakDrawdown** (from-peak loss, 业界标准 drawdown): the常态保护.
+ *    Triggers when a fund retraces from its high-water mark.
+ *  - **lossVsInitialDrawdown** (vs initial capital, 绝对兜底): the absolute
+ *    safety net. Triggers when a fund's value falls below its starting
+ *    balance — defends the "fund never climbed + just bleeds" scenario
+ *    that peakDrawdown can miss.
+ *
+ * Either DD reaching its `*Limit` triggers hard stop (return 0). Either
+ * DD reaching its `*SoftLimit` triggers sizing halving.
+ *
+ * Compatibility (schema 035 transition):
+ *   When fund.peakDrawdown* / fund.lossVsInitial* fields are missing
+ *   (pre-035 funds), falls back to fund.drawdown* legacy values. Both
+ *   guardrails read from the same legacy field, so behavior degrades
+ *   gracefully to the old single-semantic protection.
+ *
+ * @param rawSize Initial position sizing before drawdown adjustment
+ * @param peakDrawdown Loss from historical peak equity, ≥ 0
+ * @param lossVsInitialDrawdown Loss vs initial capital balance, ≥ 0
+ * @param fund Fund config with drawdown threshold parameters
+ * @returns 0 (hard stop) | round(rawSize/2) (soft halve) | rawSize (no trigger)
  */
 export function effectiveSizing(
   rawSize: number,
-  currentDrawdown: number,
+  peakDrawdown: number,
+  lossVsInitialDrawdown: number,
   fund: FundConfig,
 ): number {
-  if (currentDrawdown >= fund.drawdownLimit) return 0;
-  if (currentDrawdown >= fund.drawdownSoftLimit) return Math.round(rawSize * 0.5);
+  // Compatibility: fallback to legacy drawdown_* when new fields missing.
+  const peakHardLimit = fund.peakDrawdownLimit     ?? fund.drawdownLimit;
+  const peakSoftLimit = fund.peakDrawdownSoftLimit ?? fund.drawdownSoftLimit;
+  const lossHardLimit = fund.lossVsInitialLimit     ?? fund.drawdownLimit;
+  const lossSoftLimit = fund.lossVsInitialSoftLimit ?? fund.drawdownSoftLimit;
+
+  // Hard stop: either DD exceeds its hard limit → no new positions.
+  if (peakDrawdown          >= peakHardLimit) return 0;
+  if (lossVsInitialDrawdown >= lossHardLimit) return 0;
+
+  // Soft halve: either DD exceeds its soft limit → sizing × 0.5.
+  if (peakDrawdown          >= peakSoftLimit) return Math.round(rawSize * 0.5);
+  if (lossVsInitialDrawdown >= lossSoftLimit) return Math.round(rawSize * 0.5);
+
   return rawSize;
 }
 

@@ -322,16 +322,23 @@ export async function paperTrade(
     const openStats = calculateOpenPositionStats(openTrades);
     const realizedPnl = cash + openStats.invested - fund.initialBalance;
     const currentEquity = calculateTotalValue(fund.initialBalance, realizedPnl, openStats.unrealizedPnl);
-    // P8 fix (2026-05-21): use peak equity (not initialBalance) as drawdown
-    // reference so `effectiveSizing()`'s soft/hard limits actually engage when
-    // a once-profitable fund has fallen back from its high. Pre-fix, any fund
-    // with totalValue > initialBalance reported drawdown=0% regardless of how
-    // far it had fallen from its peak — silently disabling sizing protection.
-    // Snapshots are written daily; we max with currentEquity so a fund making
-    // a fresh intra-day high reports drawdown=0 instead of a stale negative.
+    // v1.0.5 §1 P8-B (2026-05-22): dual-semantic drawdown. Compute both DDs
+    // and let `effectiveSizing()` take the more restrictive. Backstory:
+    //   - P8 方案 A (2026-05-21) shifted accounting.calculateDrawdownPct's
+    //     reference from initialBalance to peak equity, restoring sizing
+    //     protection for already-profitable funds whose drawdown previously
+    //     reported 0%.
+    //   - But the rename silently destroyed the "absolute loss" semantic.
+    //     A fund that **never climbed** + bleeds to -X% of initialBalance
+    //     would have peakDD≈0 (since peak ≈ initial) → no protection.
+    //   - v1.0.5 §1 introduces explicit dual semantics: peak (常态保护) +
+    //     lossVsInitial (绝对兜底). Either trigger engages effectiveSizing.
+    // Snapshots are written daily; max with currentEquity so a fund making
+    // a fresh intra-day high reports peakDD=0 instead of a stale negative.
     const peakFromDb = await getPeakEquity(db, fund.id, fund.initialBalance);
     const peakReference = Math.max(peakFromDb, currentEquity);
-    const currentDrawdown = calculateDrawdownPct(peakReference, currentEquity);
+    const peakDrawdown = calculateDrawdownPct(peakReference, currentEquity);
+    const lossVsInitialDrawdown = calculateDrawdownPct(fund.initialBalance, currentEquity);
     // Rolling cooldown window: entries in the last N hours per event family.
     // Per-fund parameter (default 6h) replaces the old UTC-midnight boundary.
     const cooldownHours = fund.eventFamilyCooldownHours ?? 6;
@@ -448,7 +455,7 @@ export async function paperTrade(
         continue;
       }
 
-      const adjustedSize = effectiveSizing(rawSize, currentDrawdown, fund);
+      const adjustedSize = effectiveSizing(rawSize, peakDrawdown, lossVsInitialDrawdown, fund);
       const amount = Math.min(adjustedSize, cash, fund.maxPerEvent - exposure);
       if (amount < 50) {
         skipReasons.push({ fundId: fund.id, code: "INSUFFICIENT_CASH" });
