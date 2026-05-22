@@ -41,6 +41,7 @@ import {
 } from "./portfolio-coordinator";
 import { PolymarketVenue } from "./polymarket-venue";
 import { updateLiveOrderStatus } from "./order-lifecycle";
+import { categoryCalibrationGate } from "./signal-calibration";
 import {
   loadCircuitBreakerState,
   checkCircuitBreaker,
@@ -356,6 +357,16 @@ export async function paperTrade(
       }
       if (sig.confidence < fund.minConfidence) {
         skipReasons.push({ fundId: fund.id, code: "CONFIDENCE_TOO_LOW" });
+        continue;
+      }
+
+      // P9-C transitional gate (2026-05-21): require 1.5× premium on
+      // edge/confidence for untrusted categories (crypto/ai/other) until
+      // v1.1 §5 Bayesian Platt scaling provides per-category calibration.
+      // Trusted set: sports + politics. See signal-calibration.ts head comment.
+      const calibration = categoryCalibrationGate(sig, fund);
+      if (!calibration.pass) {
+        skipReasons.push({ fundId: fund.id, code: calibration.code! });
         continue;
       }
 

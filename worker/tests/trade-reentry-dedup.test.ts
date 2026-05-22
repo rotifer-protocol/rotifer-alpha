@@ -98,6 +98,10 @@ test("isDuplicate SQL query includes all REALIZED_TRADE_STATUS_SQL entries in co
     confidence: 0.65,
     direction: "BUY_BOTH" as const,
     prices: { "Yes": 0.038, "No": 0.94, sum: 0.978, volume24hr: 100000 },
+    // category mirrors scan.ts:analyze() emit shape (signal-calibration.ts gate
+    // would otherwise treat undefined as 'other' → untrusted → 1.5× edge premium
+    // would block sig.edge=2.0 against fund.minEdge=1.5).
+    category: "politics" as const,
     timestamp: new Date().toISOString(),
   };
 
