@@ -75,11 +75,14 @@ async function recordScan(
 
   for (const sig of sigs) {
     await db.prepare(
-      "INSERT INTO signals (id, scan_id, signal_id, type, market_id, slug, question, description, edge, confidence, direction, prices, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      // v1.0.5 follow-up (schema 037, 2026-05-23): persist sig.category so
+      // downstream Platt training + P-HARDEN1.2 monitoring can GROUP BY category
+      // without re-running inferCategory() at query time.
+      "INSERT INTO signals (id, scan_id, signal_id, type, market_id, slug, question, description, edge, confidence, direction, prices, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(
       crypto.randomUUID(), scanId, sig.signalId, sig.type, sig.marketId, sig.slug,
       sig.question, sig.description, sig.edge, sig.confidence, sig.direction,
-      JSON.stringify(sig.prices), sig.timestamp,
+      JSON.stringify(sig.prices), sig.category ?? "other", sig.timestamp,
     ).run();
   }
 }

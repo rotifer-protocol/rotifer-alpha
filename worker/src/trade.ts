@@ -532,15 +532,19 @@ export async function paperTrade(
       const outcomeName = outcomeKey(sig);
       try {
         await db.prepare(
+          // v1.0.5 follow-up (schema 037, 2026-05-23): persist sig.category so
+          // P-HARDEN1.2 verification + Platt scaling training have ground truth
+          // category labels without re-running inferCategory() per query.
           `INSERT INTO paper_trades (
             id, fund_id, signal_id, market_id, slug, question, direction, outcome_name,
             entry_price, shares, amount, status, opened_at,
-            token_id, last_price, last_price_updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)`,
+            token_id, last_price, last_price_updated_at, category
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?)`,
         ).bind(
           tradeId, fund.id, sig.signalId, effectiveMarketId, sig.slug, sig.question, dir, outcomeName,
           price, shares, amount, ts,
           tokenId, price, ts,
+          sig.category ?? "other",
         ).run();
       } catch (e) {
         // D1DatabaseError in Workers production does not extend Error (instanceof = false),
