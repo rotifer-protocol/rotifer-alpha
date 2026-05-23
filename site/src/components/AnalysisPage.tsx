@@ -1394,13 +1394,15 @@ function TradeHistoryPanel({
   );
 
   const filtered = useMemo(() => {
-    let rows = trades
-      .filter((tr) => {
-        if (fundFilter !== "all" && tr.fund_id !== fundFilter) return false;
-        if (statusFilter !== "all" && tr.status !== statusFilter) return false;
-        return true;
-      })
-      .slice(0, 400);
+    // The server already caps response size (≤1000 rows). No client-side
+    // slice here — it would silently shrink the KPI window below what the
+    // user picked (e.g. "All" looked smaller than "7D" because of an
+    // arbitrary slice(0, 400) leftover from when the server hard-capped at 200).
+    let rows = trades.filter((tr) => {
+      if (fundFilter !== "all" && tr.fund_id !== fundFilter) return false;
+      if (statusFilter !== "all" && tr.status !== statusFilter) return false;
+      return true;
+    });
 
     // P1-1: apply sort
     if (sortCol) {
