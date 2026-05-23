@@ -782,6 +782,17 @@ function DailyReturnsPanel({
   // P1-2: mobile column collapse
   const displayDates = (!isMobile || mobileExpanded) ? dates : dates.slice(-7);
 
+  // Auto-scroll the heatmap to the right edge when the window changes or new
+  // snapshot data lands. The "newest" column is the most relevant one and
+  // sits at the far right (time-axis convention), so without this nudge the
+  // user has to manually scroll to see today.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastDate = displayDates[displayDates.length - 1];
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [days, lastDate]);
+
   if (snapshots.length === 0) return <EmptyState label={t("analysisNoData")} />;
 
   const dayOpts: { v: 7 | 14 | 30 | "all"; l: string }[] = [
@@ -818,7 +829,7 @@ function DailyReturnsPanel({
       </ControlRow>
 
       {/* Scrollable heatmap table */}
-      <div className="overflow-x-auto pb-2">
+      <div ref={scrollContainerRef} className="overflow-x-auto pb-2">
         <table
           className="text-[11px] border-collapse"
           style={{ minWidth: Math.max(520, 112 + displayDates.length * 46 + 56) }}
@@ -837,17 +848,24 @@ function DailyReturnsPanel({
               >
                 {isZh ? "基金" : "Fund"}
               </th>
-              {/* P0-3: date + weekday */}
-              {displayDates.map((d) => (
-                <th
-                  key={d}
-                  className="text-center text-[var(--r-text-faint)] font-normal py-1 px-1"
-                  style={{ minWidth: 44 }}
-                >
-                  <div>{shortDate(d)}</div>
-                  <div className="text-[9px] opacity-45">{weekdayLabel(d, isZh)}</div>
-                </th>
-              ))}
+              {/* P0-3: date + weekday — newest column gets an accent left border */}
+              {displayDates.map((d, i) => {
+                const isLatest = i === displayDates.length - 1;
+                return (
+                  <th
+                    key={d}
+                    className={`text-center font-normal py-1 px-1 ${
+                      isLatest
+                        ? "text-[var(--r-accent)] border-l border-[var(--r-accent)]/50"
+                        : "text-[var(--r-text-faint)]"
+                    }`}
+                    style={{ minWidth: 44 }}
+                  >
+                    <div>{shortDate(d)}</div>
+                    <div className="text-[9px] opacity-45">{weekdayLabel(d, isZh)}</div>
+                  </th>
+                );
+              })}
               {/* P0-2: Total column header — sticky right */}
               <th
                 className="text-center text-[var(--r-text-faint)] font-normal py-1 px-1 sticky right-0 z-20"
@@ -880,12 +898,18 @@ function DailyReturnsPanel({
                     </div>
                   </td>
                   {/* Daily return cells */}
-                  {displayDates.map((d) => {
+                  {displayDates.map((d, i) => {
+                    const isLatest = i === displayDates.length - 1;
                     const ret = fmap?.get(d) ?? null;
                     const { bg, fg } = returnCell(ret);
                     const clickable = ret != null && !!onDrillDown;
                     return (
-                      <td key={d} className="py-1 px-1 text-center">
+                      <td
+                        key={d}
+                        className={`py-1 px-1 text-center ${
+                          isLatest ? "border-l border-[var(--r-accent)]/50" : ""
+                        }`}
+                      >
                         {/* P1-1: click → drill down to trade records */}
                         <div
                           className={`rounded px-0.5 py-1.5 font-mono tabular-nums text-[10px] ${bg} ${fg} ${
