@@ -453,13 +453,14 @@ async function apiTrades(
   const until = parseIsoTimestamp(url.searchParams.get("until"));
   const hasTimeFilter = since != null || until != null;
 
-  // Time-filtered queries need a higher cap so KPI aggregates reflect the
-  // chosen window, not just the latest 200 rows.
+  // Defaults stay conservative (50 for casual callers, 500 once a time filter
+  // is active), but the hard ceiling is 1000 regardless. This keeps the
+  // history page's "all-time" view from being silently capped lower than its
+  // time-windowed siblings.
   const defaultLimit = hasTimeFilter ? 500 : 50;
-  const maxLimit = hasTimeFilter ? 1000 : 200;
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") || String(defaultLimit)),
-    maxLimit,
+    1000,
   );
 
   let query = "SELECT * FROM paper_trades";

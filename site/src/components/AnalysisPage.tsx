@@ -704,7 +704,7 @@ function DailyReturnsPanel({
 }) {
   const { t, locale } = useI18n();
   const isZh = locale === "zh";
-  const [days, setDays] = useState<7 | 14 | 30>(14);
+  const [days, setDays] = useState<7 | 14 | 30 | "all">(14);
   // P0-1: row sort
   const [sortMode, setSortMode] = useState<HeatSortMode>("default");
   // P1-2: mobile collapse
@@ -720,7 +720,7 @@ function DailyReturnsPanel({
     byFund.forEach((arr) => arr.sort((a, b) => a.date.localeCompare(b.date)));
 
     const allDates = [...new Set(snapshots.map((s) => s.date))].sort();
-    const recentDates = allDates.slice(-days);
+    const recentDates = days === "all" ? allDates : allDates.slice(-days);
 
     const rmap = new Map<string, Map<string, number | null>>();
     const totalMap = new Map<string, number | null>();
@@ -784,10 +784,12 @@ function DailyReturnsPanel({
 
   if (snapshots.length === 0) return <EmptyState label={t("analysisNoData")} />;
 
-  const dayOpts = ([7, 14, 30] as const).map((d) => ({
-    v: d,
-    l: d === 7 ? t("analysis7D") : d === 14 ? (isZh ? "14 天" : "14D") : t("analysis30D"),
-  }));
+  const dayOpts: { v: 7 | 14 | 30 | "all"; l: string }[] = [
+    { v: 7,     l: t("analysis7D") },
+    { v: 14,    l: isZh ? "14 天" : "14D" },
+    { v: 30,    l: t("analysis30D") },
+    { v: "all", l: t("analysisAllTime") },
+  ];
   const sortOpts: { v: HeatSortMode; l: string }[] = [
     { v: "default", l: isZh ? "默认" : "Default" },
     { v: "total",   l: isZh ? "总收益" : "Total" },
@@ -937,7 +939,9 @@ function DailyReturnsPanel({
         >
           {mobileExpanded
             ? (isZh ? "折叠 ‹" : "Collapse ‹")
-            : (isZh ? `展开全部 ${days} 天 ›` : `Expand all ${days}D ›`)}
+            : days === "all"
+              ? (isZh ? `展开全部 ${dates.length} 天 ›` : `Expand all ${dates.length}D ›`)
+              : (isZh ? `展开全部 ${days} 天 ›` : `Expand all ${days}D ›`)}
         </button>
       )}
 
@@ -1372,12 +1376,12 @@ function TradeHistoryPanel({
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // Time-filtered queries lift the server cap from 200 → 1000 so KPI
-  // aggregates (realized P&L, win rate, avg position) reflect the chosen
-  // window instead of just the latest 200 rows.
+  // Always request the server's max cap so KPI aggregates (realized P&L,
+  // win rate, avg position) reflect every trade in the chosen window — and
+  // crucially so "All" never appears to have fewer rows than "7D" / "30D".
   const apiPath = useMemo(() => {
     const since = tradeSinceTimestamp(timeRange);
-    if (!since) return "/api/trades?limit=200";
+    if (!since) return "/api/trades?limit=1000";
     return `/api/trades?since=${encodeURIComponent(since)}&limit=1000`;
   }, [timeRange]);
 

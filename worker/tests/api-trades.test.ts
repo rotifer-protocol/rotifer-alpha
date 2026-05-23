@@ -42,15 +42,26 @@ function callTrades(url: string, db: FakeDb) {
   );
 }
 
-test("apiTrades without time filter preserves the legacy 200-row cap", async () => {
+test("apiTrades without time filter still honors explicit limit up to 1000", async () => {
   const db = new FakeDb();
   await callTrades("http://localhost/api/trades?limit=500", db);
 
   assert.ok(db.lastQuery, "query must run");
   const limit = db.lastQuery!.bindings[db.lastQuery!.bindings.length - 1];
-  assert.equal(limit, 200, "limit param should cap at 200 when no time filter");
+  assert.equal(limit, 500, "explicit ?limit=500 should pass through even without a time filter");
   assert.doesNotMatch(db.lastQuery!.sql, /COALESCE\(closed_at, opened_at\)\s*>=/);
   assert.doesNotMatch(db.lastQuery!.sql, /COALESCE\(closed_at, opened_at\)\s*<=/);
+});
+
+test("apiTrades without time filter uses default 50 when limit not provided", async () => {
+  const db = new FakeDb();
+  await callTrades("http://localhost/api/trades", db);
+
+  assert.equal(
+    db.lastQuery!.bindings[db.lastQuery!.bindings.length - 1],
+    50,
+    "no limit param + no time filter → conservative 50 default",
+  );
 });
 
 test("apiTrades since adds >= filter and lifts default limit to 500", async () => {

@@ -1444,7 +1444,7 @@ const zh: Record<TranslationKey, string> = {
   analysis7D: "7 天",
   analysis30D: "30 天",
   analysis90D: "90 天",
-  analysisAllTime: "全期",
+  analysisAllTime: "全部",
   analysisNoData: "暂无数据",
   analysisNAVIndexLabel: "净值指数",
   analysisDailyReturnLabel: "每日收益率",
