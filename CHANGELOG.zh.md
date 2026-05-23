@@ -6,6 +6,16 @@ Rotifer Alpha 实验室的每日进展日志。无更新的日期会被跳过—
 
 ---
 
+### 2026-05-23
+- 分析页体验升级：日历热图自动滚动到当日 + 今日列高亮；交易时间筛选去掉客户端硬编码 cap
+- 基金详情 → 分析页深链：从基金详情一键跳转到已预筛选的交易历史视图
+- Schema migration 037：paper_trades / signals 类别字段持久化（为多样性配额做基础）
+
+### 2026-05-22
+- 导航重构：8 个 tab 收敛到 5 槽，次级页面（分析 / 影子 / 基因 / 诊断）归入"研究室"下拉
+- 风控 + 信号双线收紧：drawdown 双语义（峰值 vs 初始本金）+ drawdown_soft 触发后 micro-evolve 行为门控；untrusted 类别（crypto / ai / other）准入门槛抬至 1.5× edge+conf
+- 工程基础设施：main 分支强制 PR + DCO 工作流上线；Cloudflare Pages auto-deploy 完成自动化（push 即部署）
+
 ### 2026-05-21
 - 风控修正：回撤锚定从初始本金改为历史峰值净值
 - gambler 基金更名为 **honeyBadger 🦡**（标识符全栈收敛 snake_case）
