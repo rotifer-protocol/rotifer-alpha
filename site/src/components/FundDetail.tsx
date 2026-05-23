@@ -854,6 +854,7 @@ export function FundDetail() {
       {/* Trade History */}
       <TradeHistorySection
         trades={closedTrades}
+        fundId={fundId!}
         maxHoldDays={cfg.maxHoldDays}
         fundRealizedPnl={fund.realizedPnl}
         fundWinCount={fund.winCount}
@@ -1053,11 +1054,13 @@ function normParam(v: number, min: number, max: number): number {
 }
 
 function TradeHistorySection({
-  trades, maxHoldDays,
+  trades, fundId, maxHoldDays,
   fundRealizedPnl, fundWinCount, fundLossCount, fundWinRate,
   snapshots,
 }: {
-  trades: Trade[]; maxHoldDays?: number;
+  trades: Trade[];
+  fundId: string;
+  maxHoldDays?: number;
   fundRealizedPnl?: number;
   fundWinCount?: number;
   fundLossCount?: number;
@@ -1116,6 +1119,13 @@ function TradeHistorySection({
           {t("tradeHistory")} ({trades.length})
           {tradeView === "calendar" && <InfoPopover text={t("tipCalendarHeatmap")} />}
         </h3>
+        {/* Escape hatch to the full status × time filter on AnalysisPage */}
+        <Link
+          to={`/analysis?tab=trades&fund=${fundId}`}
+          className="text-[11px] text-[var(--r-text-faint)] hover:text-[var(--r-accent)] transition-colors whitespace-nowrap"
+        >
+          {t("viewFullFilter")}
+        </Link>
         {/* List / Calendar toggle */}
         <div className="flex items-center gap-1 ml-auto">
           {(["list", "calendar"] as const).map(v => (

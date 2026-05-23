@@ -16,6 +16,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { Download, ChevronDown, ChevronUp, ExternalLink, Trophy, TrendingDown, Gamepad2, CircleDot, Landmark, DollarSign, Cpu, Globe } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useI18n } from "../i18n/context";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -1680,6 +1681,7 @@ function AnalysisSkeleton() {
 
 export function AnalysisPage() {
   const { t } = useI18n();
+  const [searchParams] = useSearchParams();
 
   const { data: fundsData, loading: fundsLoading } = useFetch<{
     funds: FundData[];
@@ -1698,9 +1700,18 @@ export function AnalysisPage() {
   const snapshots = snapData?.snapshots ?? [];
   const epochStats = evoData?.epochs ?? [];
 
-  const [activeTab, setActiveTab] = useState<"nav" | "returns" | "trades">("nav");
-  // Heatmap cell → trade records drill-down
-  const [drillDownFund, setDrillDownFund] = useState<string | undefined>();
+  // URL ?tab=trades&fund=X lets other pages (e.g. FundDetail) deep-link
+  // straight to the trade-history view with a fund pre-selected. Read once
+  // at mount — runtime tab switches are user-driven and don't touch the URL.
+  const initialTab = ((): "nav" | "returns" | "trades" => {
+    const tab = searchParams.get("tab");
+    return tab === "trades" || tab === "returns" ? tab : "nav";
+  })();
+  const initialFund = searchParams.get("fund") || undefined;
+
+  const [activeTab, setActiveTab] = useState<"nav" | "returns" | "trades">(initialTab);
+  // Heatmap cell → trade records drill-down (also seeded from ?fund= URL param)
+  const [drillDownFund, setDrillDownFund] = useState<string | undefined>(initialFund);
 
   const handleDrillDown = useCallback((fundId: string) => {
     setDrillDownFund(fundId);
