@@ -6,6 +6,16 @@ For the source-of-truth git history, see [GitHub commits](https://github.com/rot
 
 ---
 
+### 2026-05-23
+- AnalysisPage UX upgrade: calendar heatmap auto-scrolls to today + today column accented; trade time-range filter drops its hardcoded client-side cap
+- FundDetail deep-link to AnalysisPage: one-click jump from a fund's detail page into the corresponding pre-filtered trade history
+- Schema migration 037: category fields persisted on paper_trades / signals (foundation for diversity quotas)
+
+### 2026-05-22
+- Nav reshape: 8 tabs collapsed into 5 slots, secondary pages (analysis / shadow / gene / diagnostics) grouped under a "Lab" dropdown
+- Risk + signal tightening: dual-semantics drawdown (peak vs initial capital) + drawdown_soft behavioral gate on micro-evolve; untrusted-category (crypto / ai / other) admission threshold raised to 1.5× edge + conf
+- Engineering infra: PR-required + DCO workflow on main; Cloudflare Pages auto-deploy now live (push-to-main auto-deploys)
+
 ### 2026-05-21
 - Risk: drawdown is now anchored to peak equity, not initial capital
 - Fund renamed: gambler → **honeyBadger 🦡** (with snake_case identifier rollout)
