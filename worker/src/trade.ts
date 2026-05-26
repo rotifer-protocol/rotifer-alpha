@@ -476,6 +476,27 @@ export async function paperTrade(
       );
       if (!portConcentration.allowed) {
         skipReasons.push({ fundId: fund.id, code: "PORTFOLIO_CONCENTRATION" });
+        // v1.0 follow-up (schema 038, 2026-05-23): persist skip event for C1.3
+        // verify. was_likely_safe / label_method / label_at left NULL — backfilled
+        // later by heuristic batch job. try/catch is graceful: schema-not-yet-deployed
+        // path logs warning and continues (table absent → INSERT fails → continue).
+        try {
+          await db.prepare(
+            `INSERT INTO portfolio_coordinator_skips (
+              id, fund_id, signal_id, event_family_id, attempted_at,
+              current_exposure_usdc, attempted_amount_usdc, portfolio_limit_usdc, execution_mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            crypto.randomUUID(), fund.id, sig.signalId, familyKey, ts,
+            portfolioEventExposure.get(familyKey) ?? 0, amount, portfolioLimit, executionMode,
+          ).run();
+        } catch (e) {
+          const msg = String((e as any)?.message ?? e);
+          // Suppress "no such table" before schema 038 deploys; surface other errors.
+          if (!msg.includes("no such table")) {
+            console.warn(`[portfolio-coordinator] skip log INSERT failed: ${msg}`);
+          }
+        }
         continue;
       }
 
