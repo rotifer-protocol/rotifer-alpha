@@ -46,14 +46,16 @@ import { getPeakEquity } from "./risk";
  *     listed it as audit target but no implementation present. v1.0.5 §2
  *     considers this satisfied (nothing to audit / no bug surface).
  *
- *   probReversalThreshold (line 237-242) — found asymmetric, but both
- *     branches trigger "down" (not classic up/down asymmetry):
- *       branch1: reversedRate > 0.25 → down (reversals too sensitive, loosen)
- *       branch2: reversedCount == 0 && stopLossRate > 0.3 → down (also loosen?!)
- *     Both branches push down. Either branch up direction is missing OR the
- *     second branch is incorrect (should likely be `up` not `down`). Flagged
- *     for v1.1 or follow-up commit — not in v1.0.5 §2 scope but warrants
- *     review.
+ *   probReversalThreshold (line 282-292) — was asymmetric, NOW FIXED ✅
+ *     (2026-05-23 follow-up commit). Semantic check via monitor.ts:169:
+ *       fires REVERSED when reversal >= fund.probReversalThreshold
+ *     → higher threshold = stricter = fewer REVERSED firings
+ *     → lower threshold = looser = more REVERSED firings
+ *     Original branch1 was "down" but should be "up":
+ *       branch1: reversedRate > 25% → up (tighten — reversals firing too often)
+ *       branch2: reversedCount == 0 && stopLossRate > 30% → down (loosen — reversals
+ *                                                                 should fire as early exit)
+ *     Now symmetric with implicit deadband.
  *
  *   sizingBase (line 251-255) — different semantic (performance-driven, not
  *     outcome-classification-driven). Not part of trailing/maxHold audit cohort.
@@ -319,8 +321,15 @@ export function analyzeAndAdjust(
   }
 
   // --- Probability reversal tuning ---
+  // v1.0.5 §2 follow-up fix (2026-05-23, commit ce279d0+1):
+  //   Original branch1 was "down" but that's backwards:
+  //     probReversalThreshold 越大 = 越严格 = 越少 REVERSED 触发
+  //     (monitor.ts:169 fires REVERSED when reversal >= threshold)
+  //   "reversal too frequent (>25%)" should TIGHTEN the threshold = up direction
+  //   to reduce REVERSED firing rate. branch2 (no reversals + many stops) staying
+  //   down is correct — loosens threshold so reversals fire as early-exit.
   if (reversedCount / trades.length > 0.25) {
-    adjustments.push(nudge("probReversalThreshold", fund, tier, "down", adjustRatio));
+    adjustments.push(nudge("probReversalThreshold", fund, tier, "up", adjustRatio));
   } else if (reversedCount === 0 && stopLossRate > 0.3) {
     adjustments.push(nudge("probReversalThreshold", fund, tier, "down", adjustRatio));
   }
