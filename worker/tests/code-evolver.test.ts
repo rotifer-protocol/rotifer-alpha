@@ -329,6 +329,64 @@ test("checkAndRunCodeEvolution: DOES eliminate when ≥2 variants exist (post 20
   assert.equal(scannerElim[0].variantId, "polymarket-scanner:v2-alt", "v2-alt has worse score, should be eliminated");
 });
 
+test("checkAndRunCodeEvolution: eliminates heaviest loser when all variants collapse to zero Alpha Score (B+E regression)", async () => {
+  // Regression: before B+E (2026-05-23) the elimination gate required at
+  // least one positive-score "best" to exist before any "worst" could be
+  // picked. When every variant collapsed to 0 (all losing money), the
+  // variant pool froze indefinitely — no promotion, no elimination, no
+  // challenger spawned.
+  //
+  //   B (tie-break): sort by totalPnl after alphaScore so the heaviest
+  //                  loser sorts last when scores tie at 0.
+  //   E (decoupled): pick worst independently of best so the elimination
+  //                  branch still runs even when nobody scored > 0.
+  //
+  // This test inserts the HEAVY loser FIRST so a stable sort would
+  // otherwise leave it at index 0 and wrongly pick the mild loser as
+  // "worst". Assertion only passes if B's totalPnl tie-break is active.
+  const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
+  const { createVariant, getVariant } = await import("../src/gene-variants");
+  const db = new FakeDb();
+
+  // Heavy loser: -$1000/trade × 30 = -$30,000 total
+  await createVariant(
+    db as unknown as D1Database, "polymarket-scanner",
+    "v1-heavy", "aggressive", "Heavy loser", null, 0,
+  );
+  db.setTrades("polymarket-scanner:v1-heavy", 30, 0.25, -1000.0);
+
+  // Mild loser: -$100/trade × 30 = -$3,000 total
+  await createVariant(
+    db as unknown as D1Database, "polymarket-scanner",
+    "v2-mild", "baseline", "Mild loser", "polymarket-scanner:v1-heavy", 1,
+  );
+  db.setTrades("polymarket-scanner:v2-mild", 30, 0.30, -100.0);
+
+  const result = await checkAndRunCodeEvolution(db as unknown as D1Database);
+
+  assert.equal(result.triggered, true);
+
+  // No promotion — neither variant has positive Alpha Score
+  assert.equal(
+    result.promotions.some(p => p.geneId === "polymarket-scanner"),
+    false,
+    "No variant should be promoted when all scores collapsed to 0",
+  );
+
+  // Elimination MUST still run, and pick the heavier loser via totalPnl
+  const scannerElim = result.eliminations.find(e => e.geneId === "polymarket-scanner");
+  assert.ok(scannerElim, "Elimination must still trigger when all scores are 0");
+  assert.equal(
+    scannerElim.variantId, "polymarket-scanner:v1-heavy",
+    "Heavy loser (-$30K) must be eliminated, not mild loser (-$3K)",
+  );
+
+  // DB row confirms eliminated status
+  const v1 = await getVariant(db as unknown as D1Database, "polymarket-scanner:v1-heavy");
+  assert.ok(v1);
+  assert.equal(v1.status, "eliminated", "v1-heavy status should be 'eliminated' in DB");
+});
+
 test("checkAndRunCodeEvolution: does NOT promote variants with zero Alpha Score", async () => {
   const { checkAndRunCodeEvolution } = await import("../src/code-evolver");
   const { createVariant, getActiveVariantId } = await import("../src/gene-variants");

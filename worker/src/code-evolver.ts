@@ -101,10 +101,21 @@ export async function checkAndRunCodeEvolution(
     const activeRefreshed = refreshed.filter(v => v.status === "active");
     const evaluated = activeRefreshed.filter(v => v.tradesEvaluated >= MIN_TRADES_FOR_EVAL);
 
-    const sorted = [...evaluated].sort((a, b) => b.alphaScore - a.alphaScore);
+    // Primary sort by Alpha Score (desc, best first). Tie-break by totalPnl
+    // (desc — less loss is "better") so that when every variant collapses
+    // to score 0 (Alpha Score clamps negative raw scores), the heaviest
+    // loser still sorts to the end and can be picked as worst.
+    const sorted = [...evaluated].sort((a, b) => {
+      if (b.alphaScore !== a.alphaScore) return b.alphaScore - a.alphaScore;
+      return b.totalPnl - a.totalPnl;
+    });
     const promotable = sorted.filter(v => v.alphaScore > 0);
     const best = promotable[0] ?? null;
-    const worst = best && sorted.length >= 2 ? sorted[sorted.length - 1] : null;
+    // Pick worst independently of best: if no variant scores >0, the loop
+    // would otherwise freeze the variant pool indefinitely (no promotion,
+    // no elimination, no challenger spawned). Decoupling lets the worst
+    // performer still be evicted and replaced even when nobody is winning.
+    const worst = sorted.length >= 2 ? sorted[sorted.length - 1] : null;
 
     const eval_: GeneEvaluation = {
       geneId: gene.id,
