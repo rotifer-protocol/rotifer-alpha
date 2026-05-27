@@ -4,26 +4,31 @@ const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https:
 
 // ─── Cache layers ──────────────────────────────────────────────────────────────
 //
+// SWR (stale-while-revalidate) pattern: cached data is shown instantly to
+// avoid loading flashes, and a background fetch fires on every mount past
+// the dedup window to make sure the user sees the latest data within a
+// network round-trip (~200-500ms) of opening the site.
+//
 // Layer 1 — memCache (in-memory, module-level)
 //   Survives component re-renders and SPA route changes within a tab.
-//   Zero loading flash when navigating between pages.
 //   Cleared on page reload.
 //
 // Layer 2 — localStorage (persisted across sessions)
-//   Survives page reloads and new tabs.
-//   On mount: if LS has fresh-enough data, show it immediately (no loading flash on refresh).
-//   On network response: write-through to keep LS up to date.
+//   Survives page reloads and new tabs. On mount the entire LS is replayed
+//   into memCache so the first paint is instant.
 //
 // Layer 3 — inFlight (deduplication)
-//   If multiple components request the same path concurrently, only one network
-//   request fires. All callers share the same promise.
+//   If multiple components request the same path concurrently, only one
+//   network request fires. All callers share the same promise.
 
 const memCache = new Map<string, { data: unknown; ts: number }>();
 const inFlight  = new Map<string, Promise<unknown>>();
 
-const MEM_TTL_MS = 20_000;   // Re-validate after 20s (background, user sees cached data)
-const LS_TTL_MS  = 5 * 60_000; // Show LS data without loading flash if < 5 min old
-const LS_PREFIX  = "petri_apicache_v1_"; // Bump suffix to wipe stale schema on next deploy
+// Dedup window: skip the network if we just fetched this path within the
+// last DEDUP_WINDOW_MS. Anything older triggers a background revalidate
+// even when cached data is already on screen.
+const DEDUP_WINDOW_MS = 20_000;
+const LS_PREFIX = "petri_apicache_v1_"; // Bump suffix to wipe stale schema on next deploy
 
 // ─── localStorage helpers ──────────────────────────────────────────────────────
 
@@ -108,19 +113,17 @@ export function useFetch<T>(path: string, intervalMs?: number): UseFetchReturn<T
     const now = Date.now();
     const hit = memCache.get(path);
 
-    // Show cached data immediately regardless of age
+    // Show cached data immediately regardless of age (no loading flash).
     if (hit && mountedRef.current) {
       setData(hit.data as T);
       setLoading(false);
-
-      // Determine which TTL governs whether we skip the network round-trip:
-      // — LS-promoted entries (seeded at module load) use the longer LS_TTL_MS
-      //   so a fresh page reload doesn't hammer the API if data is < 5 min old.
-      // — Within-session entries use the shorter MEM_TTL_MS (20 s).
-      const age = now - hit.ts;
-      const ttl = age < LS_TTL_MS ? LS_TTL_MS : MEM_TTL_MS;
-      if (!forceRevalidate && age < ttl) return;
     }
+
+    // SWR: always revalidate on mount unless a sibling caller just fetched
+    // the same path within the dedup window. Without this the user can sit
+    // on an LS-cached snapshot for minutes before the polling interval
+    // fires the next forced refresh.
+    if (!forceRevalidate && hit && (now - hit.ts) < DEDUP_WINDOW_MS) return;
 
     // Deduplicate concurrent requests for the same path
     try {
@@ -156,7 +159,7 @@ export function useFetch<T>(path: string, intervalMs?: number): UseFetchReturn<T
   useEffect(() => {
     fetchData();
     if (intervalMs && intervalMs > 0) {
-      // Interval polling always force-revalidates (bypasses TTL check)
+      // Interval polling always force-revalidates (bypasses dedup window)
       const timer = setInterval(() => fetchData(true), intervalMs);
       return () => clearInterval(timer);
     }
